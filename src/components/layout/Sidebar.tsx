@@ -9,6 +9,7 @@ const menuItems = [
   { href: '/students', label: 'תלמידים', icon: '👤' },
   { href: '/finances', label: 'כספים', icon: '₪' },
   { href: '/dormitory', label: 'פנימיה', icon: '🏢' },
+  { href: '/reports', label: 'אישורים', icon: '📄' },
   { href: '/settings', label: 'הגדרות', icon: '⚙' },
 ];
 

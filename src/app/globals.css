@@ -131,3 +131,42 @@ textarea {
     background-position: -200% 0;
   }
 }
+
+/* Print styles for certificates */
+@media print {
+  body {
+    background: white !important;
+  }
+
+  .no-print,
+  aside,
+  nav,
+  header {
+    display: none !important;
+  }
+
+  .print-area {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+  }
+
+  .certificate-container {
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .certificate-page {
+    box-shadow: none !important;
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 15mm 20mm !important;
+  }
+
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
