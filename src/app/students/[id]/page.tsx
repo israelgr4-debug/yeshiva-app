@@ -104,19 +104,19 @@ export default function StudentDetailPage() {
         }
       }
 
-      // Save student
-      const finalStudentData = {
-        first_name: studentFormData.first_name,
-        last_name: studentFormData.last_name,
-        id_number: studentFormData.id_number,
-        date_of_birth: studentFormData.date_of_birth,
-        shiur: studentFormData.shiur,
-        equivalent_year: studentFormData.equivalent_year,
-        phone: studentFormData.phone,
-        email: studentFormData.email,
-        status: studentFormData.status,
-        notes: studentFormData.notes,
-        machzor_id: studentFormData.machzor_id,
+      // Save student - convert empty strings to null for DB
+      const finalStudentData: Record<string, any> = {
+        first_name: studentFormData.first_name || null,
+        last_name: studentFormData.last_name || null,
+        id_number: studentFormData.id_number || null,
+        date_of_birth: studentFormData.date_of_birth || null,
+        shiur: studentFormData.shiur || null,
+        equivalent_year: studentFormData.equivalent_year || null,
+        phone: studentFormData.phone || null,
+        email: studentFormData.email || null,
+        status: studentFormData.status || 'active',
+        notes: studentFormData.notes || null,
+        machzor_id: studentFormData.machzor_id || null,
         family_id: familyId || null,
       };
 
@@ -133,8 +133,9 @@ export default function StudentDetailPage() {
           loadStudent();
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save student:', error);
+      alert('שגיאה בשמירת התלמיד: ' + (error?.message || JSON.stringify(error)));
     }
   }
 
