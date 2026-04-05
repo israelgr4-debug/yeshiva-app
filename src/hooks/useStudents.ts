@@ -66,9 +66,16 @@ export function useStudents() {
     setLoading(true);
     setError(null);
     try {
+      // Remove null/undefined values to avoid columns parameter issues
+      const cleanData: Record<string, any> = {};
+      for (const [key, value] of Object.entries(student)) {
+        if (value !== null && value !== undefined && value !== '') {
+          cleanData[key] = value;
+        }
+      }
       const { data, error: err } = await supabase
         .from('students')
-        .insert([student])
+        .insert([cleanData])
         .select()
         .single();
 
