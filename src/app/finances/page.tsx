@@ -11,6 +11,9 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components
 import { useSupabase } from '@/hooks/useSupabase';
 import { formatDate, formatCurrency, getStatusLabel } from '@/lib/utils';
 import { DonationsSummary } from '@/components/finances/DonationsSummary';
+import { TuitionSummaryCard } from '@/components/finances/TuitionSummaryCard';
+import { TuitionSetupForm } from '@/components/finances/TuitionSetupForm';
+import { TuitionPaymentsTable } from '@/components/finances/TuitionPaymentsTable';
 
 interface Donation {
   id: string;
@@ -235,6 +238,35 @@ export default function FinancesPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* TUITION SECTION */}
+        <div className="border-t-2 border-gray-200 mt-12 pt-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">שכר לימוד</h2>
+
+          {/* Tuition Summary */}
+          <div className="mb-8">
+            <TuitionSummaryCard />
+          </div>
+
+          {/* Tuition Setup Form */}
+          <div className="mb-8">
+            <TuitionSetupForm
+              onSuccess={() => {
+                // Could refresh data here if needed
+              }}
+            />
+          </div>
+
+          {/* Tuition Payments Table */}
+          <Card>
+            <CardHeader>
+              <h3 className="text-xl font-bold">ניהול תשלומים</h3>
+            </CardHeader>
+            <CardContent>
+              <TuitionPaymentsTable />
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </>
   );

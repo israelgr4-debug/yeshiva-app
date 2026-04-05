@@ -115,6 +115,46 @@ export interface Staff {
   updated_at: string;
 }
 
+export interface TuitionCharge {
+  id: string;
+  family_id: string;
+  student_ids: string[];
+  total_amount_per_month: number;
+  amount_breakdown: Record<string, number>; // {student_id: amount}
+  payment_method: 'standing_order' | 'check' | 'credit' | 'office';
+  scheduled_day_of_month: number | null;
+  status: 'active' | 'suspended' | 'cancelled';
+  start_date: string;
+  end_date: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TuitionPayment {
+  id: string;
+  family_id: string;
+  tuition_charge_id: string;
+  payment_month: string; // YYYY-MM
+  scheduled_date: string;
+  total_amount: number;
+  amount_breakdown: Record<string, number>; // {student_id: amount}
+  status: 'scheduled' | 'collected' | 'failed' | 'partial';
+  payment_method: 'standing_order' | 'check' | 'credit' | 'office';
+  payment_details: {
+    check_number?: string;
+    deposit_date?: string;
+    bank_response_code?: string;
+    transaction_id?: string;
+    aashrai_transaction_id?: string;
+    collected_by?: string;
+    document_ref?: string;
+  } | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DashboardStats {
   total_students: number;
   active_students: number;
