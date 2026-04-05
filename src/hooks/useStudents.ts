@@ -75,7 +75,7 @@ export function useStudents() {
       }
       const { data, error: err } = await supabase
         .from('students')
-        .insert([cleanData])
+        .insert(cleanData)
         .select()
         .single();
 

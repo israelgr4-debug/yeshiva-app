@@ -56,7 +56,14 @@ export function useSupabase() {
       setLoading(true);
       setError(null);
       try {
-        const { data: result, error: err } = await supabase.from(table).insert([data]).select();
+        // Remove null/empty values and send single object (not array) to avoid columns parameter issue
+        const cleanData: Record<string, any> = {};
+        for (const [key, value] of Object.entries(data as any)) {
+          if (value !== null && value !== undefined && value !== '') {
+            cleanData[key] = value;
+          }
+        }
+        const { data: result, error: err } = await supabase.from(table).insert(cleanData).select();
 
         if (err) throw err;
         return (result?.[0] || null) as T | null;
