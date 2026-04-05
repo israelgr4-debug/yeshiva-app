@@ -23,10 +23,114 @@ export function CertificatePreview({
   reportType,
   year,
   extras,
-  signer = DEFAULT_SIGNER,
+  signer,
 }: CertificatePreviewProps) {
   const hebrewDate = getHebrewDate();
   const gregorianDate = getGregorianDate();
+  const activeSigner = reportType.signer || signer || DEFAULT_SIGNER;
+
+  // Section 46 Receipt - special layout
+  if (reportType.isReceipt) {
+    return (
+      <div id="certificate-preview" className="certificate-container">
+        <div className="certificate-page receipt-page">
+          {/* Thank you letter section */}
+          <div className="receipt-header">
+            <p>לכבוד</p>
+            <p className="font-bold">{extras.donorName || '___'} {extras.donorId ? `ע"ר ${extras.donorId}` : ''}</p>
+            <p>{extras.donorAddress || ''} {extras.donorCity || ''}</p>
+          </div>
+
+          <p className="mt-4 font-bold">שלומים מרובים</p>
+
+          <div className="receipt-body mt-4">
+            <p>
+              בשם הנהלת ישיבת מיר מודיעין עילית, ראשיה, ותלמידיה, הננו להביע מעומק הלב רגשי תודה וההערכה למע&quot;כ, על תרומתכם הנדיבה.
+            </p>
+            <p className="mt-2">
+              בתרומה זו הנכם שותפים נאמנים בהחזקתו של מבצר התורה הגדול.
+            </p>
+            <p className="mt-2">
+              יהי רצון שזכות לימוד התורה של תלמידי הישיבה, תעמוד לכם ולמשפחתכם, שלא תמוש התורה מפיכם ומפי זרעכם עד עולם. ותזכו לשפע של ברכה והצלחה, ברוחניות ובגשמיות.
+            </p>
+          </div>
+
+          <p className="mt-6">בברכת התורה</p>
+          <p className="font-bold">ישיבת מיר מודיעין עילית</p>
+
+          {/* Receipt section */}
+          <div className="receipt-divider mt-8 mb-4" />
+
+          <div className="receipt-section">
+            <div className="flex justify-between items-start">
+              <p className="font-bold">קבלה מספר {extras.receiptNumber || '___'}</p>
+              <div className="text-left text-sm">
+                <p>מקור – תרומה</p>
+                <p>{gregorianDate}</p>
+                <p>{hebrewDate}</p>
+              </div>
+            </div>
+
+            <p className="mt-4">
+              נתקבל בברכה מאת {extras.donorName || '___'} {extras.donorId ? `ע"ר ${extras.donorId}` : ''}{extras.donorAddress ? `, ${extras.donorAddress}` : ''} {extras.donorCity || ''}
+            </p>
+            <p className="mt-2 font-bold text-lg">
+              סך {extras.amount || '___'} ({extras.amountWords || '___'}) שח
+            </p>
+            <p className="mt-2">
+              שולם ב{extras.paymentMethod || '___'}
+            </p>
+            <p className="mt-4 text-sm">
+              למוסד אישור מס הכנסה לענין תרומות פי סעיף 46 לפקודה.
+            </p>
+          </div>
+        </div>
+
+        <style jsx>{`
+          .certificate-container {
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+          }
+          .certificate-page {
+            width: 210mm;
+            min-height: 297mm;
+            background: white;
+            padding: 30mm 25mm 30mm 25mm;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            direction: rtl;
+            font-family: 'David', 'Miriam', Arial, sans-serif;
+            font-size: 15px;
+            line-height: 1.8;
+            color: #000;
+          }
+          .receipt-divider {
+            border-top: 2px dashed #999;
+          }
+          .receipt-header p {
+            margin: 0;
+          }
+          .receipt-body p {
+            text-align: justify;
+          }
+          .receipt-section {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+          }
+          @media print {
+            .certificate-page {
+              box-shadow: none;
+              padding: 20mm;
+            }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // Standard certificate layout
   const body = reportType.buildBody(student, year, extras);
 
   return (
@@ -35,6 +139,7 @@ export function CertificatePreview({
         {/* Header */}
         <div className="certificate-header">
           <div className="bsd">בס&quot;ד</div>
+          <div className="yeshiva-name">ישיבת מיר מודיעין עילית</div>
           <div className="date-line">
             <span>{hebrewDate}</span>
             <span>{gregorianDate}</span>
@@ -45,7 +150,9 @@ export function CertificatePreview({
         <h1 className="certificate-title">אישור</h1>
 
         {/* Recipient */}
-        <p className="certificate-recipient">{reportType.recipient}</p>
+        {reportType.recipient && (
+          <p className="certificate-recipient">{reportType.recipient}</p>
+        )}
 
         {/* Body */}
         <div className="certificate-body">
@@ -59,9 +166,9 @@ export function CertificatePreview({
         {/* Signature */}
         <div className="certificate-signature">
           <p>בכבוד רב,</p>
-          <p className="signer-name">{signer.name}</p>
-          <p>ת.ז. {signer.idNumber}</p>
-          <p>{signer.title}</p>
+          {activeSigner.name && <p className="signer-name">{activeSigner.name}</p>}
+          {activeSigner.idNumber && <p>{activeSigner.idNumber}</p>}
+          {activeSigner.title && <p>{activeSigner.title}</p>}
         </div>
       </div>
 
@@ -75,7 +182,7 @@ export function CertificatePreview({
           width: 210mm;
           min-height: 297mm;
           background: white;
-          padding: 40mm 25mm 30mm 25mm;
+          padding: 30mm 25mm 30mm 25mm;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
           direction: rtl;
           font-family: 'David', 'Miriam', Arial, sans-serif;
@@ -86,10 +193,15 @@ export function CertificatePreview({
         }
         .certificate-header {
           text-align: center;
-          margin-bottom: 30px;
+          margin-bottom: 20px;
         }
         .bsd {
           font-size: 14px;
+          margin-bottom: 5px;
+        }
+        .yeshiva-name {
+          font-size: 13px;
+          color: #555;
           margin-bottom: 10px;
         }
         .date-line {
@@ -102,7 +214,7 @@ export function CertificatePreview({
           text-align: center;
           font-size: 28px;
           font-weight: bold;
-          margin: 30px 0;
+          margin: 25px 0;
           text-decoration: underline;
         }
         .certificate-recipient {
@@ -123,6 +235,12 @@ export function CertificatePreview({
         }
         .signer-name {
           font-weight: bold;
+        }
+        @media print {
+          .certificate-page {
+            box-shadow: none;
+            padding: 20mm;
+          }
         }
       `}</style>
     </div>

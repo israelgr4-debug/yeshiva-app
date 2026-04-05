@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 const menuItems = [
   { href: '/', label: 'לוח בקרה', icon: '▦' },
   { href: '/students', label: 'תלמידים', icon: '👤' },
+  { href: '/families', label: 'משפחות', icon: '👨‍👩‍👦' },
   { href: '/finances', label: 'כספים', icon: '₪' },
   { href: '/dormitory', label: 'פנימיה', icon: '🏢' },
   { href: '/reports', label: 'אישורים', icon: '📄' },
@@ -31,7 +32,7 @@ export function Sidebar() {
                 href={item.href}
                 className={cn(
                   'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
-                  pathname === item.href
+                  (item.href === '/' ? pathname === '/' : pathname.startsWith(item.href))
                     ? 'bg-blue-600 text-white'
                     : 'text-slate-300 hover:bg-slate-700'
                 )}

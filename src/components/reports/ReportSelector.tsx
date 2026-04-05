@@ -143,14 +143,27 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
 
       {/* Extra fields based on report type */}
       {selectedReport?.extraFields.map((field) => (
-        <Input
-          key={field.key}
-          label={field.label}
-          type={field.type}
-          value={extras[field.key] || ''}
-          onChange={(e) => setExtras((prev) => ({ ...prev, [field.key]: e.target.value }))}
-          placeholder={field.placeholder}
-        />
+        field.type === 'textarea' ? (
+          <div key={field.key}>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{field.label}</label>
+            <textarea
+              value={extras[field.key] || ''}
+              onChange={(e) => setExtras((prev) => ({ ...prev, [field.key]: e.target.value }))}
+              placeholder={field.placeholder}
+              rows={4}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        ) : (
+          <Input
+            key={field.key}
+            label={field.label}
+            type={field.type}
+            value={extras[field.key] || ''}
+            onChange={(e) => setExtras((prev) => ({ ...prev, [field.key]: e.target.value }))}
+            placeholder={field.placeholder}
+          />
+        )
       ))}
 
       {/* Generate button */}

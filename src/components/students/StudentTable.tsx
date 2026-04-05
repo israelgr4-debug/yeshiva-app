@@ -1,6 +1,6 @@
 'use client';
 
-import { Student, Machzor } from '@/lib/types';
+import { Student, Machzor, Family } from '@/lib/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/Table';
@@ -18,6 +18,8 @@ interface StudentTableProps {
 
 export function StudentTable({ students, onEdit, onDelete, isLoading }: StudentTableProps) {
   const [machzorot, setMachzorot] = useState<Record<string, Machzor>>({});
+  const [families, setFamilies] = useState<Record<string, Family>>({});
+  const [siblingCounts, setSiblingCounts] = useState<Record<string, number>>({});
   const { fetchData } = useSupabase();
 
   useEffect(() => {
@@ -29,6 +31,30 @@ export function StudentTable({ students, onEdit, onDelete, isLoading }: StudentT
     }
     loadMachzorot();
   }, [fetchData]);
+
+  useEffect(() => {
+    async function loadFamilies() {
+      // Get unique family IDs from students
+      const familyIds = [...new Set(students.filter(s => s.family_id).map(s => s.family_id!))];
+      if (familyIds.length === 0) return;
+
+      const familyMap: Record<string, Family> = {};
+      for (const fid of familyIds) {
+        const data = await fetchData<Family>('families', { id: fid });
+        if (data.length > 0) familyMap[fid] = data[0];
+      }
+      setFamilies(familyMap);
+
+      // Count siblings per family from all students in the system
+      const counts: Record<string, number> = {};
+      for (const fid of familyIds) {
+        const allInFamily = await fetchData<Student>('students', { family_id: fid });
+        counts[fid] = allInFamily.length;
+      }
+      setSiblingCounts(counts);
+    }
+    loadFamilies();
+  }, [students, fetchData]);
 
   if (isLoading) {
     return (
@@ -56,6 +82,7 @@ export function StudentTable({ students, onEdit, onDelete, isLoading }: StudentT
           <TableCell isHeader>תעודת זהות</TableCell>
           <TableCell isHeader>שיעור</TableCell>
           <TableCell isHeader>מחזור</TableCell>
+          <TableCell isHeader>משפחה</TableCell>
           <TableCell isHeader>סטטוס</TableCell>
           <TableCell isHeader>פעולות</TableCell>
         </TableRow>
@@ -77,6 +104,20 @@ export function StudentTable({ students, onEdit, onDelete, isLoading }: StudentT
                 </span>
               ) : (
                 '-'
+              )}
+            </TableCell>
+            <TableCell>
+              {student.family_id && families[student.family_id] ? (
+                <div className="flex items-center gap-1">
+                  <span className="text-sm">{families[student.family_id].family_name}</span>
+                  {siblingCounts[student.family_id] && siblingCounts[student.family_id] > 1 && (
+                    <span className="bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded text-xs font-medium" title={`${siblingCounts[student.family_id]} אחים במשפחה`}>
+                      👥 {siblingCounts[student.family_id]}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-gray-400 text-xs">לא משויך</span>
               )}
             </TableCell>
             <TableCell>
