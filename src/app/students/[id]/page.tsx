@@ -77,29 +77,62 @@ export default function StudentDetailPage() {
           billing_notes: familyFormData.billing_notes,
         } as Partial<Family>);
       } else {
-        // No family linked - create a new one if parent data exists
+        // No family linked - first check if family with same father_id_number exists
         const hasParentData = familyFormData.father_name || familyFormData.mother_name || familyFormData.father_id_number;
         if (hasParentData) {
-          const newFamily = await insertData<any>('families', {
-            family_name: studentFormData.last_name,
-            father_name: familyFormData.father_name,
-            father_id_number: familyFormData.father_id_number,
-            father_phone: familyFormData.father_phone,
-            father_occupation: familyFormData.father_occupation,
-            mother_name: familyFormData.mother_name,
-            mother_id_number: familyFormData.mother_id_number,
-            mother_phone: familyFormData.mother_phone,
-            mother_occupation: familyFormData.mother_occupation,
-            address: familyFormData.address,
-            city: familyFormData.city,
-            home_phone: familyFormData.home_phone,
-            bank_name: familyFormData.bank_name,
-            bank_branch: familyFormData.bank_branch,
-            bank_account: familyFormData.bank_account,
-            billing_notes: familyFormData.billing_notes,
-          });
-          if (newFamily?.id) {
-            familyId = newFamily.id;
+          let existingFamily = null;
+
+          // Search for existing family by father_id_number
+          if (familyFormData.father_id_number) {
+            const existing = await fetchData<Family>('families', { father_id_number: familyFormData.father_id_number });
+            if (existing.length > 0) {
+              existingFamily = existing[0];
+            }
+          }
+
+          if (existingFamily) {
+            // Link to existing family and update its details
+            familyId = existingFamily.id;
+            await updateData<Family>('families', familyId, {
+              father_name: familyFormData.father_name || existingFamily.father_name,
+              father_id_number: familyFormData.father_id_number,
+              father_phone: familyFormData.father_phone || existingFamily.father_phone,
+              father_occupation: familyFormData.father_occupation || existingFamily.father_occupation,
+              mother_name: familyFormData.mother_name || existingFamily.mother_name,
+              mother_id_number: familyFormData.mother_id_number || existingFamily.mother_id_number,
+              mother_phone: familyFormData.mother_phone || existingFamily.mother_phone,
+              mother_occupation: familyFormData.mother_occupation || existingFamily.mother_occupation,
+              address: familyFormData.address || existingFamily.address,
+              city: familyFormData.city || existingFamily.city,
+              home_phone: familyFormData.home_phone || existingFamily.home_phone,
+              bank_name: familyFormData.bank_name || existingFamily.bank_name,
+              bank_branch: familyFormData.bank_branch || existingFamily.bank_branch,
+              bank_account: familyFormData.bank_account || existingFamily.bank_account,
+              billing_notes: familyFormData.billing_notes || existingFamily.billing_notes,
+            } as Partial<Family>);
+          } else {
+            // No existing family found - create a new one
+            const newFamily = await insertData<any>('families', {
+              family_name: studentFormData.last_name,
+              father_name: familyFormData.father_name,
+              father_id_number: familyFormData.father_id_number,
+              father_phone: familyFormData.father_phone,
+              father_occupation: familyFormData.father_occupation,
+              mother_name: familyFormData.mother_name,
+              mother_id_number: familyFormData.mother_id_number,
+              mother_phone: familyFormData.mother_phone,
+              mother_occupation: familyFormData.mother_occupation,
+              address: familyFormData.address,
+              city: familyFormData.city,
+              home_phone: familyFormData.home_phone,
+              bank_name: familyFormData.bank_name,
+              bank_branch: familyFormData.bank_branch,
+              bank_account: familyFormData.bank_account,
+              billing_notes: familyFormData.billing_notes,
+            });
+            if (newFamily?.id) {
+              familyId = newFamily.id;
+            }
           }
         }
       }
