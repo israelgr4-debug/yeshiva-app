@@ -9,7 +9,7 @@ import { StudentCard } from '@/components/students/StudentCard';
 import { EducationHistory } from '@/components/students/EducationHistory';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
-import { Student, Machzor } from '@/lib/types';
+import { Student, Machzor, Family } from '@/lib/types';
 import Link from 'next/link';
 
 export default function StudentDetailPage() {
@@ -19,11 +19,13 @@ export default function StudentDetailPage() {
 
   const [student, setStudent] = useState<Student | null>(null);
   const [machzor, setMachzor] = useState<Machzor | null>(null);
+  const [family, setFamily] = useState<Family | null>(null);
+  const [siblings, setSiblings] = useState<Student[]>([]);
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(id === 'new');
 
   const { getStudentById, createStudent, updateStudent, loading } = useStudents();
-  const { fetchData } = useSupabase();
+  const { fetchData, insertData, updateData } = useSupabase();
 
   useEffect(() => {
     if (id !== 'new') {
@@ -39,17 +41,92 @@ export default function StudentDetailPage() {
       const machzorot = await fetchData<Machzor>('machzorot', { id: data.machzor_id });
       if (machzorot.length > 0) setMachzor(machzorot[0]);
     }
+    if (data?.family_id) {
+      const families = await fetchData<Family>('families', { id: data.family_id });
+      if (families.length > 0) setFamily(families[0]);
+      const allStudents = await fetchData<Student>('students', { family_id: data.family_id });
+      setSiblings(allStudents.filter((s) => s.id !== data.id));
+    } else {
+      setFamily(null);
+      setSiblings([]);
+    }
   }
 
-  async function handleSubmit(formData: any) {
+  async function handleSubmit(formPayload: { student: any; family: any }) {
     try {
+      const { student: studentFormData, family: familyFormData } = formPayload;
+      let familyId = studentFormData.family_id;
+
+      // If we have a linked family, update it
+      if (familyId) {
+        await updateData<Family>('families', familyId, {
+          father_name: familyFormData.father_name,
+          father_id_number: familyFormData.father_id_number,
+          father_phone: familyFormData.father_phone,
+          father_occupation: familyFormData.father_occupation,
+          mother_name: familyFormData.mother_name,
+          mother_id_number: familyFormData.mother_id_number,
+          mother_phone: familyFormData.mother_phone,
+          mother_occupation: familyFormData.mother_occupation,
+          address: familyFormData.address,
+          city: familyFormData.city,
+          home_phone: familyFormData.home_phone,
+          bank_name: familyFormData.bank_name,
+          bank_branch: familyFormData.bank_branch,
+          bank_account: familyFormData.bank_account,
+          billing_notes: familyFormData.billing_notes,
+        } as Partial<Family>);
+      } else {
+        // No family linked - create a new one if parent data exists
+        const hasParentData = familyFormData.father_name || familyFormData.mother_name || familyFormData.father_id_number;
+        if (hasParentData) {
+          const newFamily = await insertData<any>('families', {
+            family_name: studentFormData.last_name,
+            father_name: familyFormData.father_name,
+            father_id_number: familyFormData.father_id_number,
+            father_phone: familyFormData.father_phone,
+            father_occupation: familyFormData.father_occupation,
+            mother_name: familyFormData.mother_name,
+            mother_id_number: familyFormData.mother_id_number,
+            mother_phone: familyFormData.mother_phone,
+            mother_occupation: familyFormData.mother_occupation,
+            address: familyFormData.address,
+            city: familyFormData.city,
+            home_phone: familyFormData.home_phone,
+            bank_name: familyFormData.bank_name,
+            bank_branch: familyFormData.bank_branch,
+            bank_account: familyFormData.bank_account,
+            billing_notes: familyFormData.billing_notes,
+          });
+          if (newFamily?.id) {
+            familyId = newFamily.id;
+          }
+        }
+      }
+
+      // Save student
+      const finalStudentData = {
+        first_name: studentFormData.first_name,
+        last_name: studentFormData.last_name,
+        id_number: studentFormData.id_number,
+        date_of_birth: studentFormData.date_of_birth,
+        shiur: studentFormData.shiur,
+        equivalent_year: studentFormData.equivalent_year,
+        phone: studentFormData.phone,
+        email: studentFormData.email,
+        status: studentFormData.status,
+        notes: studentFormData.notes,
+        machzor_id: studentFormData.machzor_id,
+        family_id: familyId || null,
+      };
+
       if (id === 'new') {
-        const newStudent = await createStudent(formData);
+        const newStudent = await createStudent(finalStudentData as any);
         if (newStudent) {
           router.push(`/students/${newStudent.id}`);
         }
       } else {
-        const updated = await updateStudent(id, formData);
+        const updated = await updateStudent(id, finalStudentData);
         if (updated) {
           setStudent(updated);
           setIsEditing(false);
@@ -73,12 +150,19 @@ export default function StudentDetailPage() {
   }
 
   const tabs = [
-    { key: 'details', label: 'פרטים אישיים' },
-    { key: 'addresses', label: 'כתובות' },
+    { key: 'details', label: 'פרטי תלמיד' },
+    { key: 'family', label: 'פרטי הורים' },
     { key: 'education', label: 'היסטוריה לימודית' },
     { key: 'donations', label: 'תרומות' },
     { key: 'dormitory', label: 'פנימיה' },
   ];
+
+  const DetailRow = ({ label, value }: { label: string; value: string | undefined | null }) => (
+    <div>
+      <p className="text-gray-500 text-sm">{label}</p>
+      <p className="font-semibold">{value || '-'}</p>
+    </div>
+  );
 
   return (
     <>
@@ -86,7 +170,7 @@ export default function StudentDetailPage() {
         title={student ? `${student.first_name} ${student.last_name}` : 'תלמיד חדש'}
         subtitle={
           student
-            ? `${student.shiur || ''}${machzor ? ` • ${machzor.name}` : ''}`
+            ? `${student.shiur || ''}${machzor ? ` - ${machzor.name}` : ''}`
             : 'הוסף תלמיד חדש'
         }
       />
@@ -125,30 +209,12 @@ export default function StudentDetailPage() {
                 <div className="bg-white rounded-lg p-6 border border-gray-200">
                   {activeTab === 'details' && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      <div>
-                        <p className="text-gray-500 text-sm">שם פרטי</p>
-                        <p className="font-semibold">{student.first_name}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">שם משפחה</p>
-                        <p className="font-semibold">{student.last_name}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">תעודת זהות</p>
-                        <p className="font-semibold">{student.id_number}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">טלפון</p>
-                        <p className="font-semibold">{student.phone || '-'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">דוא״ל</p>
-                        <p className="font-semibold text-sm break-all">{student.email || '-'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">שיעור</p>
-                        <p className="font-semibold">{student.shiur || '-'}</p>
-                      </div>
+                      <DetailRow label="שם משפחה" value={student.last_name} />
+                      <DetailRow label="שם פרטי" value={student.first_name} />
+                      <DetailRow label="תז או דרכון" value={student.id_number} />
+                      <DetailRow label="טלפון" value={student.phone} />
+                      <DetailRow label="דוא״ל" value={student.email} />
+                      <DetailRow label="שיעור" value={student.shiur} />
                       <div>
                         <p className="text-gray-500 text-sm">מחזור</p>
                         <p className="font-semibold">
@@ -159,35 +225,94 @@ export default function StudentDetailPage() {
                           ) : '-'}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">שנה מקבילה</p>
-                        <p className="font-semibold">{student.equivalent_year || '-'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">שם האב</p>
-                        <p className="font-semibold">{student.father_name || '-'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">שם האם</p>
-                        <p className="font-semibold">{student.mother_name || '-'}</p>
-                      </div>
+                      <DetailRow label="שנה מקבילה" value={student.equivalent_year} />
                     </div>
                   )}
 
-                  {activeTab === 'addresses' && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      <div>
-                        <p className="text-gray-500 text-sm">רחוב</p>
-                        <p className="font-semibold">{student.address || '-'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">עיר</p>
-                        <p className="font-semibold">{student.city || '-'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 text-sm">קוד דואר</p>
-                        <p className="font-semibold">{student.postal_code || '-'}</p>
-                      </div>
+                  {activeTab === 'family' && (
+                    <div className="space-y-6">
+                      {family ? (
+                        <>
+                          {/* פרטי אב */}
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-100 pb-1">
+                              פרטי האב
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <DetailRow label="שם האב" value={family.father_name} />
+                              <DetailRow label="תז אב" value={family.father_id_number} />
+                              <DetailRow label="טלפון אב" value={family.father_phone} />
+                              <DetailRow label="עיסוק אב" value={family.father_occupation} />
+                            </div>
+                          </div>
+                          {/* פרטי אם */}
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-100 pb-1">
+                              פרטי האם
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <DetailRow label="שם האם" value={family.mother_name} />
+                              <DetailRow label="תז אם" value={family.mother_id_number} />
+                              <DetailRow label="טלפון אם" value={family.mother_phone} />
+                              <DetailRow label="עיסוק אם" value={family.mother_occupation} />
+                            </div>
+                          </div>
+                          {/* כתובת */}
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-100 pb-1">
+                              כתובת ופרטי קשר
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <DetailRow label="כתובת" value={family.address} />
+                              <DetailRow label="עיר" value={family.city} />
+                              <DetailRow label="טלפון בבית" value={family.home_phone} />
+                            </div>
+                          </div>
+                          {/* בנק */}
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-100 pb-1">
+                              פרטי בנק
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              <DetailRow label="שם בנק" value={family.bank_name} />
+                              <DetailRow label="סניף" value={family.bank_branch} />
+                              <DetailRow label="מספר חשבון" value={family.bank_account} />
+                            </div>
+                          </div>
+                          {/* הערות גביה */}
+                          {family.billing_notes && (
+                            <div>
+                              <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-100 pb-1">
+                                הערות לגביה
+                              </h4>
+                              <p className="text-sm text-gray-700">{family.billing_notes}</p>
+                            </div>
+                          )}
+                          {/* אחים */}
+                          {siblings.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-100 pb-1">
+                                אחים בישיבה ({siblings.length})
+                              </h4>
+                              <div className="flex flex-wrap gap-2">
+                                {siblings.map((sibling) => (
+                                  <Link
+                                    key={sibling.id}
+                                    href={`/students/${sibling.id}`}
+                                    className="inline-block text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors"
+                                  >
+                                    {sibling.first_name} {sibling.last_name} - {sibling.shiur}
+                                  </Link>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-gray-500 text-center py-8">
+                          לא משויך למשפחה. לחץ על עריכה כדי להוסיף פרטי הורים.
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -218,6 +343,7 @@ export default function StudentDetailPage() {
               <>
                 <StudentForm
                   student={student || undefined}
+                  initialFamily={family}
                   onSubmit={handleSubmit}
                   isLoading={loading}
                 />

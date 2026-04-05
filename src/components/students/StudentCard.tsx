@@ -27,13 +27,19 @@ export function StudentCard({ student }: StudentCardProps) {
       if (student.family_id) {
         const families = await fetchData<Family>('families', { id: student.family_id });
         if (families.length > 0) setFamily(families[0]);
-        // מצא אחים באותה משפחה
         const allStudents = await fetchData<Student>('students', { family_id: student.family_id });
         setSiblings(allStudents.filter((s) => s.id !== student.id));
       }
     }
     loadRelations();
   }, [student, fetchData]);
+
+  const DetailRow = ({ label, value }: { label: string; value: string }) => (
+    <div>
+      <p className="text-gray-500 text-xs">{label}</p>
+      <p className="font-semibold text-sm">{value || '-'}</p>
+    </div>
+  );
 
   return (
     <Card>
@@ -45,7 +51,11 @@ export function StudentCard({ student }: StudentCardProps) {
             </h3>
             <p className="text-sm text-gray-600 mt-1">
               {student.shiur}
-              {machzor && <span className="text-blue-600 font-medium"> • {machzor.name}</span>}
+              {machzor && (
+                <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-sm font-medium mr-2">
+                  {machzor.name}
+                </span>
+              )}
             </p>
           </div>
           <Badge
@@ -62,60 +72,53 @@ export function StudentCard({ student }: StudentCardProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          {/* פרטים בסיסיים */}
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-gray-500">תעודת זהות</p>
-              <p className="font-semibold">{student.id_number}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">טלפון</p>
-              <p className="font-semibold">{student.phone || '-'}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">דוא״ל</p>
-              <p className="font-semibold text-xs break-all">{student.email || '-'}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">עיר</p>
-              <p className="font-semibold">{student.city || '-'}</p>
+        <div className="space-y-5">
+          {/* פרטי התלמיד */}
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-100 pb-1">
+              פרטי התלמיד
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <DetailRow label="תעודת זהות" value={student.id_number} />
+              <DetailRow label="טלפון" value={student.phone} />
+              <DetailRow label="דוא״ל" value={student.email} />
+              <DetailRow label="שיעור" value={student.shiur} />
             </div>
           </div>
 
-          {/* משפחה ואחים */}
+          {/* פרטי הורים */}
           {family && (
-            <div className="border-t border-gray-100 pt-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">👨‍👩‍👦 משפחה</h4>
-              <p className="text-sm text-gray-600">משפחת {family.family_name}</p>
-              {siblings.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs text-gray-500 mb-1">אחים בישיבה ({siblings.length}):</p>
-                  <div className="flex flex-wrap gap-1">
-                    {siblings.map((sibling) => (
-                      <Link
-                        key={sibling.id}
-                        href={`/students/${sibling.id}`}
-                        className="inline-block text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full hover:bg-blue-100 transition-colors"
-                      >
-                        {sibling.first_name} {sibling.last_name} • {sibling.shiur}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-100 pb-1">
+                פרטי הורים
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                <DetailRow label="שם האב" value={family.father_name} />
+                <DetailRow label="טלפון אב" value={family.father_phone} />
+                <DetailRow label="שם האם" value={family.mother_name} />
+                <DetailRow label="טלפון אם" value={family.mother_phone} />
+                <DetailRow label="כתובת" value={family.address} />
+                <DetailRow label="עיר" value={family.city} />
+              </div>
             </div>
           )}
 
-          {/* מחזור */}
-          {machzor && (
-            <div className="border-t border-gray-100 pt-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">🎓 מחזור</h4>
-              <div className="flex items-center gap-2">
-                <span className="bg-purple-50 text-purple-700 px-3 py-1 rounded-full text-sm font-medium">
-                  {machzor.name}
-                </span>
-                <span className="text-xs text-gray-500">משנת {machzor.start_year}</span>
+          {/* אחים */}
+          {siblings.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-100 pb-1">
+                אחים בישיבה ({siblings.length})
+              </h4>
+              <div className="flex flex-wrap gap-1">
+                {siblings.map((sibling) => (
+                  <Link
+                    key={sibling.id}
+                    href={`/students/${sibling.id}`}
+                    className="inline-block text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full hover:bg-blue-100 transition-colors"
+                  >
+                    {sibling.first_name} {sibling.last_name} - {sibling.shiur}
+                  </Link>
+                ))}
               </div>
             </div>
           )}
