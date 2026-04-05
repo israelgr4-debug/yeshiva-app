@@ -1,0 +1,67 @@
+export function formatDate(date: string | Date): string {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${day}.${month}.${year}`;
+}
+
+export function formatCurrency(amount: number, currency: string = 'ILS'): string {
+  const formatter = new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  return formatter.format(amount);
+}
+
+export function cn(...classes: (string | undefined | null | false)[]): string {
+  return classes.filter(Boolean).join(' ');
+}
+
+export function getStatusColor(status: string): string {
+  switch (status) {
+    case 'active':
+    case 'occupied':
+    case 'collected':
+      return 'bg-green-100 text-green-800';
+    case 'inactive':
+    case 'available':
+    case 'pending':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'graduated':
+    case 'cancelled':
+      return 'bg-gray-100 text-gray-800';
+    default:
+      return 'bg-blue-100 text-blue-800';
+  }
+}
+
+export function getStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    active: 'פעיל',
+    inactive: 'לא פעיל',
+    graduated: 'סיים',
+    occupied: 'תפוס',
+    available: 'פנוי',
+    maintenance: 'תחזוקה',
+    collected: 'גבוה',
+    pending: 'ממתין',
+    committed: 'מתחייב',
+    cancelled: 'בוטל',
+  };
+  return labels[status] || status;
+}
+
+export function truncate(str: string, length: number): string {
+  return str.length > length ? str.substring(0, length) + '...' : str;
+}
+
+export function parseFormData(formData: FormData): Record<string, any> {
+  const data: Record<string, any> = {};
+  formData.forEach((value, key) => {
+    data[key] = value;
+  });
+  return data;
+}
