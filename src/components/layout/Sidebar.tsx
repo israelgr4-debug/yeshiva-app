@@ -16,7 +16,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-slate-800 text-white flex flex-col h-screen fixed right-0 top-0 shadow-lg">
+    <aside className="w-64 bg-slate-800 text-white flex flex-col h-screen fixed inset-y-0 start-0 shadow-lg z-50">
       <div className="p-6 border-b border-slate-700">
         <h1 className="text-xl font-bold">ישיבת מיר</h1>
         <p className="text-sm text-slate-400 mt-1">מודיעין עילית</p>

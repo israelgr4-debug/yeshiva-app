@@ -87,7 +87,7 @@ export default function Dashboard() {
 
       <div className="p-8">
         {/* Stats Grid */}
-        <div className="grid grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {statCards.map((stat, index) => (
             <Card key={index} className={stat.color}>
               <CardContent>
@@ -107,7 +107,7 @@ export default function Dashboard() {
             <h2 className="text-2xl font-bold text-gray-900">פעולות מהירות</h2>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Link href="/students">
                 <Button className="w-full">הוסף תלמיד</Button>
               </Link>

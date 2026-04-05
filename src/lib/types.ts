@@ -16,6 +16,49 @@ export interface Student {
   status: 'active' | 'inactive' | 'graduated';
   admission_date: string;
   notes: string;
+  machzor_id: string | null;
+  family_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Machzor {
+  id: string;
+  name: string;
+  number: number;
+  start_year: number;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Family {
+  id: string;
+  family_name: string;
+  father_name: string;
+  mother_name: string;
+  father_phone: string;
+  mother_phone: string;
+  father_email: string;
+  mother_email: string;
+  address: string;
+  city: string;
+  postal_code: string;
+  billing_notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EducationHistory {
+  id: string;
+  student_id: string;
+  institution_name: string;
+  institution_type: 'elementary' | 'yeshiva_ketana' | 'other';
+  city: string;
+  start_year: number | null;
+  end_year: number | null;
+  class_completed: string;
+  notes: string;
   created_at: string;
   updated_at: string;
 }

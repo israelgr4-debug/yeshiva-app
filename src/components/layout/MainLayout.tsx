@@ -11,7 +11,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar />
-      <main className="flex-1 me-64 overflow-auto">
+      <main className="flex-1 ms-64 overflow-auto min-h-screen">
         {children}
       </main>
     </div>

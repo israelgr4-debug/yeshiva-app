@@ -1,10 +1,12 @@
 'use client';
 
-import { Student } from '@/lib/types';
+import { Student, Machzor } from '@/lib/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/Table';
 import { getStatusLabel } from '@/lib/utils';
+import { useState, useEffect } from 'react';
+import { useSupabase } from '@/hooks/useSupabase';
 import Link from 'next/link';
 
 interface StudentTableProps {
@@ -15,6 +17,19 @@ interface StudentTableProps {
 }
 
 export function StudentTable({ students, onEdit, onDelete, isLoading }: StudentTableProps) {
+  const [machzorot, setMachzorot] = useState<Record<string, Machzor>>({});
+  const { fetchData } = useSupabase();
+
+  useEffect(() => {
+    async function loadMachzorot() {
+      const data = await fetchData<Machzor>('machzorot');
+      const map: Record<string, Machzor> = {};
+      data.forEach((m) => { map[m.id] = m; });
+      setMachzorot(map);
+    }
+    loadMachzorot();
+  }, [fetchData]);
+
   if (isLoading) {
     return (
       <div className="space-y-2">
@@ -40,7 +55,7 @@ export function StudentTable({ students, onEdit, onDelete, isLoading }: StudentT
           <TableCell isHeader>שם מלא</TableCell>
           <TableCell isHeader>תעודת זהות</TableCell>
           <TableCell isHeader>שיעור</TableCell>
-          <TableCell isHeader>מקבילה</TableCell>
+          <TableCell isHeader>מחזור</TableCell>
           <TableCell isHeader>סטטוס</TableCell>
           <TableCell isHeader>פעולות</TableCell>
         </TableRow>
@@ -55,7 +70,15 @@ export function StudentTable({ students, onEdit, onDelete, isLoading }: StudentT
             </TableCell>
             <TableCell>{student.id_number}</TableCell>
             <TableCell>{student.shiur}</TableCell>
-            <TableCell>{student.equivalent_year}</TableCell>
+            <TableCell>
+              {student.machzor_id && machzorot[student.machzor_id] ? (
+                <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-xs font-medium">
+                  {machzorot[student.machzor_id].name}
+                </span>
+              ) : (
+                '-'
+              )}
+            </TableCell>
             <TableCell>
               <Badge variant={student.status === 'active' ? 'success' : student.status === 'inactive' ? 'warning' : 'gray'}>
                 {getStatusLabel(student.status)}
