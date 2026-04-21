@@ -7,7 +7,8 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { StudentTable } from '@/components/students/StudentTable';
 import { useStudents } from '@/hooks/useStudents';
-import { Student } from '@/lib/types';
+import { useSupabase } from '@/hooks/useSupabase';
+import { Student, Family, Machzor } from '@/lib/types';
 import { SHIURIM } from '@/lib/shiurim';
 import Link from 'next/link';
 
@@ -27,6 +28,9 @@ const statusOptions = [
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
+  const [families, setFamilies] = useState<Record<string, Family>>({});
+  const [machzorot, setMachzorot] = useState<Record<string, Machzor>>({});
+  const [siblingCounts, setSiblingCounts] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedShiur, setSelectedShiur] = useState('');
   // Default to 'active' - show only active students by default
@@ -35,15 +39,36 @@ export default function StudentsPage() {
   const itemsPerPage = 25;
 
   const { getStudents, loading } = useStudents();
+  const { fetchData } = useSupabase();
 
+  // Load students, families, machzorot in parallel
   useEffect(() => {
-    async function loadStudents() {
-      const data = await getStudents();
-      setStudents(data);
-      setFilteredStudents(data);
+    async function loadAll() {
+      const [studentsData, familiesData, machzorData] = await Promise.all([
+        getStudents(),
+        fetchData<Family>('families'),
+        fetchData<Machzor>('machzorot'),
+      ]);
+      setStudents(studentsData);
+      setFilteredStudents(studentsData);
+
+      const famMap: Record<string, Family> = {};
+      for (const f of familiesData) famMap[f.id] = f;
+      setFamilies(famMap);
+
+      const machMap: Record<string, Machzor> = {};
+      for (const m of machzorData) machMap[m.id] = m;
+      setMachzorot(machMap);
+
+      // Compute sibling counts from the students we already have
+      const counts: Record<string, number> = {};
+      for (const s of studentsData) {
+        if (s.family_id) counts[s.family_id] = (counts[s.family_id] || 0) + 1;
+      }
+      setSiblingCounts(counts);
     }
-    loadStudents();
-  }, [getStudents]);
+    loadAll();
+  }, [getStudents, fetchData]);
 
   useEffect(() => {
     let filtered = students;
@@ -127,7 +152,13 @@ export default function StudentsPage() {
         </div>
 
         {/* Student Table */}
-        <StudentTable students={paginatedStudents} isLoading={loading} />
+        <StudentTable
+          students={paginatedStudents}
+          families={families}
+          machzorot={machzorot}
+          siblingCounts={siblingCounts}
+          isLoading={loading}
+        />
 
         {/* Pagination */}
         {totalPages > 1 && (

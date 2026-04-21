@@ -4,57 +4,23 @@ import { Student, Machzor, Family } from '@/lib/types';
 import { Badge } from '@/components/ui/Badge';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/Table';
 import { getStatusLabel } from '@/lib/utils';
-import { useState, useEffect } from 'react';
-import { useSupabase } from '@/hooks/useSupabase';
 import Link from 'next/link';
 
 interface StudentTableProps {
   students: Student[];
+  machzorot?: Record<string, Machzor>;
+  families?: Record<string, Family>;
+  siblingCounts?: Record<string, number>;
   isLoading?: boolean;
 }
 
-export function StudentTable({ students, isLoading }: StudentTableProps) {
-  const [machzorot, setMachzorot] = useState<Record<string, Machzor>>({});
-  const [families, setFamilies] = useState<Record<string, Family>>({});
-  const [siblingCounts, setSiblingCounts] = useState<Record<string, number>>({});
-  const { fetchData } = useSupabase();
-
-  useEffect(() => {
-    async function loadMachzorot() {
-      const data = await fetchData<Machzor>('machzorot');
-      const map: Record<string, Machzor> = {};
-      data.forEach((m) => { map[m.id] = m; });
-      setMachzorot(map);
-    }
-    loadMachzorot();
-  }, [fetchData]);
-
-  useEffect(() => {
-    async function loadFamilies() {
-      // Unique family IDs in this page's students
-      const familyIds = [...new Set(students.filter(s => s.family_id).map(s => s.family_id!))];
-      if (familyIds.length === 0) return;
-
-      // Fetch all families at once (avoids N+1)
-      const allFamilies = await fetchData<Family>('families');
-      const familyMap: Record<string, Family> = {};
-      for (const f of allFamilies) {
-        if (familyIds.includes(f.id)) familyMap[f.id] = f;
-      }
-      setFamilies(familyMap);
-
-      // Count siblings per family from all students in the system
-      const allStudents = await fetchData<Student>('students');
-      const counts: Record<string, number> = {};
-      for (const s of allStudents) {
-        if (s.family_id) {
-          counts[s.family_id] = (counts[s.family_id] || 0) + 1;
-        }
-      }
-      setSiblingCounts(counts);
-    }
-    loadFamilies();
-  }, [students, fetchData]);
+export function StudentTable({
+  students,
+  machzorot = {},
+  families = {},
+  siblingCounts = {},
+  isLoading,
+}: StudentTableProps) {
 
   if (isLoading) {
     return (
