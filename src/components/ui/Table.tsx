@@ -72,13 +72,13 @@ export const TableCell = React.forwardRef<HTMLTableCellElement, TableCellProps>(
     isHeader ? (
       <th
         ref={ref as React.ForwardedRef<HTMLTableHeaderCellElement>}
-        className={cn('px-6 py-3 text-right font-semibold text-gray-700 text-sm', className)}
+        className={cn('px-3 md:px-6 py-3 text-right font-semibold text-gray-700 text-sm whitespace-nowrap', className)}
         {...(props as React.ThHTMLAttributes<HTMLTableHeaderCellElement>)}
       />
     ) : (
       <td
         ref={ref as React.ForwardedRef<HTMLTableDataCellElement>}
-        className={cn('px-6 py-4 text-gray-900', className)}
+        className={cn('px-3 md:px-6 py-3 md:py-4 text-gray-900', className)}
         {...(props as React.TdHTMLAttributes<HTMLTableDataCellElement>)}
       />
     )

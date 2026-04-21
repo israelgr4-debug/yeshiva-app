@@ -99,7 +99,7 @@ export default function DormitoryPage() {
     <>
       <Header title="פנימיה" subtitle="ניהול חדרים וחלוקה" />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         {/* Summary Stats */}
         <div className="grid grid-cols-3 gap-4 mb-8">
           <Card className="bg-blue-50">

@@ -68,10 +68,12 @@ export default function StudentsPage() {
       for (const m of machzorData) machMap[m.id] = m;
       setMachzorot(machMap);
 
-      // Compute sibling counts from the students we already have
+      // Compute sibling counts - ONLY active students
       const counts: Record<string, number> = {};
       for (const s of studentsData) {
-        if (s.family_id) counts[s.family_id] = (counts[s.family_id] || 0) + 1;
+        if (s.family_id && s.status === 'active') {
+          counts[s.family_id] = (counts[s.family_id] || 0) + 1;
+        }
       }
       setSiblingCounts(counts);
     }
@@ -128,9 +130,9 @@ export default function StudentsPage() {
     <>
       <Header title="תלמידים" subtitle="ניהול רשימת התלמידים" />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         {/* Filters and Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
           <SearchInput
             placeholder="חיפוש לפי שם או תעודת זהות..."
             value={searchQuery}

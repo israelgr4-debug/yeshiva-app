@@ -115,7 +115,7 @@ export default function FinancesPage() {
     <>
       <Header title="כספים" subtitle="ניהול תרומות והכנסות" />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         {/* Summary */}
         <DonationsSummary
           totalCommitted={stats.committed}

@@ -124,7 +124,7 @@ export default function ListsPage() {
     <>
       <Header title="דוחות" subtitle="הפקת דוחות ורשימות" />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Controls sidebar */}
           <div className="lg:col-span-1 no-print">

@@ -24,7 +24,7 @@ export default function ActionsPage() {
     <>
       <Header title="פעולות" subtitle="פעולות ניהול מערכתיות" />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         {/* Tab navigation */}
         <div className="border-b border-gray-200 mb-6">
           <nav className="flex gap-2" aria-label="Tabs">

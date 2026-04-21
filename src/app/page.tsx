@@ -85,16 +85,16 @@ export default function Dashboard() {
     <>
       <Header title="לוח בקרה" subtitle="ישיבת מיר מודיעין עילית" />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
           {statCards.map((stat, index) => (
             <Card key={index} className={stat.color}>
               <CardContent>
-                <p className="text-sm text-gray-600 mt-4">{stat.title}</p>
-                <p className="text-3xl font-bold mt-2">{stat.value}</p>
+                <p className="text-xs md:text-sm text-gray-600 mt-2 md:mt-4">{stat.title}</p>
+                <p className="text-xl md:text-3xl font-bold mt-1 md:mt-2">{stat.value}</p>
                 {stat.subtitle && (
-                  <p className="text-xs text-gray-500 mt-2">{stat.subtitle}</p>
+                  <p className="text-xs text-gray-500 mt-1 md:mt-2">{stat.subtitle}</p>
                 )}
               </CardContent>
             </Card>
@@ -102,27 +102,27 @@ export default function Dashboard() {
         </div>
 
         {/* Quick Actions */}
-        <Card className="mb-8">
+        <Card className="mb-6 md:mb-8">
           <CardHeader>
-            <h2 className="text-2xl font-bold text-gray-900">פעולות מהירות</h2>
+            <h2 className="text-lg md:text-2xl font-bold text-gray-900">פעולות מהירות</h2>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
               <Link href="/students">
-                <Button className="w-full">הוסף תלמיד</Button>
+                <Button className="w-full text-sm md:text-base">הוסף תלמיד</Button>
               </Link>
               <Link href="/finances">
-                <Button className="w-full" variant="secondary">
+                <Button className="w-full text-sm md:text-base" variant="secondary">
                   רשום תרומה
                 </Button>
               </Link>
               <Link href="/dormitory">
-                <Button className="w-full" variant="secondary">
+                <Button className="w-full text-sm md:text-base" variant="secondary">
                   ניהול פנימיה
                 </Button>
               </Link>
               <Link href="/settings">
-                <Button className="w-full" variant="ghost">
+                <Button className="w-full text-sm md:text-base" variant="ghost">
                   הגדרות
                 </Button>
               </Link>
@@ -133,7 +133,7 @@ export default function Dashboard() {
         {/* Recent Activity Placeholder */}
         <Card>
           <CardHeader>
-            <h2 className="text-2xl font-bold text-gray-900">פעילות אחרונה</h2>
+            <h2 className="text-lg md:text-2xl font-bold text-gray-900">פעילות אחרונה</h2>
           </CardHeader>
           <CardContent>
             <div className="text-center py-8">

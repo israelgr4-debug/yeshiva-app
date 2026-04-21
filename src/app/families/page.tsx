@@ -55,7 +55,7 @@ export default function FamiliesPage() {
     <>
       <Header title="משפחות" subtitle="ניהול משפחות ואחים" />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <div className="mb-6 max-w-md">
           <SearchInput
             placeholder="חיפוש לפי שם משפחה, שם הורה, תז אב או עיר..."

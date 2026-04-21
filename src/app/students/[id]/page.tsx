@@ -234,7 +234,7 @@ export default function StudentDetailPage() {
         }
       />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Student Card */}
           {student && !isEditing && (
