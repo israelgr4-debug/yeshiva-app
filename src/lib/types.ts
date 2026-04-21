@@ -13,6 +13,7 @@ export interface Student {
   notes: string;
   machzor_id: string | null;
   family_id: string | null;
+  photo_url?: string | null;
   created_at: string;
   updated_at: string;
 }

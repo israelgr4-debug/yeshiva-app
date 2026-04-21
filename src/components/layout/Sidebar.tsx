@@ -11,6 +11,7 @@ const menuItems = [
   { href: '/finances', label: 'כספים', icon: '₪' },
   { href: '/dormitory', label: 'פנימיה', icon: '🏢' },
   { href: '/reports', label: 'אישורים', icon: '📄' },
+  { href: '/lists', label: 'דוחות', icon: '📊' },
   { href: '/actions', label: 'פעולות', icon: '⚡' },
   { href: '/settings', label: 'הגדרות', icon: '⚙' },
 ];
