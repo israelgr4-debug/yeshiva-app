@@ -90,38 +90,44 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     loadOptions();
   }, [fetchData, getSetting]);
 
-  // Derive the machzor that MATCHES the chosen shiur (for new students)
-  // Returns the machzor name to display, or '—' for existing students / kibutz
+  // Track whether the user changed shiur manually in this session
+  // (so we know whether to auto-update the machzor or preserve the DB value)
+  const userChangedShiurRef = useRef(false);
+
+  // Derive the machzor for display
   const derivedMachzorInfo = (() => {
-    // For existing students: show their current machzor (don't auto-override)
-    if (student?.id) {
+    // For existing students who haven't manually changed shiur, show their current DB machzor
+    if (student?.id && !userChangedShiurRef.current) {
       const m = machzorot.find((mm) => mm.id === studentData.machzor_id);
       return { name: m?.name || '—', isAuto: false };
     }
-    // For new students: derive from shiur
+    // Kibutz: keep existing machzor (they bring it from their original shiur)
+    if (studentData.shiur === 'קיבוץ') {
+      const m = machzorot.find((mm) => mm.id === studentData.machzor_id);
+      return { name: m?.name || '—', isAuto: false };
+    }
+    // New student OR existing student who changed shiur: derive from shiur
     const machzorNum = getMachzorForNewStudent(studentData.shiur, baseMachzor);
     if (machzorNum === null) return { name: '—', isAuto: true };
     const m = machzorot.find((mm) => mm.number === machzorNum);
     return { name: m?.name || `מחזור (${machzorNum})`, isAuto: true, id: m?.id };
   })();
 
-  // Auto-set machzor_id on shiur change for NEW students
+  // Auto-set machzor_id when shiur changes MANUALLY (or for new students)
   useEffect(() => {
-    if (student?.id) return; // Don't touch existing students
     if (!studentData.shiur) return;
+    if (studentData.shiur === 'קיבוץ') return;
+    // For existing students, only auto-update if the user changed shiur in this session
+    if (student?.id && !userChangedShiurRef.current) return;
+
     const machzorNum = getMachzorForNewStudent(studentData.shiur, baseMachzor);
-    if (machzorNum === null) {
-      // Kibutz or unknown shiur - clear machzor so user can pick manually
-      if (studentData.machzor_id !== '') {
-        setStudentData((prev) => ({ ...prev, machzor_id: '' }));
-      }
-      return;
-    }
+    if (machzorNum === null) return;
+
     const m = machzorot.find((mm) => mm.number === machzorNum);
     if (m && m.id !== studentData.machzor_id) {
       setStudentData((prev) => ({ ...prev, machzor_id: m.id }));
     }
-  }, [studentData.shiur, baseMachzor, machzorot, student?.id, studentData.machzor_id]);
+  }, [studentData.shiur, baseMachzor, machzorot, studentData.machzor_id, student?.id]);
 
   const familyOptions = families.map((f) => ({
     value: f.id,
@@ -173,6 +179,10 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
 
   const handleStudentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    // Track manual shiur changes so the auto-derive logic knows to update machzor
+    if (name === 'shiur') {
+      userChangedShiurRef.current = true;
+    }
     setStudentData((prev) => ({ ...prev, [name]: value }));
   };
 
