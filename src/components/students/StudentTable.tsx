@@ -47,6 +47,7 @@ export function StudentTable({
           <TableCell isHeader>שם משפחה</TableCell>
           <TableCell isHeader>שם פרטי</TableCell>
           <TableCell isHeader>תעודת זהות</TableCell>
+          <TableCell isHeader>מוסד</TableCell>
           <TableCell isHeader>שיעור</TableCell>
           <TableCell isHeader>מחזור</TableCell>
           <TableCell isHeader>כתובת</TableCell>
@@ -80,6 +81,21 @@ export function StudentTable({
                 </Link>
               </TableCell>
               <TableCell className="text-sm text-gray-600">{student.id_number}</TableCell>
+              <TableCell>
+                {student.institution_name ? (
+                  <span
+                    className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      student.institution_name === 'ישיבה'
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'bg-green-50 text-green-700'
+                    }`}
+                  >
+                    {student.institution_name}
+                  </span>
+                ) : (
+                  <span className="text-gray-400 text-xs">-</span>
+                )}
+              </TableCell>
               <TableCell>{student.shiur}</TableCell>
               <TableCell>
                 {student.machzor_id && machzorot[student.machzor_id] ? (

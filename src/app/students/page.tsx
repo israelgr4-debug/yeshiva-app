@@ -25,6 +25,13 @@ const statusOptions = [
   { value: 'graduated', label: 'סיים' },
 ];
 
+const institutionOptions = [
+  { value: '', label: 'כל המוסדות' },
+  { value: 'ישיבה', label: 'ישיבה' },
+  { value: 'כולל', label: 'כולל' },
+  { value: "כולל של ר' יצחק פינקל", label: "כולל ר' יצחק פינקל" },
+];
+
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
@@ -33,6 +40,7 @@ export default function StudentsPage() {
   const [siblingCounts, setSiblingCounts] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedShiur, setSelectedShiur] = useState('');
+  const [selectedInstitution, setSelectedInstitution] = useState('');
   // Default to 'active' - show only active students by default
   const [selectedStatus, setSelectedStatus] = useState('active');
   const [currentPage, setCurrentPage] = useState(1);
@@ -91,9 +99,13 @@ export default function StudentsPage() {
       filtered = filtered.filter((s) => s.status === selectedStatus);
     }
 
+    if (selectedInstitution) {
+      filtered = filtered.filter((s) => s.institution_name === selectedInstitution);
+    }
+
     setFilteredStudents(filtered);
     setCurrentPage(1);
-  }, [searchQuery, selectedShiur, selectedStatus, students]);
+  }, [searchQuery, selectedShiur, selectedStatus, selectedInstitution, students]);
 
   const paginatedStudents = filteredStudents.slice(
     (currentPage - 1) * itemsPerPage,
@@ -118,11 +130,16 @@ export default function StudentsPage() {
 
       <div className="p-8">
         {/* Filters and Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <SearchInput
             placeholder="חיפוש לפי שם או תעודת זהות..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <Select
+            options={institutionOptions}
+            value={selectedInstitution}
+            onChange={(e) => setSelectedInstitution(e.target.value)}
           />
           <Select
             options={shiurOptions}

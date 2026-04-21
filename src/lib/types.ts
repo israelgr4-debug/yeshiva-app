@@ -14,6 +14,8 @@ export interface Student {
   machzor_id: string | null;
   family_id: string | null;
   photo_url?: string | null;
+  institution_name?: string | null;
+  institution_code?: number | null;
   created_at: string;
   updated_at: string;
 }
