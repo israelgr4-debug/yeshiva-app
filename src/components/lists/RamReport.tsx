@@ -25,11 +25,9 @@ export function RamReport({ students, shiurFilter }: Props) {
             <span className="name">
               {s.last_name}, {s.first_name}
             </span>
-            <div className="notes-lines">
-              <div className="line" />
-              <div className="line" />
-              <div className="line" />
-            </div>
+            <span className="line" />
+            <span className="line" />
+            <span className="line" />
           </div>
         ))}
       </div>
@@ -56,11 +54,11 @@ export function RamReport({ students, shiurFilter }: Props) {
         }
         .ram-row {
           display: grid;
-          grid-template-columns: 28px 130px 1fr;
+          grid-template-columns: 26px 110px 1fr 1fr 1fr;
           gap: 6px;
-          align-items: start;
-          padding: 6px 0;
-          border-bottom: 1px solid #e5e5e5;
+          align-items: center;
+          padding: 7px 0;
+          border-bottom: 1px dotted #ccc;
           break-inside: avoid;
           page-break-inside: avoid;
         }
@@ -71,15 +69,10 @@ export function RamReport({ students, shiurFilter }: Props) {
         .name {
           font-weight: 500;
         }
-        .notes-lines {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          margin-top: 6px;
-        }
         .line {
-          border-bottom: 1px solid #bbb;
-          height: 10px;
+          border-bottom: 1px solid #777;
+          height: 14px;
+          min-width: 16px;
         }
         @media print {
           .report-page {

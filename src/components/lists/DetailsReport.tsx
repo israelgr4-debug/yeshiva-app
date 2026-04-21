@@ -11,6 +11,8 @@ interface Props {
   shiurFilter: string;
 }
 
+// Layout: 2 columns × 6 rows = 12 cards per A4 portrait page.
+// Each card is landscape-oriented (~95mm × 42mm) with a full-height photo on one side.
 export function DetailsReport({
   students,
   families,
@@ -36,7 +38,46 @@ export function DetailsReport({
 
           return (
             <div key={s.id} className="details-card">
-              {/* Photo spot */}
+              {/* Text area */}
+              <div className="card-body">
+                <div className="name-row">
+                  {s.last_name} {s.first_name}
+                </div>
+                <div className="pair-row">
+                  <span>
+                    <b>שיעור:</b> {s.shiur?.replace('שיעור ', '') || '-'}
+                  </span>
+                  <span>
+                    <b>מחזור:</b> {machzor ? machzor.name.replace('מחזור ', '') : '-'}
+                  </span>
+                </div>
+                <div className="field-row">
+                  <b>ת.ז.:</b> {s.id_number || '-'}
+                  <span className="inline-sep" />
+                  <b>ת.לידה:</b> {formatDateShort(s.date_of_birth) || '-'}
+                </div>
+                <div className="field-row">
+                  <b>אב:</b> {family?.father_name || '-'}
+                  <span className="inline-sep" />
+                  <b>נייד:</b> {family?.father_phone || '-'}
+                </div>
+                <div className="field-row">
+                  <b>אם:</b> {family?.mother_name || '-'}
+                  <span className="inline-sep" />
+                  <b>נייד:</b> {family?.mother_phone || '-'}
+                </div>
+                <div className="field-row">
+                  <b>טלפון:</b> {family?.home_phone || '-'}
+                </div>
+                <div className="field-row">
+                  <b>כתובת:</b> {family?.address || ''} {family?.city || ''}
+                </div>
+                <div className="field-row">
+                  <b>י.קטנה:</b> {yeshivaKetana?.institution_name || '-'}
+                </div>
+              </div>
+
+              {/* Photo on the left side, filling full height */}
               <div className="photo-spot">
                 {s.photo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -44,68 +85,6 @@ export function DetailsReport({
                 ) : (
                   <div className="photo-placeholder">אין תמונה</div>
                 )}
-              </div>
-
-              {/* Details */}
-              <div className="card-body">
-                <div className="row">
-                  <span className="label">שם:</span>
-                  <span className="value name-value">
-                    {s.last_name} {s.first_name}
-                  </span>
-                </div>
-                <div className="row two-col">
-                  <div>
-                    <span className="label">שיעור:</span>
-                    <span className="value">{s.shiur?.replace('שיעור ', '') || ''}</span>
-                  </div>
-                  <div>
-                    <span className="label">מחזור:</span>
-                    <span className="value">
-                      {machzor ? machzor.name.replace('מחזור ', '') : ''}
-                    </span>
-                  </div>
-                </div>
-                <div className="row">
-                  <span className="label">ת.ז.:</span>
-                  <span className="value">{s.id_number}</span>
-                </div>
-                <div className="row">
-                  <span className="label">שם אב:</span>
-                  <span className="value">{family?.father_name || ''}</span>
-                </div>
-                <div className="row two-col">
-                  <div>
-                    <span className="label">טלפון:</span>
-                    <span className="value">{family?.home_phone || ''}</span>
-                  </div>
-                  <div>
-                    <span className="label">נייד:</span>
-                    <span className="value">{family?.father_phone || ''}</span>
-                  </div>
-                </div>
-                <div className="row">
-                  <span className="label">ת.לידה:</span>
-                  <span className="value">{formatDateShort(s.date_of_birth)}</span>
-                </div>
-                <div className="row">
-                  <span className="label">כתובת:</span>
-                  <span className="value">
-                    {family?.address || ''} {family?.city || ''}
-                  </span>
-                </div>
-                <div className="row">
-                  <span className="label">ישיבה קטנה:</span>
-                  <span className="value">{yeshivaKetana?.institution_name || ''}</span>
-                </div>
-                <div className="row">
-                  <span className="label">שם אם:</span>
-                  <span className="value">{family?.mother_name || ''}</span>
-                </div>
-                <div className="row">
-                  <span className="label">נייד:</span>
-                  <span className="value">{family?.mother_phone || ''}</span>
-                </div>
               </div>
             </div>
           );
@@ -115,42 +94,80 @@ export function DetailsReport({
       <style jsx>{`
         .report-page {
           background: white;
-          padding: 15mm 10mm;
+          padding: 10mm 8mm;
           direction: rtl;
           font-family: 'David', 'Miriam', Arial, sans-serif;
           color: #000;
         }
         .report-title {
           text-align: center;
-          font-size: 16pt;
+          font-size: 14pt;
           font-weight: bold;
-          margin-bottom: 15px;
+          margin-bottom: 8px;
           text-decoration: underline;
         }
         .cards-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
-          gap: 8px;
+          grid-auto-rows: 44mm;
+          gap: 3mm;
         }
         .details-card {
-          display: flex;
-          gap: 6px;
+          display: grid;
+          grid-template-columns: 1fr 30mm;
           border: 1px solid #333;
-          padding: 6px;
+          background: white;
           break-inside: avoid;
           page-break-inside: avoid;
-          font-size: 8.5pt;
-          background: white;
+          overflow: hidden;
+          font-size: 8pt;
+          height: 44mm;
+        }
+        .card-body {
+          padding: 2mm 3mm;
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+          min-width: 0;
+        }
+        .name-row {
+          font-weight: bold;
+          font-size: 10pt;
+          margin-bottom: 2px;
+          border-bottom: 1px solid #333;
+          padding-bottom: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .pair-row,
+        .field-row {
+          display: flex;
+          gap: 8px;
+          font-size: 7.5pt;
+          line-height: 1.3;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .pair-row span {
+          flex: 1;
+        }
+        .inline-sep {
+          flex: 0 0 6px;
+        }
+        b {
+          font-weight: bold;
+          color: #333;
         }
         .photo-spot {
-          flex: 0 0 60px;
-          height: 80px;
-          border: 1px solid #999;
+          border-right: 1px solid #333;
           background: #f5f5f5;
           display: flex;
           align-items: center;
           justify-content: center;
           overflow: hidden;
+          height: 100%;
         }
         .photo-spot img {
           width: 100%;
@@ -161,45 +178,14 @@ export function DetailsReport({
           color: #999;
           font-size: 7pt;
           text-align: center;
-        }
-        .card-body {
-          flex: 1;
-          min-width: 0;
-        }
-        .row {
-          display: flex;
-          gap: 4px;
-          padding: 1px 0;
-          border-bottom: 1px dotted #ddd;
-        }
-        .row:last-child {
-          border-bottom: none;
-        }
-        .two-col {
-          gap: 10px;
-          border-bottom: 1px dotted #ddd;
-        }
-        .two-col > div {
-          flex: 1;
-          display: flex;
-          gap: 4px;
-        }
-        .label {
-          font-weight: bold;
-          white-space: nowrap;
-          color: #333;
-        }
-        .value {
-          flex: 1;
-          word-break: break-word;
-        }
-        .name-value {
-          font-weight: bold;
-          font-size: 10pt;
+          padding: 4px;
         }
         @media print {
           .report-page {
-            padding: 8mm;
+            padding: 6mm;
+          }
+          .cards-grid {
+            grid-auto-rows: 44mm;
           }
         }
       `}</style>
