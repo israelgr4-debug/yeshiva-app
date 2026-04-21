@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { StudentForm } from '@/components/students/StudentForm';
 import { StudentCard } from '@/components/students/StudentCard';
 import { EducationHistory } from '@/components/students/EducationHistory';
+import { StudentDonationsTab } from '@/components/students/StudentDonationsTab';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useTuitionLifecycle, LeaveStatus } from '@/hooks/useTuitionLifecycle';
@@ -381,7 +382,7 @@ export default function StudentDetailPage() {
                   )}
 
                   {activeTab === 'donations' && (
-                    <p className="text-gray-500 text-center py-8">אין תרומות רשומות</p>
+                    <StudentDonationsTab studentId={student.id} />
                   )}
 
                   {activeTab === 'dormitory' && (
