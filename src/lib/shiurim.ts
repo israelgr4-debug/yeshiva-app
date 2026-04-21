@@ -55,19 +55,22 @@ export function getNextShiur(currentShiurName: string): ShiurDef | null {
 
 // ===== MACHZOR MAPPING =====
 // Current mapping (base year תשפ"ו):
-//   שיעור א = מחזור כה (25)
-//   שיעור ב = מחזור כו (26)
-//   שיעור ג = מחזור כז (27)
+//   שיעור א = מחזור כו (26) ← newest / highest number
+//   שיעור ב = מחזור כה (25)
+//   שיעור ג = מחזור כד (24)
 //   ...
-//   שיעור יא = מחזור לה (35)
+//   שיעור יא = מחזור טז (16) ← oldest / lowest number
 //
-// Rule: machzor_number = BASE_MACHZOR + shiur.index
+// Rule: machzor_number = BASE_MACHZOR - shiur.index (DESCENDING)
 // BASE_MACHZOR is the machzor that שיעור א receives in the current school year.
 // When advancing a year, BASE_MACHZOR does NOT change for existing students
 // (their machzor stays), but NEW enrollments will get a different mapping
 // based on the updated BASE_MACHZOR setting.
+//
+// Kibutz: students keep the machzor they had in שיעור יא. The kibbutz
+// actually holds many machzorim at once (one per year cohort).
 
-export const DEFAULT_BASE_MACHZOR = 25; // תשפ"ו default - 'שיעור א' → machzor 25
+export const DEFAULT_BASE_MACHZOR = 26; // תשפ"ו default - 'שיעור א' → מחזור כו (26)
 
 // Compute machzor number for a new student joining in a specific shiur
 // Returns null for Kibutz (they should bring their own machzor from before)
@@ -78,7 +81,7 @@ export function getMachzorForNewStudent(
   const shiur = getShiurByName(shiurName);
   if (!shiur) return null;
   if (shiur.isKibutz) return null; // Kibutz needs manual machzor assignment
-  return baseMachzor + shiur.index;
+  return baseMachzor - shiur.index;
 }
 
 // Hebrew numerals helper: convert a number (1-999) to Hebrew letters (e.g., 25 → 'כה')

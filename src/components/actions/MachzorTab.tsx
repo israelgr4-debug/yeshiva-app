@@ -118,7 +118,7 @@ export function MachzorTab() {
                 >
                   <span className="text-gray-600">שיעור {letter}</span>
                   <span className="font-medium text-blue-700">
-                    {formatMachzorName(editingBase + idx)}
+                    {formatMachzorName(editingBase - idx)}
                   </span>
                 </div>
               ))}
