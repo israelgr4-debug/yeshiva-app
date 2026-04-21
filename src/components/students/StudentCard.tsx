@@ -34,7 +34,7 @@ export function StudentCard({ student }: StudentCardProps) {
     loadRelations();
   }, [student, fetchData]);
 
-  const DetailRow = ({ label, value }: { label: string; value: string }) => (
+  const DetailRow = ({ label, value }: { label: string; value: string | undefined | null }) => (
     <div>
       <p className="text-gray-500 text-xs">{label}</p>
       <p className="font-semibold text-sm">{value || '-'}</p>
@@ -124,6 +124,7 @@ export function StudentCard({ student }: StudentCardProps) {
               <DetailRow label="טלפון" value={student.phone} />
               <DetailRow label="דוא״ל" value={student.email} />
               <DetailRow label="שיעור" value={student.shiur} />
+              <DetailRow label="חדר בפנימייה" value={student.room_number ? String(student.room_number) : '-'} />
             </div>
           </div>
 

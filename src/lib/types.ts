@@ -16,6 +16,7 @@ export interface Student {
   photo_url?: string | null;
   institution_name?: string | null;
   institution_code?: number | null;
+  room_number?: number | null;
   created_at: string;
   updated_at: string;
 }
