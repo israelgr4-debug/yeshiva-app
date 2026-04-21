@@ -45,7 +45,39 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     notes: student?.notes || '',
     machzor_id: student?.machzor_id || '',
     family_id: student?.family_id || '',
+    photo_url: student?.photo_url || '',
   });
+
+  // Photo upload state
+  const [photoUploading, setPhotoUploading] = useState(false);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!studentData.id_number) {
+      alert('קודם הזן תעודת זהות, אז אפשר להעלות תמונה');
+      return;
+    }
+
+    setPhotoUploading(true);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const storagePath = `${studentData.id_number}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('student-photos')
+        .upload(storagePath, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+
+      const { data: pub } = supabase.storage.from('student-photos').getPublicUrl(storagePath);
+      // Cache-bust with timestamp so the browser reloads the new image
+      const url = `${pub.publicUrl}?t=${Date.now()}`;
+      setStudentData((prev) => ({ ...prev, photo_url: url }));
+    } catch (err: any) {
+      alert('שגיאה בהעלאת התמונה: ' + (err?.message || err));
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   // Family / parent fields
   const [familyData, setFamilyData] = useState({
@@ -281,6 +313,55 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
         <h3 className="text-lg font-semibold text-gray-900 mb-4 border-b border-gray-100 pb-2">
           פרטי התלמיד
         </h3>
+
+        {/* Photo upload */}
+        <div className="flex items-start gap-4 mb-6 pb-6 border-b border-gray-100">
+          <div className="flex-shrink-0">
+            {studentData.photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={studentData.photo_url}
+                alt="תמונת תלמיד"
+                className="w-24 h-32 md:w-28 md:h-36 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
+              />
+            ) : (
+              <div className="w-24 h-32 md:w-28 md:h-36 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                <div className="text-center text-gray-400">
+                  <svg className="w-8 h-8 mx-auto mb-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-xs">אין תמונה</p>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">תמונת תלמיד</label>
+            <label className="inline-block cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium border border-blue-200 transition-colors">
+              {photoUploading ? 'מעלה...' : studentData.photo_url ? 'החלף תמונה' : 'העלה תמונה'}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                disabled={photoUploading}
+                className="hidden"
+              />
+            </label>
+            {studentData.photo_url && (
+              <button
+                type="button"
+                onClick={() => setStudentData((p) => ({ ...p, photo_url: '' }))}
+                className="ms-2 text-sm text-red-600 hover:text-red-800 underline"
+              >
+                הסר
+              </button>
+            )}
+            <p className="text-xs text-gray-500 mt-2">
+              הזן קודם תעודת זהות, אז העלה תמונה. הקובץ יישמר לפי מספר התעודה.
+            </p>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="שם משפחה"

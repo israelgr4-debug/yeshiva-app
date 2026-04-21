@@ -153,6 +153,7 @@ export default function StudentDetailPage() {
         notes: studentFormData.notes || null,
         machzor_id: studentFormData.machzor_id || null,
         family_id: familyId || null,
+        photo_url: studentFormData.photo_url || null,
       };
 
       if (id === 'new') {
