@@ -16,33 +16,41 @@ export function useSupabase() {
       setLoading(true);
       setError(null);
       try {
-        let query = supabase.from(table).select('*');
+        const buildQuery = () => {
+          let q = supabase.from(table).select('*');
+          if (filters) {
+            Object.entries(filters).forEach(([key, value]) => {
+              q = q.eq(key, value);
+            });
+          }
+          if (options?.order) {
+            q = q.order(options.order, { ascending: false });
+          }
+          return q;
+        };
 
-        if (filters) {
-          Object.entries(filters).forEach(([key, value]) => {
-            query = query.eq(key, value);
-          });
+        // Explicit pagination: return exactly what caller asked for.
+        if (options?.limit || options?.offset) {
+          const from = options?.offset ?? 0;
+          const to = from + (options?.limit ?? 1000) - 1;
+          const { data, error: err } = await buildQuery().range(from, to);
+          if (err) throw err;
+          return (data || []) as T[];
         }
 
-        if (options?.order) {
-          query = query.order(options.order, { ascending: false });
+        // No pagination requested: auto-page through ALL rows (PostgREST caps at 1000 per request).
+        const PAGE_SIZE = 1000;
+        const all: T[] = [];
+        for (let page = 0; page < 20; page++) {
+          const from = page * PAGE_SIZE;
+          const to = from + PAGE_SIZE - 1;
+          const { data, error: err } = await buildQuery().range(from, to);
+          if (err) throw err;
+          if (!data || data.length === 0) break;
+          all.push(...(data as T[]));
+          if (data.length < PAGE_SIZE) break;
         }
-
-        if (options?.limit) {
-          query = query.limit(options.limit);
-        }
-
-        if (options?.offset) {
-          query = query.range(options.offset, options.offset + (options.limit || 10) - 1);
-        } else if (!options?.limit) {
-          // Default: bypass the Supabase PostgREST 1000-row default limit
-          query = query.range(0, 9999);
-        }
-
-        const { data, error: err } = await query;
-
-        if (err) throw err;
-        return (data || []) as T[];
+        return all;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch data';
         setError(errorMessage);

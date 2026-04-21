@@ -13,29 +13,33 @@ export function useStudents() {
       setLoading(true);
       setError(null);
       try {
-        let query = supabase.from('students').select('*');
+        // PostgREST has a server-side max_rows cap (1000 on Supabase).
+        // We paginate client-side in chunks of 1000 until we get everything.
+        const PAGE_SIZE = 1000;
+        const buildQuery = () => {
+          let query = supabase.from('students').select('*');
+          if (filters?.status) query = query.eq('status', filters.status);
+          if (filters?.shiur) query = query.eq('shiur', filters.shiur);
+          if (filters?.search) {
+            const search = filters.search.toLowerCase();
+            query = query.or(
+              `first_name.ilike.%${search}%,last_name.ilike.%${search}%,id_number.ilike.%${search}%`
+            );
+          }
+          return query.order('last_name', { ascending: true });
+        };
 
-        if (filters?.status) {
-          query = query.eq('status', filters.status);
+        const all: Student[] = [];
+        for (let page = 0; page < 20; page++) {
+          const from = page * PAGE_SIZE;
+          const to = from + PAGE_SIZE - 1;
+          const { data, error: err } = await buildQuery().range(from, to);
+          if (err) throw err;
+          if (!data || data.length === 0) break;
+          all.push(...(data as Student[]));
+          if (data.length < PAGE_SIZE) break;
         }
-
-        if (filters?.shiur) {
-          query = query.eq('shiur', filters.shiur);
-        }
-
-        if (filters?.search) {
-          const search = filters.search.toLowerCase();
-          query = query.or(
-            `first_name.ilike.%${search}%,last_name.ilike.%${search}%,id_number.ilike.%${search}%`
-          );
-        }
-
-        const { data, error: err } = await query
-          .order('last_name', { ascending: true })
-          .range(0, 9999); // Support up to 10,000 students (default limit is 1000)
-
-        if (err) throw err;
-        return (data || []) as Student[];
+        return all;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch students';
         setError(errorMessage);
