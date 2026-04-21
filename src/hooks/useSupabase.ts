@@ -34,6 +34,9 @@ export function useSupabase() {
 
         if (options?.offset) {
           query = query.range(options.offset, options.offset + (options.limit || 10) - 1);
+        } else if (!options?.limit) {
+          // Default: bypass the Supabase PostgREST 1000-row default limit
+          query = query.range(0, 9999);
         }
 
         const { data, error: err } = await query;

@@ -30,7 +30,9 @@ export function useStudents() {
           );
         }
 
-        const { data, error: err } = await query.order('last_name', { ascending: true });
+        const { data, error: err } = await query
+          .order('last_name', { ascending: true })
+          .range(0, 9999); // Support up to 10,000 students (default limit is 1000)
 
         if (err) throw err;
         return (data || []) as Student[];
