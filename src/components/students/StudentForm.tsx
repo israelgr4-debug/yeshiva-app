@@ -19,6 +19,7 @@ interface StudentFormProps {
 
 const statusOptions = [
   { value: 'active', label: 'פעיל' },
+  { value: 'chizuk', label: 'חיזוק' },
   { value: 'inactive', label: 'לא פעיל' },
   { value: 'graduated', label: 'סיים' },
 ];

@@ -22,6 +22,7 @@ const shiurOptions = [
 const statusOptions = [
   { value: '', label: 'כל הסטטוסים' },
   { value: 'active', label: 'פעיל' },
+  { value: 'chizuk', label: 'חיזוק' },
   { value: 'inactive', label: 'לא פעיל' },
   { value: 'graduated', label: 'סיים' },
 ];

@@ -8,7 +8,7 @@ export interface Student {
   equivalent_year: string;
   phone: string;
   email: string;
-  status: 'active' | 'inactive' | 'graduated';
+  status: 'active' | 'inactive' | 'graduated' | 'chizuk';
   admission_date: string;
   notes: string;
   machzor_id: string | null;
@@ -121,12 +121,16 @@ export interface TuitionCharge {
   student_ids: string[];
   total_amount_per_month: number;
   amount_breakdown: Record<string, number>; // {student_id: amount}
-  payment_method: 'standing_order' | 'check' | 'credit' | 'office';
+  payment_method: 'standing_order' | 'check' | 'credit' | 'office' | 'exempt';
   scheduled_day_of_month: number | null;
   status: 'active' | 'suspended' | 'cancelled';
   start_date: string;
   end_date: string | null;
   notes: string;
+  external_charge_id?: string | null;
+  external_provider?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -140,7 +144,7 @@ export interface TuitionPayment {
   total_amount: number;
   amount_breakdown: Record<string, number>; // {student_id: amount}
   status: 'scheduled' | 'collected' | 'failed' | 'partial';
-  payment_method: 'standing_order' | 'check' | 'credit' | 'office';
+  payment_method: 'standing_order' | 'check' | 'credit' | 'office' | 'exempt';
   payment_details: {
     check_number?: string;
     deposit_date?: string;

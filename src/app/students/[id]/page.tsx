@@ -9,6 +9,7 @@ import { StudentCard } from '@/components/students/StudentCard';
 import { EducationHistory } from '@/components/students/EducationHistory';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
+import { useTuitionLifecycle, LeaveStatus } from '@/hooks/useTuitionLifecycle';
 import { Student, Machzor, Family } from '@/lib/types';
 import Link from 'next/link';
 
@@ -26,6 +27,7 @@ export default function StudentDetailPage() {
 
   const { getStudentById, createStudent, updateStudent, loading } = useStudents();
   const { fetchData, insertData, updateData } = useSupabase();
+  const { stopChargesForStudent } = useTuitionLifecycle();
 
   useEffect(() => {
     if (id !== 'new') {
@@ -159,10 +161,33 @@ export default function StudentDetailPage() {
           router.push(`/students/${newStudent.id}`);
         }
       } else {
+        // Detect status change to non-active → stop tuition charges
+        const prevStatus = student?.status;
+        const newStatus = finalStudentData.status as string | undefined;
+        const becameNonActive =
+          prevStatus === 'active' &&
+          newStatus !== 'active' &&
+          newStatus !== undefined &&
+          ['inactive', 'graduated', 'chizuk'].includes(newStatus);
+
         const updated = await updateStudent(id, finalStudentData);
         if (updated) {
           setStudent(updated);
           setIsEditing(false);
+
+          // Auto-stop charges if student became non-active
+          if (becameNonActive) {
+            const stopRes = await stopChargesForStudent(id, newStatus as LeaveStatus);
+            if (stopRes.cancelledCharges > 0 || stopRes.modifiedCharges > 0) {
+              alert(
+                `הגביה עודכנה בהתאם לשינוי הסטטוס:\n` +
+                  `• בוטלו: ${stopRes.cancelledCharges} גביות\n` +
+                  `• עודכנו: ${stopRes.modifiedCharges} גביות` +
+                  (stopRes.errors.length > 0 ? `\n\nשגיאות: ${stopRes.errors.join('; ')}` : '')
+              );
+            }
+          }
+
           loadStudent();
         }
       }

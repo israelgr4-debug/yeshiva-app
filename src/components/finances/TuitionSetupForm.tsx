@@ -19,7 +19,7 @@ export function TuitionSetupForm({ onSuccess }: TuitionSetupFormProps) {
   const [familyStudents, setFamilyStudents] = useState<Student[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [studentAmounts, setStudentAmounts] = useState<Record<string, number>>({});
-  const [paymentMethod, setPaymentMethod] = useState<'standing_order' | 'check' | 'credit' | 'office'>('standing_order');
+  const [paymentMethod, setPaymentMethod] = useState<'standing_order' | 'check' | 'credit' | 'office' | 'exempt'>('standing_order');
   const [scheduledDay, setScheduledDay] = useState<number>(15);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
@@ -200,8 +200,9 @@ export function TuitionSetupForm({ onSuccess }: TuitionSetupFormProps) {
         >
           <option value="standing_order">הוראת קבע</option>
           <option value="check">צ"ק</option>
-          <option value="credit">אשראי</option>
+          <option value="credit">אשראי (נדרים פלוס)</option>
           <option value="office">במשרד</option>
+          <option value="exempt">פטור</option>
         </select>
       </div>
 

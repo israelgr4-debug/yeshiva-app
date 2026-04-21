@@ -121,7 +121,7 @@ export function StudentTable({ students, onEdit, onDelete, isLoading }: StudentT
               )}
             </TableCell>
             <TableCell>
-              <Badge variant={student.status === 'active' ? 'success' : student.status === 'inactive' ? 'warning' : 'gray'}>
+              <Badge variant={student.status === 'active' ? 'success' : student.status === 'chizuk' ? 'primary' : student.status === 'inactive' ? 'warning' : 'gray'}>
                 {getStatusLabel(student.status)}
               </Badge>
             </TableCell>

@@ -43,6 +43,7 @@ export function getStatusLabel(status: string): string {
     active: 'פעיל',
     inactive: 'לא פעיל',
     graduated: 'סיים',
+    chizuk: 'חיזוק',
     occupied: 'תפוס',
     available: 'פנוי',
     maintenance: 'תחזוקה',

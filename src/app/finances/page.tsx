@@ -14,6 +14,7 @@ import { DonationsSummary } from '@/components/finances/DonationsSummary';
 import { TuitionSummaryCard } from '@/components/finances/TuitionSummaryCard';
 import { TuitionSetupForm } from '@/components/finances/TuitionSetupForm';
 import { TuitionPaymentsTable } from '@/components/finances/TuitionPaymentsTable';
+import { ActiveChargesTable } from '@/components/finances/ActiveChargesTable';
 
 interface Donation {
   id: string;
@@ -256,6 +257,16 @@ export default function FinancesPage() {
               }}
             />
           </div>
+
+          {/* Active Charges Table */}
+          <Card className="mb-8">
+            <CardHeader>
+              <h3 className="text-xl font-bold">גביות פעילות</h3>
+            </CardHeader>
+            <CardContent>
+              <ActiveChargesTable />
+            </CardContent>
+          </Card>
 
           {/* Tuition Payments Table */}
           <Card>

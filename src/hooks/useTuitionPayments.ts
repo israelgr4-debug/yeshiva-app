@@ -11,7 +11,7 @@ export function useTuitionPayments() {
   const createTuitionCharge = async (
     familyId: string,
     students: Student[],
-    paymentMethod: 'standing_order' | 'check' | 'credit' | 'office',
+    paymentMethod: 'standing_order' | 'check' | 'credit' | 'office' | 'exempt',
     scheduledDayOfMonth?: number,
     notes?: string,
     amounts?: Record<string, number>
