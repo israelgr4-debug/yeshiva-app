@@ -52,15 +52,15 @@ export function StudentCard({ student }: StudentCardProps) {
               <img
                 src={student.photo_url}
                 alt={`${student.first_name} ${student.last_name}`}
-                className="w-24 h-32 md:w-28 md:h-36 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
+                className="w-36 h-48 md:w-48 md:h-64 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
               />
             ) : (
-              <div className="w-24 h-32 md:w-28 md:h-36 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+              <div className="w-36 h-48 md:w-48 md:h-64 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
                 <div className="text-center text-gray-400">
-                  <svg className="w-8 h-8 mx-auto mb-1" fill="currentColor" viewBox="0 0 20 20">
+                  <svg className="w-12 h-12 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                   </svg>
-                  <p className="text-xs">אין תמונה</p>
+                  <p className="text-sm">אין תמונה</p>
                 </div>
               </div>
             )}
