@@ -8,15 +8,12 @@ import { Button } from '@/components/ui/Button';
 import { StudentTable } from '@/components/students/StudentTable';
 import { useStudents } from '@/hooks/useStudents';
 import { Student } from '@/lib/types';
+import { SHIURIM } from '@/lib/shiurim';
 import Link from 'next/link';
 
 const shiurOptions = [
   { value: '', label: 'כל השיעורים' },
-  { value: 'בחורים א', label: 'בחורים א' },
-  { value: 'בחורים ב', label: 'בחורים ב' },
-  { value: 'בחורים ג', label: 'בחורים ג' },
-  { value: 'משכילים א', label: 'משכילים א' },
-  { value: 'משכילים ב', label: 'משכילים ב' },
+  ...SHIURIM.map((s) => ({ value: s.name, label: s.name })),
 ];
 
 const statusOptions = [
@@ -32,11 +29,12 @@ export default function StudentsPage() {
   const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedShiur, setSelectedShiur] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
+  // Default to 'active' - show only active students by default
+  const [selectedStatus, setSelectedStatus] = useState('active');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 25;
 
-  const { getStudents, deleteStudent, loading } = useStudents();
+  const { getStudents, loading } = useStudents();
 
   useEffect(() => {
     async function loadStudents() {
@@ -54,9 +52,9 @@ export default function StudentsPage() {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (s) =>
-          s.first_name.toLowerCase().includes(query) ||
-          s.last_name.toLowerCase().includes(query) ||
-          s.id_number.includes(query)
+          (s.first_name || '').toLowerCase().includes(query) ||
+          (s.last_name || '').toLowerCase().includes(query) ||
+          (s.id_number || '').includes(query)
       );
     }
 
@@ -72,21 +70,22 @@ export default function StudentsPage() {
     setCurrentPage(1);
   }, [searchQuery, selectedShiur, selectedStatus, students]);
 
-  const handleDelete = async (id: string) => {
-    if (confirm('האם אתה בטוח שברצונך למחוק את התלמיד?')) {
-      const success = await deleteStudent(id);
-      if (success) {
-        setStudents((prev) => prev.filter((s) => s.id !== id));
-      }
-    }
-  };
-
   const paginatedStudents = filteredStudents.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
   const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+
+  // Helpful: short page jump to avoid 100+ page buttons
+  const pageWindow = (() => {
+    const windowSize = 7;
+    const half = Math.floor(windowSize / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + windowSize - 1);
+    if (end - start < windowSize - 1) start = Math.max(1, end - windowSize + 1);
+    return { start, end };
+  })();
 
   return (
     <>
@@ -120,43 +119,65 @@ export default function StudentsPage() {
         {/* Results Count */}
         <div className="mb-4 text-sm text-gray-600">
           {filteredStudents.length} תלמידים
+          {totalPages > 1 && (
+            <span className="ms-2 text-gray-400">
+              (עמוד {currentPage} מתוך {totalPages})
+            </span>
+          )}
         </div>
 
         {/* Student Table */}
-        <StudentTable
-          students={paginatedStudents}
-          onDelete={handleDelete}
-          isLoading={loading}
-        />
+        <StudentTable students={paginatedStudents} isLoading={loading} />
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex justify-center gap-2 mt-6">
+          <div className="flex justify-center gap-2 mt-6 flex-wrap">
+            <Button
+              variant="secondary"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              size="sm"
+            >
+              ראשון
+            </Button>
             <Button
               variant="secondary"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
+              size="sm"
             >
               הקודם
             </Button>
-            <div className="flex items-center gap-2">
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <Button
-                  key={i + 1}
-                  variant={currentPage === i + 1 ? 'primary' : 'secondary'}
-                  size="sm"
-                  onClick={() => setCurrentPage(i + 1)}
-                >
-                  {i + 1}
-                </Button>
-              ))}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: pageWindow.end - pageWindow.start + 1 }).map((_, i) => {
+                const pageNum = pageWindow.start + i;
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
             </div>
             <Button
               variant="secondary"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
+              size="sm"
             >
               הבא
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              size="sm"
+            >
+              אחרון
             </Button>
           </div>
         )}
