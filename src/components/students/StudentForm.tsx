@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSupabase } from '@/hooks/useSupabase';
+import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { supabase } from '@/lib/supabase';
+import { SHIURIM, getMachzorForNewStudent, DEFAULT_BASE_MACHZOR } from '@/lib/shiurim';
 
 interface StudentFormProps {
   student?: Student;
@@ -21,14 +23,7 @@ const statusOptions = [
   { value: 'graduated', label: 'סיים' },
 ];
 
-const shiurOptions = [
-  { value: 'שיעור א׳', label: 'שיעור א׳' },
-  { value: 'שיעור ב׳', label: 'שיעור ב׳' },
-  { value: 'שיעור ג׳', label: 'שיעור ג׳' },
-  { value: 'שיעור ד׳', label: 'שיעור ד׳' },
-  { value: 'משכילים א׳', label: 'משכילים א׳' },
-  { value: 'משכילים ב׳', label: 'משכילים ב׳' },
-];
+const shiurOptions = SHIURIM.map((s) => ({ value: s.name, label: s.name }));
 
 export function StudentForm({ student, initialFamily, onSubmit, isLoading }: StudentFormProps) {
   const [machzorot, setMachzorot] = useState<Machzor[]>([]);
@@ -77,20 +72,56 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
   const [linkedFamilyId, setLinkedFamilyId] = useState<string>(student?.family_id || '');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Base machzor for the current year (loaded from system_settings)
+  const [baseMachzor, setBaseMachzor] = useState<number>(DEFAULT_BASE_MACHZOR);
+  const { getSetting } = useSystemSettings();
+
   useEffect(() => {
     async function loadOptions() {
       const machzorotData = await fetchData<Machzor>('machzorot');
       const familiesData = await fetchData<Family>('families');
       setMachzorot(machzorotData);
       setFamilies(familiesData);
+
+      // Load base machzor setting
+      const base = await getSetting<number>('base_machzor_for_shiur_alef', DEFAULT_BASE_MACHZOR);
+      setBaseMachzor(base);
     }
     loadOptions();
-  }, [fetchData]);
+  }, [fetchData, getSetting]);
 
-  const machzorOptions = machzorot.map((m) => ({
-    value: m.id,
-    label: m.name,
-  }));
+  // Derive the machzor that MATCHES the chosen shiur (for new students)
+  // Returns the machzor name to display, or '—' for existing students / kibutz
+  const derivedMachzorInfo = (() => {
+    // For existing students: show their current machzor (don't auto-override)
+    if (student?.id) {
+      const m = machzorot.find((mm) => mm.id === studentData.machzor_id);
+      return { name: m?.name || '—', isAuto: false };
+    }
+    // For new students: derive from shiur
+    const machzorNum = getMachzorForNewStudent(studentData.shiur, baseMachzor);
+    if (machzorNum === null) return { name: '—', isAuto: true };
+    const m = machzorot.find((mm) => mm.number === machzorNum);
+    return { name: m?.name || `מחזור (${machzorNum})`, isAuto: true, id: m?.id };
+  })();
+
+  // Auto-set machzor_id on shiur change for NEW students
+  useEffect(() => {
+    if (student?.id) return; // Don't touch existing students
+    if (!studentData.shiur) return;
+    const machzorNum = getMachzorForNewStudent(studentData.shiur, baseMachzor);
+    if (machzorNum === null) {
+      // Kibutz or unknown shiur - clear machzor so user can pick manually
+      if (studentData.machzor_id !== '') {
+        setStudentData((prev) => ({ ...prev, machzor_id: '' }));
+      }
+      return;
+    }
+    const m = machzorot.find((mm) => mm.number === machzorNum);
+    if (m && m.id !== studentData.machzor_id) {
+      setStudentData((prev) => ({ ...prev, machzor_id: m.id }));
+    }
+  }, [studentData.shiur, baseMachzor, machzorot, student?.id, studentData.machzor_id]);
 
   const familyOptions = families.map((f) => ({
     value: f.id,
@@ -293,13 +324,16 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             value={studentData.shiur}
             onChange={handleStudentChange}
           />
-          <Select
-            label="מחזור"
-            name="machzor_id"
-            options={machzorOptions}
-            value={studentData.machzor_id}
-            onChange={handleStudentChange}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              מחזור {derivedMachzorInfo.isAuto && (
+                <span className="text-xs text-gray-500">(אוטומטי לפי שיעור)</span>
+              )}
+            </label>
+            <div className="w-full px-4 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-800">
+              {derivedMachzorInfo.name}
+            </div>
+          </div>
           <Input
             label="שנה מקבילה"
             name="equivalent_year"
