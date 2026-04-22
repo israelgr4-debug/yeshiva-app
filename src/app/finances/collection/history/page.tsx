@@ -79,9 +79,15 @@ export default function CollectionHistoryPage() {
   //        if no group_number → forecast (not yet sent)
   const tabRuns = useMemo(() => {
     if (activeTab === 'forecast') {
-      return runs.filter((r) => r.group_number === null || r.group_number === undefined);
+      // Forecast: sort by date ASC (nearest charge first)
+      return runs
+        .filter((r) => r.group_number === null || r.group_number === undefined)
+        .sort((a, b) => a.payment_date.localeCompare(b.payment_date));
     }
-    return runs.filter((r) => r.group_number !== null && r.group_number !== undefined);
+    // History: most recent first (DESC)
+    return runs
+      .filter((r) => r.group_number !== null && r.group_number !== undefined)
+      .sort((a, b) => b.payment_date.localeCompare(a.payment_date));
   }, [runs, activeTab]);
 
   // Reset page on tab change
