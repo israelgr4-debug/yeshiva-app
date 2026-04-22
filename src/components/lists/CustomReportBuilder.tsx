@@ -44,6 +44,7 @@ const ALL_FIELDS: FieldDef[] = [
 
   // ===== הורים =====
   { key: 'family_name', label: 'שם המשפחה', group: 'משפחה', get: (_, f) => f?.family_name || '' },
+  { key: 'yichus', label: 'ייחוס (כהן/לוי/ישראל)', group: 'משפחה', get: (_, f: any) => f?.yichus_name || '' },
   { key: 'father_name', label: 'שם האב', group: 'משפחה', get: (_, f) => f?.father_name || '' },
   { key: 'father_id', label: 'תעודת זהות אב', group: 'משפחה', get: (_, f) => f?.father_id_number || '' },
   { key: 'father_phone', label: 'טלפון אב', group: 'משפחה', get: (_, f) => f?.father_phone || '' },

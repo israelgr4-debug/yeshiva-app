@@ -53,6 +53,8 @@ export interface Family {
   bank_branch: string;
   bank_account: string;
   billing_notes: string;
+  yichus_code?: number | null;
+  yichus_name?: string | null;
   created_at: string;
   updated_at: string;
 }
