@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { StudentTable } from '@/components/students/StudentTable';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
+import { useAuth } from '@/hooks/useAuth';
 import { Student, Family, Machzor } from '@/lib/types';
 import { SHIURIM } from '@/lib/shiurim';
 import Link from 'next/link';
@@ -48,6 +49,7 @@ export default function StudentsPage() {
 
   const { getStudents, loading } = useStudents();
   const { fetchData } = useSupabase();
+  const { permissions } = useAuth();
 
   // Load students, families, machzorot in parallel
   useEffect(() => {
@@ -154,9 +156,11 @@ export default function StudentsPage() {
             onChange={(e) => setSelectedStatus(e.target.value)}
           />
           <div className="flex gap-2">
-            <Link href="/students/new" className="flex-1">
-              <Button className="w-full">הוסף תלמיד</Button>
-            </Link>
+            {permissions.canWrite && (
+              <Link href="/students/new" className="flex-1">
+                <Button className="w-full">הוסף תלמיד</Button>
+              </Link>
+            )}
           </div>
         </div>
 

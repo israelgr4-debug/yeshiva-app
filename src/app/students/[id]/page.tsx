@@ -11,6 +11,8 @@ import { StudentDonationsTab } from '@/components/students/StudentDonationsTab';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useTuitionLifecycle, LeaveStatus } from '@/hooks/useTuitionLifecycle';
+import { useAuth } from '@/hooks/useAuth';
+import { ConfirmDelete } from '@/components/ui/ConfirmDelete';
 import { Student, Machzor, Family } from '@/lib/types';
 import Link from 'next/link';
 
@@ -26,9 +28,10 @@ export default function StudentDetailPage() {
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(id === 'new');
 
-  const { getStudentById, createStudent, updateStudent, loading } = useStudents();
+  const { getStudentById, createStudent, updateStudent, deleteStudent, loading } = useStudents();
   const { fetchData, insertData, updateData } = useSupabase();
   const { stopChargesForStudent } = useTuitionLifecycle();
+  const { permissions } = useAuth();
 
   useEffect(() => {
     if (id !== 'new') {
@@ -392,12 +395,30 @@ export default function StudentDetailPage() {
                   )}
                 </div>
 
-                {/* Edit Button */}
-                <div className="mt-6 flex gap-4">
-                  <Button onClick={() => setIsEditing(true)}>עריכה</Button>
+                {/* Action buttons */}
+                <div className="mt-6 flex gap-4 flex-wrap">
+                  {permissions.canWrite && (
+                    <Button onClick={() => setIsEditing(true)}>עריכה</Button>
+                  )}
                   <Link href="/students">
                     <Button variant="secondary">חזור</Button>
                   </Link>
+                  {permissions.canDelete && student && (
+                    <ConfirmDelete
+                      trigger={(open) => (
+                        <Button variant="danger" onClick={open}>
+                          מחק תלמיד
+                        </Button>
+                      )}
+                      itemDescription={`התלמיד ${student.first_name} ${student.last_name} (ת.ז. ${student.id_number || '-'})`}
+                      consequences="פעולה זו תמחק גם את כל ההיסטוריה הלימודית, תקופות הכניסה/יציאה, והיסטוריית התשלומים של התלמיד."
+                      onConfirm={async () => {
+                        const ok = await deleteStudent(id);
+                        if (ok) router.push('/students');
+                        else alert('שגיאה במחיקה');
+                      }}
+                    />
+                  )}
                 </div>
               </>
             ) : (
