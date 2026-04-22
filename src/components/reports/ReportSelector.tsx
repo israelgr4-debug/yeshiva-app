@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Student } from '@/lib/types';
 import { REPORT_TYPES, ReportTypeId, ReportType } from '@/lib/certificates';
+import { supabase } from '@/lib/supabase';
 
 interface ReportSelectorProps {
   students: Student[];
@@ -87,8 +88,39 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
     setShowDropdown(false);
   };
 
-  const handleGenerate = () => {
+  const [checkingTuition, setCheckingTuition] = useState(false);
+
+  const handleGenerate = async () => {
     if (!selectedStudent || !selectedReport) return;
+
+    // Check if student has an active tuition charge (skip for "left" certificates)
+    if (!LEFT_STUDENT_REPORT_IDS.includes(selectedReport.id)) {
+      setCheckingTuition(true);
+      try {
+        const { data } = await supabase
+          .from('tuition_charges')
+          .select('id, status')
+          .eq('family_id', selectedStudent.family_id)
+          .eq('status', 'active')
+          .contains('student_ids', [selectedStudent.id])
+          .limit(1);
+
+        if (!data || data.length === 0) {
+          const proceed = confirm(
+            `⚠️ אזהרה\n\nלתלמיד ${selectedStudent.first_name} ${selectedStudent.last_name} אין גביה פעילה של שכר לימוד.\n\nלהוציא את האישור בכל זאת?`
+          );
+          if (!proceed) {
+            setCheckingTuition(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Error checking tuition:', err);
+      } finally {
+        setCheckingTuition(false);
+      }
+    }
+
     onGenerate(selectedStudent, selectedReport, year, extras);
   };
 
@@ -231,8 +263,8 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
       ))}
 
       {/* Generate button */}
-      <Button onClick={handleGenerate} disabled={!canGenerate} size="lg" className="w-full">
-        הפק אישור
+      <Button onClick={handleGenerate} disabled={!canGenerate || checkingTuition} size="lg" className="w-full">
+        {checkingTuition ? 'בודק...' : 'הפק אישור'}
       </Button>
     </div>
   );
