@@ -1,7 +1,7 @@
 'use client';
 
 import { Student } from '@/lib/types';
-import { sortStudentsByName, getShiurLetter } from '@/lib/list-reports';
+import { sortStudentsByName, getShiurLetter, groupStudentsByShiur } from '@/lib/list-reports';
 
 interface Props {
   students: Student[];
@@ -9,11 +9,27 @@ interface Props {
 }
 
 export function TestsReport({ students, shiurFilter }: Props) {
-  const sorted = sortStudentsByName(students);
-  const title = shiurFilter ? `דוח מבחנים - חתך \\ ${shiurFilter}` : 'דוח מבחנים';
-
+  if (shiurFilter) {
+    return <SinglePage title={`דוח מבחנים - חתך \\ ${shiurFilter}`} students={sortStudentsByName(students)} />;
+  }
+  const groups = groupStudentsByShiur(students);
   return (
-    <div className="report-page">
+    <>
+      {groups.map((g, idx) => (
+        <SinglePage
+          key={g.shiur}
+          title={`דוח מבחנים - ${g.shiur}`}
+          students={g.students}
+          isNotFirst={idx > 0}
+        />
+      ))}
+    </>
+  );
+}
+
+function SinglePage({ title, students, isNotFirst }: { title: string; students: Student[]; isNotFirst?: boolean }) {
+  return (
+    <div className={`report-page ${isNotFirst ? 'page-break' : ''}`}>
       <h1 className="report-title">{title}</h1>
 
       <div className="tests-header">
@@ -28,7 +44,7 @@ export function TestsReport({ students, shiurFilter }: Props) {
       </div>
 
       <div className="tests-grid">
-        {sorted.map((s) => (
+        {students.map((s) => (
           <div key={s.id} className="test-row">
             <div className="test-squares">
               <div className="test-sq" />
@@ -51,6 +67,10 @@ export function TestsReport({ students, shiurFilter }: Props) {
           direction: rtl;
           font-family: 'David', 'Miriam', Arial, sans-serif;
           color: #000;
+        }
+        .report-page.page-break {
+          page-break-before: always;
+          break-before: page;
         }
         .report-title {
           text-align: center;

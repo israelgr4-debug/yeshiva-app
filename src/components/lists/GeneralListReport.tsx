@@ -1,7 +1,7 @@
 'use client';
 
 import { Student } from '@/lib/types';
-import { sortStudentsByName, getShiurLetter } from '@/lib/list-reports';
+import { sortStudentsByName, getShiurLetter, groupStudentsByShiur } from '@/lib/list-reports';
 
 interface Props {
   students: Student[];
@@ -9,15 +9,47 @@ interface Props {
 }
 
 export function GeneralListReport({ students, shiurFilter }: Props) {
-  const sorted = sortStudentsByName(students);
-  const title = shiurFilter ? `דוח כללי - חתך \\ ${shiurFilter}` : 'דוח כללי';
+  // If a specific shiur is selected → single flat list
+  // If "all shiurim" → group by shiur with page breaks
+  const groupByShiur = !shiurFilter;
+
+  if (!groupByShiur) {
+    const sorted = sortStudentsByName(students);
+    const title = `דוח כללי - חתך \\ ${shiurFilter}`;
+    return <SingleListPage title={title} students={sorted} />;
+  }
+
+  const groups = groupStudentsByShiur(students);
 
   return (
-    <div className="report-page">
+    <>
+      {groups.map((g, idx) => (
+        <SingleListPage
+          key={g.shiur}
+          title={`דוח כללי - ${g.shiur}`}
+          students={g.students}
+          isNotFirst={idx > 0}
+        />
+      ))}
+    </>
+  );
+}
+
+function SingleListPage({
+  title,
+  students,
+  isNotFirst,
+}: {
+  title: string;
+  students: Student[];
+  isNotFirst?: boolean;
+}) {
+  return (
+    <div className={`report-page ${isNotFirst ? 'page-break' : ''}`}>
       <h1 className="report-title">{title}</h1>
 
       <div className="general-grid">
-        {sorted.map((s) => (
+        {students.map((s) => (
           <div key={s.id} className="general-row">
             <span className="name">
               {s.last_name}, {s.first_name}
@@ -34,6 +66,10 @@ export function GeneralListReport({ students, shiurFilter }: Props) {
           direction: rtl;
           font-family: 'David', 'Miriam', Arial, sans-serif;
           color: #000;
+        }
+        .report-page.page-break {
+          page-break-before: always;
+          break-before: page;
         }
         .report-title {
           text-align: center;

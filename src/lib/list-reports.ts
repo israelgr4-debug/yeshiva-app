@@ -1,6 +1,9 @@
 import { Student } from './types';
 import { SHIURIM, getShiurByName } from './shiurim';
 
+// Re-export for convenience
+export { SHIURIM };
+
 // ============================================================================
 // List report types catalog
 // ============================================================================
@@ -81,6 +84,40 @@ export function sortStudentsByName(students: Student[]): Student[] {
     if (lastCompare !== 0) return lastCompare;
     return (a.first_name || '').localeCompare(b.first_name || '', 'he');
   });
+}
+
+// Group students by shiur, in shiur order (א, ב, ג, ..., קיבוץ)
+// Inside each group, sort by last_name then first_name.
+// Returns array of {shiur, students} groups for easy rendering with page breaks.
+export function groupStudentsByShiur(students: Student[]): Array<{ shiur: string; students: Student[] }> {
+  // Use the canonical shiur order from SHIURIM
+  const order = SHIURIM.map((s) => s.name);
+
+  const grouped: Record<string, Student[]> = {};
+  for (const s of students) {
+    const key = s.shiur || '—';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(s);
+  }
+
+  // Sort inside each group
+  for (const key of Object.keys(grouped)) {
+    grouped[key] = sortStudentsByName(grouped[key]);
+  }
+
+  // Return in canonical order
+  const result: Array<{ shiur: string; students: Student[] }> = [];
+  for (const name of order) {
+    if (grouped[name]?.length) {
+      result.push({ shiur: name, students: grouped[name] });
+      delete grouped[name];
+    }
+  }
+  // Remaining (unknown) shiurim at the end
+  for (const key of Object.keys(grouped)) {
+    result.push({ shiur: key, students: grouped[key] });
+  }
+  return result;
 }
 
 // Get short letter for a shiur (e.g., 'שיעור א' → 'א', 'קיבוץ' → 'ק')
