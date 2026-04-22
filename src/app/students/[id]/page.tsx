@@ -13,6 +13,8 @@ import { useSupabase } from '@/hooks/useSupabase';
 import { useTuitionLifecycle, LeaveStatus } from '@/hooks/useTuitionLifecycle';
 import { useAuth } from '@/hooks/useAuth';
 import { ConfirmDelete } from '@/components/ui/ConfirmDelete';
+import { StatusChangeDialog, StatusChange } from '@/components/students/StatusChangeDialog';
+import { supabase } from '@/lib/supabase';
 import { Student, Machzor, Family } from '@/lib/types';
 import Link from 'next/link';
 
@@ -27,6 +29,14 @@ export default function StudentDetailPage() {
   const [siblings, setSiblings] = useState<Student[]>([]);
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(id === 'new');
+
+  // Pending status change - when user clicks save and status changed, we queue the final save
+  // until the status change dialog collects the exit/return date.
+  const [statusDialog, setStatusDialog] = useState<{
+    change: StatusChange;
+    newStatus: string;
+    pendingData: any;
+  } | null>(null);
 
   const { getStudentById, createStudent, updateStudent, deleteStudent, loading } = useStudents();
   const { fetchData, insertData, updateData } = useSupabase();
@@ -166,40 +176,129 @@ export default function StudentDetailPage() {
           router.push(`/students/${newStudent.id}`);
         }
       } else {
-        // Detect status change to non-active → stop tuition charges
+        // Detect status change
         const prevStatus = student?.status;
         const newStatus = finalStudentData.status as string | undefined;
-        const becameNonActive =
-          prevStatus === 'active' &&
-          newStatus !== 'active' &&
-          newStatus !== undefined &&
-          ['inactive', 'graduated', 'chizuk'].includes(newStatus);
+        const statusChanged = prevStatus !== newStatus && newStatus !== undefined;
 
-        const updated = await updateStudent(id, finalStudentData);
-        if (updated) {
-          setStudent(updated);
-          setIsEditing(false);
+        if (statusChanged) {
+          const leavingActive = prevStatus === 'active' && (newStatus === 'inactive' || newStatus === 'graduated');
+          const enteringChizuk = prevStatus === 'active' && newStatus === 'chizuk';
+          const returningToActive = (prevStatus === 'inactive' || prevStatus === 'graduated' || prevStatus === 'chizuk') && newStatus === 'active';
 
-          // Auto-stop charges if student became non-active
-          if (becameNonActive) {
-            const stopRes = await stopChargesForStudent(id, newStatus as LeaveStatus);
-            if (stopRes.cancelledCharges > 0 || stopRes.modifiedCharges > 0) {
-              alert(
-                `הגביה עודכנה בהתאם לשינוי הסטטוס:\n` +
-                  `• בוטלו: ${stopRes.cancelledCharges} גביות\n` +
-                  `• עודכנו: ${stopRes.modifiedCharges} גביות` +
-                  (stopRes.errors.length > 0 ? `\n\nשגיאות: ${stopRes.errors.join('; ')}` : '')
-              );
-            }
+          if (leavingActive || enteringChizuk || returningToActive) {
+            // Open dialog to collect dates - defer the save until user confirms
+            setStatusDialog({
+              change: enteringChizuk ? 'chizuk' : returningToActive ? 'return' : 'leave',
+              newStatus,
+              pendingData: finalStudentData,
+            });
+            return;
           }
-
-          loadStudent();
         }
+
+        // No status change handling needed - save directly
+        await finalizeSave(finalStudentData);
       }
     } catch (error: any) {
       console.error('Failed to save student:', error);
       alert('שגיאה בשמירת התלמיד: ' + (error?.message || JSON.stringify(error)));
     }
+  }
+
+  // Called after either: no status change, or status change + dialog confirmation
+  async function finalizeSave(
+    finalStudentData: Record<string, any>,
+    statusChangeData?: { exitDate?: string; expectedReturn?: string; entryDate?: string; notes?: string }
+  ) {
+    // Merge status-change dates into the student record
+    if (statusChangeData) {
+      if (statusChangeData.exitDate) {
+        finalStudentData.exit_date = statusChangeData.exitDate;
+        if (finalStudentData.status === 'chizuk') {
+          finalStudentData.chizuk_exit_date = statusChangeData.exitDate;
+        }
+      }
+      if (statusChangeData.expectedReturn) {
+        finalStudentData.chizuk_expected_return = statusChangeData.expectedReturn;
+      }
+      if (statusChangeData.entryDate) {
+        finalStudentData.admission_date = statusChangeData.entryDate;
+        finalStudentData.exit_date = null;
+        finalStudentData.chizuk_exit_date = null;
+        finalStudentData.chizuk_expected_return = null;
+      }
+    }
+
+    const prevStatus = student?.status;
+    const newStatus = finalStudentData.status as string;
+    const becameNonActive =
+      prevStatus === 'active' &&
+      newStatus !== 'active' &&
+      ['inactive', 'graduated', 'chizuk'].includes(newStatus);
+
+    const updated = await updateStudent(id, finalStudentData);
+    if (!updated) return;
+
+    setStudent(updated);
+    setIsEditing(false);
+
+    // Create / update a student_periods row for this status change
+    if (statusChangeData) {
+      try {
+        if (statusChangeData.exitDate) {
+          // Close the most recent open period (end_date IS NULL)
+          const { data: open } = await supabase
+            .from('student_periods')
+            .select('id')
+            .eq('student_id', id)
+            .is('end_date', null)
+            .order('start_date', { ascending: false })
+            .limit(1);
+          if (open && open.length > 0) {
+            await supabase.from('student_periods')
+              .update({ end_date: statusChangeData.exitDate, notes: statusChangeData.notes || null })
+              .eq('id', open[0].id);
+          } else {
+            // Create a new closed period (best effort)
+            await supabase.from('student_periods').insert({
+              student_id: id,
+              legacy_student_id: (updated as any).legacy_student_id || null,
+              start_date: (student as any)?.admission_date || null,
+              end_date: statusChangeData.exitDate,
+              notes: statusChangeData.notes || null,
+            });
+          }
+        }
+        if (statusChangeData.entryDate) {
+          // Open a new period
+          await supabase.from('student_periods').insert({
+            student_id: id,
+            legacy_student_id: (updated as any).legacy_student_id || null,
+            start_date: statusChangeData.entryDate,
+            end_date: null,
+            notes: statusChangeData.notes || null,
+          });
+        }
+      } catch (e) {
+        console.error('Failed to update student_periods:', e);
+      }
+    }
+
+    // Auto-stop charges if student became non-active
+    if (becameNonActive) {
+      const stopRes = await stopChargesForStudent(id, newStatus as LeaveStatus);
+      if (stopRes.cancelledCharges > 0 || stopRes.modifiedCharges > 0) {
+        alert(
+          `הגביה עודכנה בהתאם לשינוי הסטטוס:\n` +
+            `• בוטלו: ${stopRes.cancelledCharges} גביות\n` +
+            `• עודכנו: ${stopRes.modifiedCharges} גביות` +
+            (stopRes.errors.length > 0 ? `\n\nשגיאות: ${stopRes.errors.join('; ')}` : '')
+        );
+      }
+    }
+
+    await loadStudent();
   }
 
   if (loading && id !== 'new') {
@@ -446,6 +545,21 @@ export default function StudentDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Status change dialog */}
+      {statusDialog && (
+        <StatusChangeDialog
+          isOpen={true}
+          change={statusDialog.change}
+          newStatus={statusDialog.newStatus}
+          onCancel={() => setStatusDialog(null)}
+          onConfirm={async (dateData) => {
+            const pending = statusDialog.pendingData;
+            setStatusDialog(null);
+            await finalizeSave(pending, dateData);
+          }}
+        />
+      )}
     </>
   );
 }
