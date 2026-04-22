@@ -39,6 +39,7 @@ export function CertificatePreview({
   if (reportType.isReceipt) {
     return (
       <div id="certificate-preview" className="certificate-container">
+        <div className="certificate-scale-wrapper">
         <div className="certificate-page receipt-page">
           {/* Thank you letter section */}
           <div className="receipt-header">
@@ -91,12 +92,16 @@ export function CertificatePreview({
             </p>
           </div>
         </div>
+        </div>
 
         <style jsx>{`
           .certificate-container {
             display: flex;
             justify-content: center;
             padding: 20px;
+          }
+          .certificate-scale-wrapper {
+            flex-shrink: 0;
           }
           .certificate-page {
             width: 210mm;
@@ -135,14 +140,26 @@ export function CertificatePreview({
             .certificate-container {
               padding: 8px;
               overflow: hidden;
-            }
-            .certificate-page {
+              display: block;
               width: 100%;
-              min-width: 0;
-              min-height: auto;
-              padding: 16px 14px;
-              font-size: 13px;
-              line-height: 1.6;
+            }
+            .certificate-scale-wrapper {
+              width: 100%;
+              aspect-ratio: 210 / 297;
+              position: relative;
+              overflow: hidden;
+            }
+            .certificate-scale-wrapper > .certificate-page {
+              position: absolute;
+              top: 0;
+              right: 0;
+              transform: scale(calc((100vw - 32px) / 794));
+              transform-origin: top right;
+            }
+          }
+          @media (max-width: 500px) {
+            .certificate-scale-wrapper > .certificate-page {
+              transform: scale(calc((100vw - 20px) / 794));
             }
           }
         `}</style>
@@ -155,6 +172,7 @@ export function CertificatePreview({
 
   return (
     <div id="certificate-preview" className="certificate-container">
+      <div className="certificate-scale-wrapper">
       <div className={`certificate-page ${letterheadUrl ? 'with-letterhead-bg' : ''}`}>
         {/* Letterhead image overlay - positioned absolutely with 2cm offset from top (email only) */}
         {letterheadUrl && (
@@ -216,12 +234,16 @@ export function CertificatePreview({
         {/* Bottom spacer - for pre-printed letterhead footer */}
         {(reserveLetterheadSpace || letterheadUrl) && <div className="letterhead-bottom-space" aria-hidden="true" />}
       </div>
+      </div>
 
       <style jsx>{`
         .certificate-container {
           display: flex;
           justify-content: center;
           padding: 20px;
+        }
+        .certificate-scale-wrapper {
+          flex-shrink: 0;
         }
         .certificate-page {
           width: 210mm;
@@ -313,33 +335,32 @@ export function CertificatePreview({
             padding: 20mm;
           }
         }
-        /* Mobile: scale the A4 page to fit viewport */
+        /* Mobile: scale A4 page inside a wrapper that compensates layout height */
         @media (max-width: 900px) {
           .certificate-container {
             padding: 8px;
             overflow: hidden;
-          }
-          .certificate-page {
+            display: block;
             width: 100%;
-            min-width: 0;
-            min-height: auto;
-            padding: 16px 14px;
-            font-size: 13px;
-            line-height: 1.7;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
           }
-          .certificate-title {
-            font-size: 20px;
-            margin: 14px 0;
+          .certificate-scale-wrapper {
+            width: 100%;
+            aspect-ratio: 210 / 297;
+            position: relative;
+            overflow: hidden;
           }
-          .certificate-recipient, .certificate-body p {
-            font-size: 13px;
+          .certificate-scale-wrapper > .certificate-page {
+            position: absolute;
+            top: 0;
+            right: 0;
+            transform: scale(calc((100vw - 32px) / 794));
+            transform-origin: top right;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
           }
-          .letterhead-top-space, .letterhead-bottom-space {
-            height: 18mm;
-          }
-          .certificate-signature {
-            margin-top: 30px;
+        }
+        @media (max-width: 500px) {
+          .certificate-scale-wrapper > .certificate-page {
+            transform: scale(calc((100vw - 20px) / 794));
           }
         }
       `}</style>
