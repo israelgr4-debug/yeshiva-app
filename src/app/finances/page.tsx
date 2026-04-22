@@ -22,6 +22,12 @@ export default function FinancesPage() {
           >
             💰 צור קובץ מס"ב (גביה חודשית)
           </Link>
+          <Link
+            href="/finances/collection/history"
+            className="bg-gray-700 hover:bg-gray-800 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+          >
+            📜 היסטוריית גביות
+          </Link>
         </div>
 
         {/* Tuition summary */}

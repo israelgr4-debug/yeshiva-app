@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -225,6 +226,15 @@ export default function CollectionPage() {
   return (
     <>
       <Header title="גביה במס״ב" subtitle={`מוסד ${mosadNumber} - ${mosadName}`} />
+
+      <div className="p-4 md:p-8 pb-0 flex gap-2">
+        <Link
+          href="/finances/collection/history"
+          className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium"
+        >
+          📜 היסטוריית גביות
+        </Link>
+      </div>
 
       <div className="p-4 md:p-8 space-y-4">
         {/* Settings + summary */}
