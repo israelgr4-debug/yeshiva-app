@@ -154,15 +154,24 @@ export function StudentCard({ student }: StudentCardProps) {
                 אחים בישיבה ({siblings.length})
               </h4>
               <div className="flex flex-wrap gap-1">
-                {siblings.map((sibling) => (
-                  <Link
-                    key={sibling.id}
-                    href={`/students/${sibling.id}`}
-                    className="inline-block text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full hover:bg-blue-100 transition-colors"
-                  >
-                    {sibling.first_name} {sibling.last_name} - {sibling.shiur}
-                  </Link>
-                ))}
+                {siblings.map((sibling) => {
+                  const isActive = sibling.status === 'active' || sibling.status === 'chizuk';
+                  return (
+                    <Link
+                      key={sibling.id}
+                      href={`/students/${sibling.id}`}
+                      className={`inline-block text-xs px-2 py-1 rounded-full transition-colors ${
+                        isActive
+                          ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200 line-through'
+                      }`}
+                      title={isActive ? 'פעיל' : 'לא פעיל'}
+                    >
+                      {sibling.first_name} {sibling.last_name}
+                      {sibling.shiur && ` - ${sibling.shiur}`}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           )}

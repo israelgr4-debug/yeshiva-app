@@ -196,27 +196,46 @@ export function useTuitionPayments() {
     }
   };
 
-  // Get summary statistics for dashboard
+  // Get summary statistics for dashboard - from payment_history (current month)
   const getTuitionSummary = async (): Promise<{
     thisMonth: number;
     collected: number;
     pending: number;
   }> => {
     try {
-      const currentMonth = new Date().toISOString().slice(0, 7);
+      const now = new Date();
+      const firstDay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const lastDay = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
 
-      const thisMonthPayments = await getTuitionPayments({ month: currentMonth });
-      const thisMonthTotal = thisMonthPayments.reduce((sum, p) => sum + p.total_amount, 0);
-      const collectedThisMonth = thisMonthPayments
-        .filter((p) => p.status === 'collected')
-        .reduce((sum, p) => sum + p.total_amount, 0);
-      const pendingThisMonth = thisMonthTotal - collectedThisMonth;
+      // Fetch all payment_history rows in current month (paginated)
+      const all: any[] = [];
+      for (let p = 0; p < 20; p++) {
+        const from = p * 1000;
+        const to = from + 999;
+        const { data, error } = await supabase
+          .from('payment_history')
+          .select('amount_ils,status_code')
+          .gte('payment_date', firstDay)
+          .lt('payment_date', lastDay)
+          .range(from, to);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < 1000) break;
+      }
 
-      return {
-        thisMonth: thisMonthTotal,
-        collected: collectedThisMonth,
-        pending: pendingThisMonth,
-      };
+      let thisMonth = 0;
+      let collected = 0;
+      let pending = 0;
+      for (const r of all) {
+        const amount = Number(r.amount_ils) || 0;
+        thisMonth += amount;
+        if (r.status_code === 2) collected += amount;
+        else if (r.status_code === 1) pending += amount;
+      }
+
+      return { thisMonth, collected, pending };
     } catch (error) {
       console.error('Error calculating tuition summary:', error);
       return { thisMonth: 0, collected: 0, pending: 0 };
