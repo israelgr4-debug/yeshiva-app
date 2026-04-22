@@ -81,20 +81,18 @@ export function Sidebar() {
             : 'translateX(100%)', // slide out to the right (RTL start)
         }}
       >
-        <div className="p-4 border-b border-slate-700 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="לוגו" className="w-12 h-12 rounded object-contain bg-white/5 p-1 flex-shrink-0" />
-            <div className="min-w-0">
-              <h1 className="text-base font-bold leading-tight">ישיבת מיר</h1>
-              <p className="text-xs text-slate-400 mt-0.5 leading-tight">מודיעין עילית</p>
-            </div>
+        <div className="p-4 border-b border-slate-700 flex flex-col items-center text-center gap-2 relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="לוגו" className="w-28 h-28 object-contain bg-white/5 rounded-lg p-1" />
+          <div>
+            <h1 className="text-lg font-bold leading-tight">ישיבת מיר</h1>
+            <p className="text-xs text-slate-400 mt-0.5 leading-tight">מודיעין עילית</p>
           </div>
-          {/* Close button for mobile */}
+          {/* Close button for mobile - absolute top-end */}
           <button
             type="button"
             onClick={() => setIsOpen(false)}
-            className="lg:hidden text-slate-400 hover:text-white p-1"
+            className="lg:hidden absolute top-2 end-2 text-slate-400 hover:text-white p-1"
             aria-label="סגור תפריט"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
