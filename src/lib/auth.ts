@@ -9,6 +9,8 @@ export interface AppUser {
   full_name: string | null;
   role: UserRole;
   is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface PermissionSet {
