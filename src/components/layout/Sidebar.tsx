@@ -83,15 +83,8 @@ export function Sidebar() {
       >
         <div className="p-3 border-b border-slate-700 flex flex-col items-center text-center gap-1 relative">
           {/* Zoom in visually to cut the transparent padding around the logo */}
-          <div className="w-36 h-36 overflow-hidden flex items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/logo.png"
-              alt="לוגו"
-              className="w-full h-full object-contain"
-              style={{ transform: 'scale(1.45)' }}
-            />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="לוגו" className="w-32 h-32 object-contain" />
           <div>
             <h1 className="text-lg font-bold leading-tight">ישיבת מיר</h1>
             <p className="text-xs text-slate-400 mt-0.5 leading-tight">מודיעין עילית</p>
