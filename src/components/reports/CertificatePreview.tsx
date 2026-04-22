@@ -16,6 +16,7 @@ interface CertificatePreviewProps {
   year: string;
   extras: Record<string, string>;
   signer?: SignerInfo;
+  signatureUrl?: string | null; // if provided, display signature image above the signer info
 }
 
 export function CertificatePreview({
@@ -24,6 +25,7 @@ export function CertificatePreview({
   year,
   extras,
   signer,
+  signatureUrl,
 }: CertificatePreviewProps) {
   const hebrewDate = getHebrewDate();
   const gregorianDate = getGregorianDate();
@@ -166,6 +168,15 @@ export function CertificatePreview({
         {/* Signature */}
         <div className="certificate-signature">
           <p>בכבוד רב,</p>
+          {signatureUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={signatureUrl}
+              alt="חתימה"
+              className="signature-image"
+              style={{ height: '60px', margin: '8px 0' }}
+            />
+          )}
           {activeSigner.name && <p className="signer-name">{activeSigner.name}</p>}
           {activeSigner.idNumber && <p>{activeSigner.idNumber}</p>}
           {activeSigner.title && <p>{activeSigner.title}</p>}

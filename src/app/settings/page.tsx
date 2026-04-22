@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useState } from 'react';
 import { NedarimPlusSettings } from '@/components/settings/NedarimPlusSettings';
+import { EmailSettings } from '@/components/settings/EmailSettings';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState({
@@ -87,6 +88,11 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Email Settings */}
+        <div className="mb-6">
+          <EmailSettings />
+        </div>
 
         {/* Nedarim Plus Integration */}
         <div className="mb-6">
