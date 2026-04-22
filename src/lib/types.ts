@@ -17,6 +17,8 @@ export interface Student {
   institution_name?: string | null;
   institution_code?: number | null;
   room_number?: number | null;
+  health_fund_name?: string | null;
+  health_fund_code?: number | null;
   created_at: string;
   updated_at: string;
 }

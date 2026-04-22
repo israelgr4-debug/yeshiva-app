@@ -126,6 +126,7 @@ export function StudentCard({ student }: StudentCardProps) {
               <DetailRow label="שיעור" value={student.shiur} />
               <DetailRow label="חדר בפנימייה" value={student.room_number ? String(student.room_number) : '-'} />
               <DetailRow label="ייחוס" value={family?.yichus_name || '-'} />
+              <DetailRow label="קופת חולים" value={student.health_fund_name || '-'} />
               <DetailRow label="תאריך לידה (לועזי)" value={student.date_of_birth} />
               <DetailRow label="תאריך לידה (עברי)" value={toHebrewDate(student.date_of_birth)} />
             </div>
