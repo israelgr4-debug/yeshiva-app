@@ -49,6 +49,7 @@ export interface Family {
   postal_code: string;
   home_phone: string;
   bank_name: string;
+  bank_number?: number | null;
   bank_branch: string;
   bank_account: string;
   billing_notes: string;

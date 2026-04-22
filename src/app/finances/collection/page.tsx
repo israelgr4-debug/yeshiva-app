@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
-import { Card, CardContent, CardHeader } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { supabase } from '@/lib/supabase';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
