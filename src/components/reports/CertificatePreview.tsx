@@ -16,7 +16,9 @@ interface CertificatePreviewProps {
   year: string;
   extras: Record<string, string>;
   signer?: SignerInfo;
-  signatureUrl?: string | null; // if provided, display signature image above the signer info
+  signatureUrl?: string | null; // email only - show signature above signer info
+  letterheadUrl?: string | null; // email only - show letterhead image at top
+  reserveLetterheadSpace?: boolean; // print - leave blank top area for pre-printed letterhead
 }
 
 export function CertificatePreview({
@@ -26,6 +28,8 @@ export function CertificatePreview({
   extras,
   signer,
   signatureUrl,
+  letterheadUrl,
+  reserveLetterheadSpace,
 }: CertificatePreviewProps) {
   const hebrewDate = getHebrewDate();
   const gregorianDate = getGregorianDate();
@@ -138,6 +142,16 @@ export function CertificatePreview({
   return (
     <div id="certificate-preview" className="certificate-container">
       <div className="certificate-page">
+        {/* Letterhead image (email) OR reserved space (print) */}
+        {letterheadUrl ? (
+          <div className="letterhead-area">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={letterheadUrl} alt="בלאנק" className="letterhead-img" />
+          </div>
+        ) : reserveLetterheadSpace ? (
+          <div className="letterhead-reserved" aria-hidden="true" />
+        ) : null}
+
         {/* Header */}
         <div className="certificate-header">
           <div className="bsd">בס&quot;ד</div>
@@ -201,6 +215,19 @@ export function CertificatePreview({
           line-height: 2;
           color: #000;
           position: relative;
+        }
+        .letterhead-area {
+          text-align: center;
+          margin-bottom: 15px;
+        }
+        .letterhead-img {
+          max-width: 100%;
+          max-height: 120px;
+          object-fit: contain;
+        }
+        .letterhead-reserved {
+          height: 35mm; /* ~4 lines of blank space for pre-printed letterhead */
+          width: 100%;
         }
         .certificate-header {
           text-align: center;

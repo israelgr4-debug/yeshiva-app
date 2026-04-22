@@ -16,7 +16,9 @@ export function EmailSettings() {
   const [appPassword, setAppPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [signatureUrl, setSignatureUrl] = useState('');
+  const [letterheadUrl, setLetterheadUrl] = useState('');
   const [uploadingSig, setUploadingSig] = useState(false);
+  const [uploadingLH, setUploadingLH] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -26,6 +28,7 @@ export function EmailSettings() {
     setDisplayName(await getSetting<string>('email_display_name', 'ישיבת מיר מודיעין עילית'));
     setAppPassword(await getSetting<string>('email_app_password', ''));
     setSignatureUrl(await getSetting<string>('signature_url', ''));
+    setLetterheadUrl(await getSetting<string>('letterhead_url', ''));
   }, [getSetting]);
 
   useEffect(() => {
@@ -74,6 +77,35 @@ export function EmailSettings() {
     if (!confirm('להסיר את החתימה?')) return;
     await setSetting('signature_url', '');
     setSignatureUrl('');
+  };
+
+  const handleLetterheadUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLH(true);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const path = `letterhead-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('signatures')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('signatures').getPublicUrl(path);
+      const url = pub.publicUrl;
+      await setSetting('letterhead_url', url);
+      setLetterheadUrl(url);
+      alert('בלאנק הועלה בהצלחה');
+    } catch (err: any) {
+      alert('שגיאה: ' + (err?.message || err));
+    } finally {
+      setUploadingLH(false);
+    }
+  };
+
+  const handleRemoveLetterhead = async () => {
+    if (!confirm('להסיר את הבלאנק?')) return;
+    await setSetting('letterhead_url', '');
+    setLetterheadUrl('');
   };
 
   return (
@@ -146,6 +178,50 @@ export function EmailSettings() {
           <Button onClick={handleSave} disabled={saving} className="mr-auto">
             {saving ? 'שומר...' : 'שמור הגדרות'}
           </Button>
+        </div>
+
+        {/* Letterhead upload */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h4 className="text-md font-semibold mb-2">בלאנק (לוגו עליון) לאישורים (PNG)</h4>
+          <p className="text-sm text-gray-600 mb-4">
+            הבלאנק יופיע <strong>רק</strong> באישורים שנשלחים במייל (למעלה).
+            בהדפסה יישאר שטח ריק למעלה כדי להדפיס על בלאנק פיזי.
+          </p>
+
+          <div className="flex items-center gap-4">
+            {letterheadUrl ? (
+              <div className="border border-gray-300 rounded-lg p-2 bg-gray-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={letterheadUrl} alt="בלאנק" className="h-20 max-w-xs object-contain" />
+              </div>
+            ) : (
+              <div className="w-48 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 text-sm">
+                אין בלאנק
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <label className="inline-block cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium border border-blue-200 text-center">
+                {uploadingLH ? 'מעלה...' : letterheadUrl ? 'החלף בלאנק' : 'העלה בלאנק'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={handleLetterheadUpload}
+                  disabled={uploadingLH}
+                  className="hidden"
+                />
+              </label>
+              {letterheadUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemoveLetterhead}
+                  className="text-sm text-red-600 hover:text-red-800 underline"
+                >
+                  הסר בלאנק
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Signature upload */}

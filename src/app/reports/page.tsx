@@ -24,6 +24,7 @@ export default function ReportsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [certificate, setCertificate] = useState<GeneratedCertificate | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string>('');
+  const [letterheadUrl, setLetterheadUrl] = useState<string>('');
   const [emailOpen, setEmailOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -34,6 +35,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     getSetting<string>('signature_url', '').then(setSignatureUrl);
+    getSetting<string>('letterhead_url', '').then(setLetterheadUrl);
   }, [getSetting]);
 
   const handleGenerate = useCallback(
@@ -107,17 +109,18 @@ export default function ReportsPage() {
                 </div>
               </div>
 
-              {/* Visible preview - NO signature (this is what gets printed) */}
+              {/* Visible preview - print version: NO signature, BLANK letterhead space */}
               <div ref={printRef} className="print-area">
                 <CertificatePreview
                   student={certificate.student}
                   reportType={certificate.reportType}
                   year={certificate.year}
                   extras={certificate.extras}
+                  reserveLetterheadSpace={true}
                 />
               </div>
 
-              {/* Hidden signed version - used only to build the email HTML */}
+              {/* Hidden email version - WITH signature AND letterhead image */}
               <div ref={previewRef} style={{ position: 'absolute', left: '-9999px', top: 0 }} aria-hidden="true">
                 <CertificatePreview
                   student={certificate.student}
@@ -125,18 +128,22 @@ export default function ReportsPage() {
                   year={certificate.year}
                   extras={certificate.extras}
                   signatureUrl={signatureUrl || null}
+                  letterheadUrl={letterheadUrl || null}
                 />
               </div>
 
-              {signatureUrl ? (
-                <p className="text-xs text-gray-500 mt-2 text-center no-print">
-                  ℹ️ החתימה תוצג רק במייל, לא בהדפסה
-                </p>
-              ) : (
-                <p className="text-xs text-amber-600 mt-2 text-center no-print">
-                  ⚠️ אין חתימה מוגדרת. לשליחת אישורים חתומים במייל - העלה חתימה בהגדרות.
-                </p>
-              )}
+              <div className="text-xs mt-2 text-center no-print space-y-1">
+                {signatureUrl ? (
+                  <p className="text-gray-500">ℹ️ החתימה תוצג רק במייל</p>
+                ) : (
+                  <p className="text-amber-600">⚠️ אין חתימה - העלה בהגדרות</p>
+                )}
+                {letterheadUrl ? (
+                  <p className="text-gray-500">ℹ️ בלאנק יוצג רק במייל. בהדפסה מושאר שטח ריק למעלה לבלאנק פיזי.</p>
+                ) : (
+                  <p className="text-amber-600">⚠️ אין בלאנק - העלה בהגדרות כדי שישלח באימייל</p>
+                )}
+              </div>
             </div>
           ) : (
             <Card>
