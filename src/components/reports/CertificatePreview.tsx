@@ -142,6 +142,17 @@ export function CertificatePreview({
   return (
     <div id="certificate-preview" className="certificate-container">
       <div className={`certificate-page ${letterheadUrl ? 'with-letterhead-bg' : ''}`}>
+        {/* Letterhead image overlay - positioned absolutely with 2cm offset from top (email only) */}
+        {letterheadUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={letterheadUrl}
+            alt="בלאנק"
+            className="letterhead-bg-img"
+            aria-hidden="true"
+          />
+        )}
+
         {/* Top spacer - for pre-printed letterhead (print) OR when using full-page background (email) */}
         {(reserveLetterheadSpace || letterheadUrl) && <div className="letterhead-top-space" aria-hidden="true" />}
 
@@ -211,15 +222,26 @@ export function CertificatePreview({
           color: #000;
           position: relative;
         }
-        /* Full-page letterhead background (email only) */
+        /* Letterhead on email: make the page relative, overlay the image absolutely */
         .certificate-page.with-letterhead-bg {
-          background-image: url('${letterheadUrl || ''}');
-          background-size: 100% 100%;
-          background-repeat: no-repeat;
-          background-position: center;
+          position: relative;
+        }
+        .letterhead-bg-img {
+          position: absolute;
+          top: 20mm; /* push down 2cm from page top */
+          left: 0;
+          width: 100%;
+          height: calc(100% - 20mm); /* fit the rest of the page */
+          object-fit: fill; /* stretch to fill */
+          z-index: 0;
+          pointer-events: none;
+        }
+        .certificate-page.with-letterhead-bg > *:not(.letterhead-bg-img) {
+          position: relative;
+          z-index: 1; /* make text appear above the image */
         }
         .letterhead-top-space {
-          height: 55mm; /* space for header / pre-printed letterhead top */
+          height: 40mm; /* space for header (30mm letterhead top + 10mm margin) */
           width: 100%;
         }
         .letterhead-bottom-space {
