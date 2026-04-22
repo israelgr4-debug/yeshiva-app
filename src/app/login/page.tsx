@@ -17,32 +17,41 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-      if (signInErr) {
+      const { data: authData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInErr || !authData.user) {
         setError('שם משתמש או סיסמה שגויים');
         return;
       }
 
-      // Verify user is in app_users (is_active)
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setError('שגיאה בכניסה');
-        return;
+      // Verify user is in app_users (is_active). Retry a few times since
+      // the JWT may take a moment to propagate to PostgREST.
+      let appUser: any = null;
+      let lastError: any = null;
+      for (let i = 0; i < 6; i++) {
+        const { data, error: selErr } = await supabase
+          .from('app_users')
+          .select('is_active, role')
+          .eq('id', authData.user.id)
+          .maybeSingle();
+        if (data) {
+          appUser = data;
+          break;
+        }
+        if (selErr) lastError = selErr;
+        await new Promise((r) => setTimeout(r, 400));
       }
-
-      const { data: appUser } = await supabase
-        .from('app_users')
-        .select('is_active')
-        .eq('id', session.user.id)
-        .maybeSingle();
 
       if (!appUser || !appUser.is_active) {
         await supabase.auth.signOut();
-        setError('המשתמש אינו מורשה להיכנס למערכת. פנה למנהל.');
+        const diag = lastError ? ` [${lastError.message}]` : '';
+        setError(
+          `המשתמש אינו מורשה להיכנס למערכת. פנה למנהל.${diag}\n(User ID: ${authData.user.id})`
+        );
         return;
       }
 
       router.push('/');
+      router.refresh();
     } catch (err: any) {
       setError(err?.message || 'שגיאה לא ידועה');
     } finally {
