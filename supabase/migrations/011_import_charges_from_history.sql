@@ -33,6 +33,7 @@ BEGIN
     JOIN students s ON s.id = ph.student_id
     WHERE ph.payment_date = batch_date
       AND ph.amount_ils > 0
+      AND ph.group_number IS NOT NULL   -- only standing-order rows sent to Masav
       AND s.status = 'active'
     GROUP BY s.family_id
   LOOP
