@@ -47,6 +47,7 @@ export default function CollectionHistoryPage() {
   const [students, setStudents] = useState<Record<string, StudentLite>>({});
   const [activeTab, setActiveTab] = useState<TabId>('history');
   const [markingRun, setMarkingRun] = useState<string | null>(null);
+  const [refreshingForecast, setRefreshingForecast] = useState(false);
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -218,6 +219,28 @@ export default function CollectionHistoryPage() {
     }
   };
 
+  const handleRefreshForecast = async () => {
+    if (!confirm('לרענן צפי ל-12 חודשים? פעולה זו תמחק שורות צפי קיימות ותיצור חדשות לפי מצב הגביות הפעילות.')) return;
+    setRefreshingForecast(true);
+    try {
+      const { data, error } = await supabase.rpc('refresh_forecast', { months_ahead: 12 });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      alert(
+        `✓ רענון הושלם\n\n` +
+          `שורות שנמחקו: ${row?.deleted_rows ?? 0}\n` +
+          `שורות חדשות: ${row?.created_rows ?? 0}\n` +
+          `תלמידים שעובדו: ${row?.students_processed ?? 0}\n` +
+          `דולגו (לא פעיל/מושהה): ${row?.skipped_inactive ?? 0}`
+      );
+      await loadRuns();
+    } catch (e: any) {
+      alert('שגיאה: ' + (e?.message || e));
+    } finally {
+      setRefreshingForecast(false);
+    }
+  };
+
   const formatCurrency = (n: number) => `₪${(Number(n) || 0).toLocaleString('he-IL')}`;
   const monthYear = (iso: string) => {
     const d = new Date(iso);
@@ -242,6 +265,16 @@ export default function CollectionHistoryPage() {
           >
             כספים
           </Link>
+          {activeTab === 'forecast' && (
+            <Button
+              size="sm"
+              onClick={handleRefreshForecast}
+              disabled={refreshingForecast}
+              className="mr-auto"
+            >
+              {refreshingForecast ? 'מרענן...' : '🔄 רענן צפי 12 חודשים'}
+            </Button>
+          )}
         </div>
 
         {/* Tabs */}
