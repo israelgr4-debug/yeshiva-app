@@ -19,6 +19,25 @@ body {
   line-height: 1.6;
 }
 
+/* Certificate preview frame - contains the A4 preview so it never overflows the viewport */
+.preview-frame {
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #f1f5f9;
+}
+
+@media (max-width: 1023px) {
+  .preview-frame {
+    display: none;
+    border: 1px solid #e2e8f0;
+    padding: 8px;
+  }
+  .preview-frame.preview-open {
+    display: block;
+  }
+}
+
 /* RTL utilities */
 .text-start {
   text-align: right;

@@ -26,6 +26,7 @@ export default function ReportsPage() {
   const [signatureUrl, setSignatureUrl] = useState<string>('');
   const [letterheadUrl, setLetterheadUrl] = useState<string>('');
   const [emailOpen, setEmailOpen] = useState(false);
+  const [showMobilePreview, setShowMobilePreview] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
@@ -53,12 +54,12 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn p-4 md:p-8">
+    <div className="space-y-6 animate-fadeIn p-4 md:p-8 max-w-full overflow-x-hidden">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">אישורים</h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-full">
         {/* Selector panel */}
         <div className="lg:col-span-1 no-print">
           <Card>
@@ -72,9 +73,9 @@ export default function ReportsPage() {
         </div>
 
         {/* Preview panel */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 min-w-0">
           {certificate ? (
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center justify-between mb-4 no-print gap-2 flex-wrap">
                 <h2 className="text-lg font-semibold text-gray-800">תצוגה מקדימה</h2>
                 <div className="flex gap-2 w-full sm:w-auto flex-wrap">
@@ -87,8 +88,22 @@ export default function ReportsPage() {
                 </div>
               </div>
 
+              {/* Mobile: show toggle button; Desktop: always show preview */}
+              <div className="lg:hidden mb-3 no-print">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowMobilePreview((v) => !v)}
+                  className="w-full"
+                >
+                  {showMobilePreview ? '▲ הסתר תצוגה מקדימה' : '▼ הצג תצוגה מקדימה'}
+                </Button>
+              </div>
+
               {/* Visible preview - print version: NO signature, BLANK letterhead space */}
-              <div ref={printRef} className="print-area">
+              <div
+                ref={printRef}
+                className={`print-area preview-frame ${showMobilePreview ? 'preview-open' : ''}`}
+              >
                 <CertificatePreview
                   student={certificate.student}
                   reportType={certificate.reportType}
