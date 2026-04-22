@@ -388,7 +388,7 @@ export default function StudentDetailPage() {
                           ) : '-'}
                         </p>
                       </div>
-                      <DetailRow label="שנה מקבילה" value={student.equivalent_year} />
+                      <DetailRow label="כתה מקבילה" value={student.equivalent_year} />
                     </div>
                   )}
 

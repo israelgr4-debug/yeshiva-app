@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { MachzorTab } from '@/components/actions/MachzorTab';
+import { EquivalentClassTab } from '@/components/actions/EquivalentClassTab';
 
-type TabId = 'machzor';
+type TabId = 'machzor' | 'equivalent';
 
 interface TabDef {
   id: TabId;
@@ -14,7 +15,7 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { id: 'machzor', label: 'מחזור', icon: '🎓' },
-  // Future tabs will be added here (e.g., 'payments', 'bulk-import', 'archive')
+  { id: 'equivalent', label: 'כתה מקבילה', icon: '🏫' },
 ];
 
 export default function ActionsPage() {
@@ -48,6 +49,7 @@ export default function ActionsPage() {
 
         {/* Tab content */}
         {activeTab === 'machzor' && <MachzorTab />}
+        {activeTab === 'equivalent' && <EquivalentClassTab />}
       </div>
     </>
   );

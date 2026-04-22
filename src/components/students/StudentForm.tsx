@@ -427,7 +427,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             </div>
           </div>
           <Input
-            label="שנה מקבילה"
+            label="כתה מקבילה"
             name="equivalent_year"
             value={studentData.equivalent_year}
             onChange={handleStudentChange}
