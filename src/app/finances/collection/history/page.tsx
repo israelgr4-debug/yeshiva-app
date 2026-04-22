@@ -52,8 +52,6 @@ export default function CollectionHistoryPage() {
   const [page, setPage] = useState(1);
   const perPage = 50;
 
-  const today = new Date().toISOString().slice(0, 10);
-
   const loadRuns = async () => {
     setLoading(true);
     const all: CollectionRun[] = [];
