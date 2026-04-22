@@ -76,13 +76,20 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Convert base64-string attachments to Buffer for nodemailer
+  const mailAttachments = (attachments || []).map((a: any) => ({
+    filename: a.filename,
+    content: typeof a.content === 'string' ? Buffer.from(a.content, 'base64') : a.content,
+    contentType: a.contentType || 'application/octet-stream',
+  }));
+
   try {
     const info = await transporter.sendMail({
       from: `"${fromName}" <${fromEmail}>`,
       to,
       subject,
       html,
-      attachments: attachments || undefined,
+      attachments: mailAttachments.length > 0 ? mailAttachments : undefined,
     });
 
     // Log to audit_log (INSERT into system_settings won't trigger so we log manually via RPC)

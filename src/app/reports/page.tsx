@@ -47,31 +47,9 @@ export default function ReportsPage() {
 
   const handlePrint = () => window.print();
 
-  // Build the email HTML - render the certificate WITH signature visible
-  const buildCertificateEmailHtml = async (): Promise<string> => {
-    if (!previewRef.current) return '';
-    // Clone the current preview DOM
-    const clone = previewRef.current.cloneNode(true) as HTMLElement;
-
-    // If there's a signature URL, ensure it's rendered even if the visible
-    // preview didn't show it (we always include it in emails)
-    // The preview for email rendering has signatureUrl set below.
-
-    return `
-      <!DOCTYPE html>
-      <html dir="rtl" lang="he">
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { margin: 0; padding: 20px; background: white; font-family: 'David', 'Miriam', Arial, sans-serif; direction: rtl; }
-          @page { size: A4; margin: 0; }
-        </style>
-      </head>
-      <body>
-        ${clone.innerHTML}
-      </body>
-      </html>
-    `;
+  // Get the email-version preview element (with signature + letterhead)
+  const getEmailPdfElement = (): HTMLElement | null => {
+    return previewRef.current?.querySelector('.certificate-page') as HTMLElement | null;
   };
 
   return (
@@ -164,7 +142,9 @@ export default function ReportsPage() {
           onClose={() => setEmailOpen(false)}
           defaultSubject={`${certificate.reportType.name} - ${certificate.student.first_name} ${certificate.student.last_name}`}
           defaultRecipient=""
-          buildHtml={buildCertificateEmailHtml}
+          pdfElement={getEmailPdfElement}
+          pdfFilename={`${certificate.reportType.name}_${certificate.student.last_name}_${certificate.student.first_name}.pdf`}
+          bodyText={`שלום,\n\nמצורף ${certificate.reportType.name} עבור ${certificate.student.first_name} ${certificate.student.last_name}.\n\nבברכה,\nישיבת מיר מודיעין עילית`}
         />
       )}
     </div>

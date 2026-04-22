@@ -3,12 +3,12 @@
 import React from 'react';
 import { Student } from '@/lib/types';
 import {
-  getHebrewDate,
   getGregorianDate,
   SignerInfo,
   DEFAULT_SIGNER,
   ReportType,
 } from '@/lib/certificates';
+import { toHebrewDate } from '@/lib/utils';
 
 interface CertificatePreviewProps {
   student: Student;
@@ -31,7 +31,7 @@ export function CertificatePreview({
   letterheadUrl,
   reserveLetterheadSpace,
 }: CertificatePreviewProps) {
-  const hebrewDate = getHebrewDate();
+  const hebrewDate = toHebrewDate(new Date());
   const gregorianDate = getGregorianDate();
   const activeSigner = reportType.signer || signer || DEFAULT_SIGNER;
 
@@ -145,10 +145,9 @@ export function CertificatePreview({
         {/* Top spacer - for pre-printed letterhead (print) OR when using full-page background (email) */}
         {(reserveLetterheadSpace || letterheadUrl) && <div className="letterhead-top-space" aria-hidden="true" />}
 
-        {/* Header */}
+        {/* Header - yeshiva name is on the letterhead, so we skip it here */}
         <div className="certificate-header">
           <div className="bsd">בס&quot;ד</div>
-          <div className="yeshiva-name">ישיבת מיר מודיעין עילית</div>
           <div className="date-line">
             <span>{hebrewDate}</span>
             <span>{gregorianDate}</span>

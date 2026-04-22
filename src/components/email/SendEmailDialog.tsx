@@ -8,12 +8,25 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   defaultSubject: string;
-  buildHtml: () => string | Promise<string>; // returns HTML body
-  attachments?: Array<{ filename: string; content: string; contentType: string }>; // base64 content
+  buildHtml?: () => string | Promise<string>; // optional HTML body (if no pdfElement)
+  pdfElement?: () => HTMLElement | null; // if provided, generate PDF from this element and attach
+  pdfFilename?: string;
+  bodyText?: string; // short text body for the email (when sending attachment)
+  attachments?: Array<{ filename: string; content: string; contentType: string }>;
   defaultRecipient?: string;
 }
 
-export function SendEmailDialog({ isOpen, onClose, defaultSubject, buildHtml, attachments, defaultRecipient }: Props) {
+export function SendEmailDialog({
+  isOpen,
+  onClose,
+  defaultSubject,
+  buildHtml,
+  pdfElement,
+  pdfFilename = 'certificate.pdf',
+  bodyText,
+  attachments,
+  defaultRecipient,
+}: Props) {
   const [to, setTo] = useState(defaultRecipient || '');
   const [subject, setSubject] = useState(defaultSubject);
   const [note, setNote] = useState('');
@@ -35,11 +48,33 @@ export function SendEmailDialog({ isOpen, onClose, defaultSubject, buildHtml, at
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || '';
 
-      const baseHtml = await buildHtml();
-      const finalHtml = note
-        ? `<div dir="rtl" style="font-family: Arial, sans-serif; padding: 16px; background: #f5f5f5; margin-bottom: 20px; border-right: 3px solid #3b82f6;">${escapeHtml(note).replace(/\n/g, '<br>')}</div>${baseHtml}`
-        : baseHtml;
+      // Build attachments list - either from prop or generate PDF from element
+      const finalAttachments = attachments ? [...attachments] : [];
+      if (pdfElement) {
+        setResult('📄 יוצר PDF...');
+        const el = pdfElement();
+        if (!el) throw new Error('Element not found for PDF');
+        const { elementToPdfBase64 } = await import('@/lib/pdf-export');
+        const pdfB64 = await elementToPdfBase64(el);
+        finalAttachments.push({
+          filename: pdfFilename,
+          content: pdfB64,
+          contentType: 'application/pdf',
+        });
+      }
 
+      // Build email body
+      let bodyHtml = '';
+      if (bodyText) {
+        bodyHtml = `<div dir="rtl" style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">${escapeHtml(bodyText).replace(/\n/g, '<br>')}</div>`;
+      } else if (buildHtml) {
+        bodyHtml = await buildHtml();
+      }
+      if (note) {
+        bodyHtml = `<div dir="rtl" style="font-family: Arial, sans-serif; padding: 16px; background: #f5f5f5; margin-bottom: 20px; border-right: 3px solid #3b82f6;">${escapeHtml(note).replace(/\n/g, '<br>')}</div>${bodyHtml}`;
+      }
+
+      setResult('📧 שולח מייל...');
       const res = await fetch('/api/email/send', {
         method: 'POST',
         headers: {
@@ -49,8 +84,8 @@ export function SendEmailDialog({ isOpen, onClose, defaultSubject, buildHtml, at
         body: JSON.stringify({
           to: to.trim(),
           subject: subject.trim() || defaultSubject,
-          html: finalHtml,
-          attachments,
+          html: bodyHtml || '<p>מצורף אישור בקובץ PDF.</p>',
+          attachments: finalAttachments,
         }),
       });
 
