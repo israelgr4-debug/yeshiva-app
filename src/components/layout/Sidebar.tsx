@@ -136,12 +136,20 @@ export function Sidebar() {
             </>
           )}
           {permissions.canManageUsers && (
-            <Link
-              href="/settings/users"
-              className="block text-xs text-slate-400 hover:text-white text-center"
-            >
-              ניהול משתמשים
-            </Link>
+            <div className="flex flex-col gap-1 pt-1 border-t border-slate-700">
+              <Link
+                href="/settings/users"
+                className="block text-xs text-slate-400 hover:text-white text-center py-1"
+              >
+                👤 ניהול משתמשים
+              </Link>
+              <Link
+                href="/settings/audit"
+                className="block text-xs text-slate-400 hover:text-white text-center py-1"
+              >
+                📋 יומן פעולות
+              </Link>
+            </div>
           )}
         </div>
       </aside>
