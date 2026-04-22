@@ -89,7 +89,7 @@ export function Sidebar() {
               src="/logo.png"
               alt="לוגו"
               className="w-full h-full object-contain"
-              style={{ transform: 'scale(1.45)', mixBlendMode: 'lighten' }}
+              style={{ transform: 'scale(1.45)' }}
             />
           </div>
           <div>
