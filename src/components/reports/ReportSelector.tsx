@@ -12,6 +12,9 @@ interface ReportSelectorProps {
   onGenerate: (student: Student, reportType: ReportType, year: string, extras: Record<string, string>) => void;
 }
 
+// Report IDs where we default to showing INACTIVE students (תלמידים שעזבו)
+const LEFT_STUDENT_REPORT_IDS: ReportTypeId[] = ['left', 'left_with_masachtot'];
+
 export function ReportSelector({ students, loading, onGenerate }: ReportSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState('');
@@ -19,18 +22,38 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
   const [selectedReportId, setSelectedReportId] = useState<ReportTypeId | ''>('');
   const [year, setYear] = useState('תשפ"ו');
   const [extras, setExtras] = useState<Record<string, string>>({});
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Auto-switch default status filter based on selected report type
+  useEffect(() => {
+    if (!selectedReportId) return;
+    if (LEFT_STUDENT_REPORT_IDS.includes(selectedReportId)) {
+      setStatusFilter('inactive');
+    } else {
+      setStatusFilter('active');
+    }
+  }, [selectedReportId]);
+
   const filteredStudents = useMemo(() => {
-    if (!searchTerm.trim()) return students;
+    let list = students;
+
+    // Status filter
+    if (statusFilter === 'active') {
+      list = list.filter((s) => s.status === 'active' || s.status === 'chizuk');
+    } else if (statusFilter === 'inactive') {
+      list = list.filter((s) => s.status !== 'active' && s.status !== 'chizuk');
+    }
+
+    if (!searchTerm.trim()) return list;
     const term = searchTerm.toLowerCase();
-    return students.filter(
+    return list.filter(
       (s) =>
-        s.first_name.toLowerCase().includes(term) ||
-        s.last_name.toLowerCase().includes(term) ||
-        s.id_number.includes(term)
+        (s.first_name || '').toLowerCase().includes(term) ||
+        (s.last_name || '').toLowerCase().includes(term) ||
+        (s.id_number || '').includes(term)
     );
-  }, [students, searchTerm]);
+  }, [students, searchTerm, statusFilter]);
 
   const selectedStudent = useMemo(
     () => students.find((s) => s.id === selectedStudentId) || null,
@@ -73,6 +96,40 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
 
   return (
     <div className="space-y-6">
+      {/* Status filter */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">סינון תלמידים</label>
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+          <button
+            type="button"
+            onClick={() => setStatusFilter('active')}
+            className={`flex-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              statusFilter === 'active' ? 'bg-white shadow text-blue-700' : 'text-gray-600'
+            }`}
+          >
+            פעילים
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('inactive')}
+            className={`flex-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              statusFilter === 'inactive' ? 'bg-white shadow text-blue-700' : 'text-gray-600'
+            }`}
+          >
+            שעזבו
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('all')}
+            className={`flex-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              statusFilter === 'all' ? 'bg-white shadow text-blue-700' : 'text-gray-600'
+            }`}
+          >
+            הכל
+          </button>
+        </div>
+      </div>
+
       {/* Student search */}
       <div ref={dropdownRef} className="relative">
         <label className="block text-sm font-medium text-gray-700 mb-2">בחר תלמיד</label>
