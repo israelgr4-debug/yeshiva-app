@@ -20,7 +20,7 @@ export function TuitionSetupForm({ onSuccess }: TuitionSetupFormProps) {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [studentAmounts, setStudentAmounts] = useState<Record<string, number>>({});
   const [paymentMethod, setPaymentMethod] = useState<'standing_order' | 'check' | 'credit' | 'office' | 'exempt'>('standing_order');
-  const [scheduledDay, setScheduledDay] = useState<number>(15);
+  const [scheduledDay, setScheduledDay] = useState<number>(20);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
 
