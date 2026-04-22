@@ -81,10 +81,14 @@ export function Sidebar() {
             : 'translateX(100%)', // slide out to the right (RTL start)
         }}
       >
-        <div className="p-6 border-b border-slate-700 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">ישיבת מיר</h1>
-            <p className="text-sm text-slate-400 mt-1">מודיעין עילית</p>
+        <div className="p-4 border-b border-slate-700 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="לוגו" className="w-12 h-12 rounded object-contain bg-white/5 p-1 flex-shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-base font-bold leading-tight">ישיבת מיר</h1>
+              <p className="text-xs text-slate-400 mt-0.5 leading-tight">מודיעין עילית</p>
+            </div>
           </div>
           {/* Close button for mobile */}
           <button
