@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { MainLayout } from '@/components/layout/MainLayout';
+import { AppShell } from '@/components/layout/AppShell';
+import { AuthProvider } from '@/hooks/useAuth';
 
 export const metadata: Metadata = {
   title: 'ישיבת מיר מודיעין עילית',
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html dir="rtl" lang="he">
       <body>
-        <MainLayout>{children}</MainLayout>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );

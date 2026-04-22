@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 const menuItems = [
   { href: '/', label: 'לוח בקרה', icon: '▦' },
@@ -17,9 +18,17 @@ const menuItems = [
   { href: '/settings', label: 'הגדרות', icon: '⚙' },
 ];
 
+const roleLabels: Record<string, string> = {
+  admin: 'מנהל ראשי',
+  manager: 'מנהל',
+  secretary: 'מזכירה',
+  viewer: 'צפיה בלבד',
+};
+
 export function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const { user, signOut, permissions } = useAuth();
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
@@ -110,11 +119,30 @@ export function Sidebar() {
           </ul>
         </nav>
 
-        <div className="p-4 border-t border-slate-700">
-          <div className="text-xs text-slate-400">
-            <p className="truncate">משתמש: מנהל</p>
-            <p className="text-slate-500 mt-2 text-center">ישיבת מיר מודיעין עילית</p>
-          </div>
+        <div className="p-4 border-t border-slate-700 space-y-2">
+          {user && (
+            <>
+              <div className="text-xs text-slate-300">
+                <p className="font-semibold truncate">{user.full_name || user.email}</p>
+                <p className="text-slate-400 mt-0.5">{roleLabels[user.role] || user.role}</p>
+              </div>
+              <button
+                type="button"
+                onClick={signOut}
+                className="w-full text-xs text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 px-2 py-1.5 rounded transition-colors"
+              >
+                יציאה
+              </button>
+            </>
+          )}
+          {permissions.canManageUsers && (
+            <Link
+              href="/settings/users"
+              className="block text-xs text-slate-400 hover:text-white text-center"
+            >
+              ניהול משתמשים
+            </Link>
+          )}
         </div>
       </aside>
 
