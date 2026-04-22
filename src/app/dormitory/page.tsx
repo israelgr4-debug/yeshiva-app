@@ -4,26 +4,42 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { useSupabase } from '@/hooks/useSupabase';
+import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { Student } from '@/lib/types';
 import { SHIURIM_SECTIONS, KIBBUTZ_SECTIONS, shortStudentName, DormSection } from '@/lib/dorm-map';
 
 type TabId = 'shiurim' | 'kibbutz';
 
+const SETTING_KEY = 'dormitory_layout';
+
+interface LayoutSection {
+  id: string;
+  title: string;
+  category: 'shiurim' | 'kibbutz';
+  rows: (number | string)[][];
+}
+
 export default function DormitoryPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('shiurim');
+  const [customLayout, setCustomLayout] = useState<LayoutSection[] | null>(null);
   const { fetchData } = useSupabase();
+  const { getSetting } = useSystemSettings();
 
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const data = await fetchData<Student>('students', { status: 'active' });
+      const [data, layout] = await Promise.all([
+        fetchData<Student>('students', { status: 'active' }),
+        getSetting<LayoutSection[] | null>(SETTING_KEY, null),
+      ]);
       setStudents(data.filter((s) => s.room_number));
+      if (layout && Array.isArray(layout) && layout.length > 0) setCustomLayout(layout);
       setLoading(false);
     }
     load();
-  }, [fetchData]);
+  }, [fetchData, getSetting]);
 
   // Build room → students map
   const roomMap = useMemo(() => {
@@ -38,7 +54,13 @@ export default function DormitoryPage() {
 
   const handlePrint = () => window.print();
 
-  const sections = activeTab === 'shiurim' ? SHIURIM_SECTIONS : KIBBUTZ_SECTIONS;
+  // Use saved layout if exists, else fall back to defaults
+  const sections = useMemo(() => {
+    if (customLayout) {
+      return customLayout.filter((s) => s.category === activeTab);
+    }
+    return activeTab === 'shiurim' ? SHIURIM_SECTIONS : KIBBUTZ_SECTIONS;
+  }, [customLayout, activeTab]);
 
   return (
     <>
@@ -78,6 +100,13 @@ export default function DormitoryPage() {
           >
             🖨️ הדפס / שמור PDF
           </button>
+
+          <Link
+            href="/dormitory/edit"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+          >
+            ✏️ ערוך מפה
+          </Link>
 
           <span className="text-sm text-gray-500 ms-auto">
             {loading ? 'טוען...' : `${students.length} תלמידים פעילים עם חדר`}
