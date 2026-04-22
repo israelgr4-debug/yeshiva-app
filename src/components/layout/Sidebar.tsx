@@ -81,9 +81,17 @@ export function Sidebar() {
             : 'translateX(100%)', // slide out to the right (RTL start)
         }}
       >
-        <div className="p-4 border-b border-slate-700 flex flex-col items-center text-center gap-2 relative">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="לוגו" className="w-28 h-28 object-contain bg-white/5 rounded-lg p-1" />
+        <div className="p-3 border-b border-slate-700 flex flex-col items-center text-center gap-1 relative">
+          {/* Zoom in visually to cut the transparent padding around the logo */}
+          <div className="w-36 h-36 overflow-hidden flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.png"
+              alt="לוגו"
+              className="w-full h-full object-contain"
+              style={{ transform: 'scale(1.45)' }}
+            />
+          </div>
           <div>
             <h1 className="text-lg font-bold leading-tight">ישיבת מיר</h1>
             <p className="text-xs text-slate-400 mt-0.5 leading-tight">מודיעין עילית</p>
