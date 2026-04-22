@@ -102,6 +102,42 @@ export function ActiveChargesTable() {
     }
   };
 
+  const handleSuspend = async (chargeId: string) => {
+    const reason = window.prompt('סיבת ההשהיה (למשל "בעיה בחשבון בנק"):');
+    if (reason === null) return;
+
+    try {
+      await supabase
+        .from('tuition_charges')
+        .update({
+          status: 'suspended',
+          cancellation_reason: reason || 'הושהה ידנית',
+        })
+        .eq('id', chargeId);
+      alert('הגביה הושהתה');
+      loadData();
+    } catch (err: any) {
+      alert('שגיאה: ' + (err?.message || err));
+    }
+  };
+
+  const handleReactivate = async (chargeId: string) => {
+    if (!confirm('לחזור לגביה פעילה?')) return;
+    try {
+      await supabase
+        .from('tuition_charges')
+        .update({
+          status: 'active',
+          cancellation_reason: null,
+        })
+        .eq('id', chargeId);
+      alert('הגביה הופעלה מחדש');
+      loadData();
+    } catch (err: any) {
+      alert('שגיאה: ' + (err?.message || err));
+    }
+  };
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -286,16 +322,44 @@ export function ActiveChargesTable() {
                         <Badge variant={status.variant}>{status.label}</Badge>
                       </TableCell>
                       <TableCell>
-                        {charge.status === 'active' && (
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() => handleCancel(charge.id)}
-                            disabled={cancellingId === charge.id}
-                          >
-                            {cancellingId === charge.id ? 'מבטל...' : 'בטל'}
-                          </Button>
-                        )}
+                        <div className="flex gap-1 flex-wrap">
+                          {charge.status === 'active' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => handleSuspend(charge.id)}
+                              >
+                                השהה
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => handleCancel(charge.id)}
+                                disabled={cancellingId === charge.id}
+                              >
+                                {cancellingId === charge.id ? 'מבטל...' : 'בטל'}
+                              </Button>
+                            </>
+                          )}
+                          {charge.status === 'suspended' && (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => handleReactivate(charge.id)}
+                              >
+                                הפעל מחדש
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => handleCancel(charge.id)}
+                              >
+                                בטל לצמיתות
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
