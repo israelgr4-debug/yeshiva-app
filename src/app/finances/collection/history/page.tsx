@@ -75,20 +75,26 @@ export default function CollectionHistoryPage() {
     loadRuns();
   }, []);
 
+  const today = new Date().toISOString().slice(0, 10);
+
   // Split: if run has a group_number → it was sent to Masav (history)
   //        if no group_number → forecast (not yet sent)
   const tabRuns = useMemo(() => {
     if (activeTab === 'forecast') {
-      // Forecast: sort by date ASC (nearest charge first)
+      // Forecast: only future dates, no group, sorted by nearest first
       return runs
-        .filter((r) => r.group_number === null || r.group_number === undefined)
+        .filter(
+          (r) =>
+            (r.group_number === null || r.group_number === undefined) &&
+            r.payment_date >= today
+        )
         .sort((a, b) => a.payment_date.localeCompare(b.payment_date));
     }
-    // History: most recent first (DESC)
+    // History: has group_number, most recent first
     return runs
       .filter((r) => r.group_number !== null && r.group_number !== undefined)
       .sort((a, b) => b.payment_date.localeCompare(a.payment_date));
-  }, [runs, activeTab]);
+  }, [runs, activeTab, today]);
 
   // Reset page on tab change
   useEffect(() => {
@@ -120,8 +126,11 @@ export default function CollectionHistoryPage() {
   }, [tabRuns]);
 
   const forecastCount = useMemo(
-    () => runs.filter((r) => r.group_number === null || r.group_number === undefined).length,
-    [runs]
+    () =>
+      runs.filter(
+        (r) => (r.group_number === null || r.group_number === undefined) && r.payment_date >= today
+      ).length,
+    [runs, today]
   );
   const historyCount = useMemo(
     () => runs.filter((r) => r.group_number !== null && r.group_number !== undefined).length,
