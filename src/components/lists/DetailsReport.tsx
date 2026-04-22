@@ -1,7 +1,8 @@
 'use client';
 
 import { Student, Family, Machzor, EducationHistory } from '@/lib/types';
-import { sortStudentsByName, formatDateShort } from '@/lib/list-reports';
+import { sortStudentsByName } from '@/lib/list-reports';
+import { toHebrewDate } from '@/lib/utils';
 
 interface Props {
   students: Student[];
@@ -53,8 +54,9 @@ export function DetailsReport({
                 </div>
                 <div className="field-row">
                   <b>ת.ז.:</b> {s.id_number || '-'}
-                  <span className="inline-sep" />
-                  <b>ת.לידה:</b> {formatDateShort(s.date_of_birth) || '-'}
+                </div>
+                <div className="field-row">
+                  <b>ת.לידה:</b> {toHebrewDate(s.date_of_birth) || '-'}
                 </div>
                 <div className="field-row">
                   <b>אב:</b> {family?.father_name || '-'}

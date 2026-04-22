@@ -38,6 +38,40 @@ export function getStatusColor(status: string): string {
   }
 }
 
+// Convert a Gregorian date (YYYY-MM-DD or Date) to a Hebrew date string.
+// Example: '2007-02-19' → 'ב׳ אדר תשס״ז'
+export function toHebrewDate(input: string | Date | null | undefined): string {
+  if (!input) return '';
+  const d = typeof input === 'string' ? new Date(input) : input;
+  if (isNaN(d.getTime())) return '';
+  try {
+    const fmt = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+    return fmt.format(d);
+  } catch {
+    return '';
+  }
+}
+
+// Short Hebrew date (day + month only, no year): 'ב׳ אדר'
+export function toHebrewDateShort(input: string | Date | null | undefined): string {
+  if (!input) return '';
+  const d = typeof input === 'string' ? new Date(input) : input;
+  if (isNaN(d.getTime())) return '';
+  try {
+    const fmt = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
+      day: 'numeric',
+      month: 'long',
+    });
+    return fmt.format(d);
+  } catch {
+    return '';
+  }
+}
+
 export function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     active: 'פעיל',

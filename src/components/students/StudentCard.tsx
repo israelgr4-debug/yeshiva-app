@@ -3,7 +3,7 @@
 import { Student, Machzor, Family } from '@/lib/types';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { getStatusLabel } from '@/lib/utils';
+import { getStatusLabel, toHebrewDate } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/hooks/useSupabase';
 import Link from 'next/link';
@@ -125,6 +125,8 @@ export function StudentCard({ student }: StudentCardProps) {
               <DetailRow label="דוא״ל" value={student.email} />
               <DetailRow label="שיעור" value={student.shiur} />
               <DetailRow label="חדר בפנימייה" value={student.room_number ? String(student.room_number) : '-'} />
+              <DetailRow label="תאריך לידה (לועזי)" value={student.date_of_birth} />
+              <DetailRow label="תאריך לידה (עברי)" value={toHebrewDate(student.date_of_birth)} />
             </div>
           </div>
 
