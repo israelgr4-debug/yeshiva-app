@@ -145,7 +145,8 @@ export function CertificatePreview({
             }
             .certificate-scale-wrapper {
               width: 100%;
-              aspect-ratio: 210 / 297;
+              padding-bottom: 141.4%; /* A4 aspect ratio 297/210 */
+              height: 0;
               position: relative;
               overflow: hidden;
             }
