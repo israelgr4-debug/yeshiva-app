@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { TuitionSummaryCard } from '@/components/finances/TuitionSummaryCard';
@@ -13,6 +14,16 @@ export default function FinancesPage() {
       <Header title="כספים" subtitle="ניהול שכר לימוד ותרומות" />
 
       <div className="p-4 md:p-8 space-y-6">
+        {/* Quick actions */}
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/finances/collection"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+          >
+            💰 צור קובץ מס"ב (גביה חודשית)
+          </Link>
+        </div>
+
         {/* Tuition summary */}
         <TuitionSummaryCard />
 
