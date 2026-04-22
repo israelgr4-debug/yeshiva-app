@@ -72,6 +72,24 @@ export function BouncedPaymentDialog({ isOpen, paymentId, studentName, amount, p
       // TODO: if resolution='spread', create N tuition_payments for next months
       // TODO: if resolution='suspend', mark the parent tuition_charge as suspended
 
+      // Auto-create a follow-up task
+      try {
+        const taskDueDate = new Date();
+        taskDueDate.setDate(taskDueDate.getDate() + 7);
+        await supabase.from('tasks').insert({
+          title: `טיפול בהו״ק שחזרה - ${studentName}`,
+          description: `תשלום בסך ₪${amount.toLocaleString('he-IL')} מתאריך ${paymentDate} חזר.\n${resolutionNote}${notes ? `\nהערה: ${notes}` : ''}`,
+          priority: 'high',
+          status: 'pending',
+          due_date: taskDueDate.toISOString().slice(0, 10),
+          reminder_date: taskDueDate.toISOString().slice(0, 10),
+          related_entity_type: 'payment_history',
+          related_entity_id: paymentId,
+        });
+      } catch (taskErr) {
+        console.error('Failed to create follow-up task:', taskErr);
+      }
+
       onDone();
     } catch (err: any) {
       setError(err?.message || 'שגיאה');
