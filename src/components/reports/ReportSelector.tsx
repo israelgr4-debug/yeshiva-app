@@ -96,9 +96,33 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
 
   return (
     <div className="space-y-6">
-      {/* Status filter */}
+      {/* 1. Report type selector - FIRST, so the status default can adjust */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">סינון תלמידים</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">1. סוג אישור</label>
+        <select
+          value={selectedReportId}
+          onChange={(e) => setSelectedReportId(e.target.value as ReportTypeId | '')}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="">בחר סוג אישור</option>
+          {REPORT_TYPES.map((rt) => (
+            <option key={rt.id} value={rt.id}>
+              {rt.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* 2. Status filter (active/inactive) - default adjusts by report type */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          2. סינון תלמידים
+          {selectedReportId && LEFT_STUDENT_REPORT_IDS.includes(selectedReportId) && (
+            <span className="text-xs text-amber-600 font-normal ms-1">
+              (אישור ״שעזב״ - מומלץ לבחור תלמיד שעזב)
+            </span>
+          )}
+        </label>
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
           <button
             type="button"
@@ -130,9 +154,9 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
         </div>
       </div>
 
-      {/* Student search */}
+      {/* 3. Student search */}
       <div ref={dropdownRef} className="relative">
-        <label className="block text-sm font-medium text-gray-700 mb-2">בחר תלמיד</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">3. בחר תלמיד</label>
         <input
           type="text"
           value={searchTerm}
@@ -171,23 +195,6 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
             )}
           </div>
         )}
-      </div>
-
-      {/* Report type selector */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">סוג אישור</label>
-        <select
-          value={selectedReportId}
-          onChange={(e) => setSelectedReportId(e.target.value as ReportTypeId | '')}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">בחר סוג אישור</option>
-          {REPORT_TYPES.map((rt) => (
-            <option key={rt.id} value={rt.id}>
-              {rt.name}
-            </option>
-          ))}
-        </select>
       </div>
 
       {/* Year input */}
