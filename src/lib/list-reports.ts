@@ -11,7 +11,8 @@ export type ListReportId =
   | 'multi_details' // דוח פרטים מרובים בקטן - table
   | 'details' // דוח פרטים - cards with photo
   | 'ram' // דוח ר"מ - 2 columns with 3 lines
-  | 'photos'; // דוח תמונות - names and photos
+  | 'photos' // דוח תמונות - names and photos
+  | 'custom'; // מחולל דוחות - choose fields + export to Excel
 
 export interface ListReportDef {
   id: ListReportId;
@@ -56,6 +57,12 @@ export const LIST_REPORTS: ListReportDef[] = [
     name: 'דוח תמונות',
     description: 'שם וצילום של כל תלמיד',
     icon: '📸',
+  },
+  {
+    id: 'custom',
+    name: 'מחולל דוחות',
+    description: 'בחר שדות + סינון וייצא לאקסל',
+    icon: '⚙️',
   },
 ];
 

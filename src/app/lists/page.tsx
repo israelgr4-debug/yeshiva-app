@@ -17,6 +17,7 @@ import { MultiDetailsReport } from '@/components/lists/MultiDetailsReport';
 import { DetailsReport } from '@/components/lists/DetailsReport';
 import { RamReport } from '@/components/lists/RamReport';
 import { PhotosReport } from '@/components/lists/PhotosReport';
+import { CustomReportBuilder } from '@/components/lists/CustomReportBuilder';
 
 export default function ListsPage() {
   const { fetchData } = useSupabase();
@@ -78,6 +79,18 @@ export default function ListsPage() {
   const renderReport = () => {
     if (loading) {
       return <div className="text-center py-12 text-gray-500">טוען...</div>;
+    }
+
+    // Custom builder has its own filters - bypass the shared ones
+    if (selectedReport === 'custom') {
+      return (
+        <CustomReportBuilder
+          students={students}
+          families={families}
+          machzorot={machzorot}
+          education={education}
+        />
+      );
     }
 
     if (filteredStudents.length === 0) {
