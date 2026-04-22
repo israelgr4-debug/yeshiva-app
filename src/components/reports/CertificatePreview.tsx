@@ -131,6 +131,20 @@ export function CertificatePreview({
               padding: 20mm;
             }
           }
+          @media (max-width: 900px) {
+            .certificate-container {
+              padding: 8px;
+              overflow: hidden;
+            }
+            .certificate-page {
+              width: 100%;
+              min-width: 0;
+              min-height: auto;
+              padding: 16px 14px;
+              font-size: 13px;
+              line-height: 1.6;
+            }
+          }
         `}</style>
       </div>
     );
@@ -297,6 +311,35 @@ export function CertificatePreview({
           .certificate-page {
             box-shadow: none;
             padding: 20mm;
+          }
+        }
+        /* Mobile: scale the A4 page to fit viewport */
+        @media (max-width: 900px) {
+          .certificate-container {
+            padding: 8px;
+            overflow: hidden;
+          }
+          .certificate-page {
+            width: 100%;
+            min-width: 0;
+            min-height: auto;
+            padding: 16px 14px;
+            font-size: 13px;
+            line-height: 1.7;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+          }
+          .certificate-title {
+            font-size: 20px;
+            margin: 14px 0;
+          }
+          .certificate-recipient, .certificate-body p {
+            font-size: 13px;
+          }
+          .letterhead-top-space, .letterhead-bottom-space {
+            height: 18mm;
+          }
+          .certificate-signature {
+            margin-top: 30px;
           }
         }
       `}</style>

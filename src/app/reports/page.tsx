@@ -77,12 +77,12 @@ export default function ReportsPage() {
             <div>
               <div className="flex items-center justify-between mb-4 no-print gap-2 flex-wrap">
                 <h2 className="text-lg font-semibold text-gray-800">תצוגה מקדימה</h2>
-                <div className="flex gap-2">
-                  <Button onClick={handlePrint} variant="secondary">
-                    🖨️ הדפס (בלי חתימה)
+                <div className="flex gap-2 w-full sm:w-auto flex-wrap">
+                  <Button onClick={handlePrint} variant="secondary" className="flex-1 sm:flex-initial">
+                    🖨️ הדפס
                   </Button>
-                  <Button onClick={() => setEmailOpen(true)}>
-                    📧 שלח במייל (עם חתימה)
+                  <Button onClick={() => setEmailOpen(true)} className="flex-1 sm:flex-initial">
+                    📧 שלח במייל
                   </Button>
                 </div>
               </div>

@@ -106,8 +106,8 @@ export function SendEmailDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" dir="rtl">
-      <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full">
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto" dir="rtl">
+      <div className="bg-white rounded-t-2xl sm:rounded-lg shadow-2xl max-w-lg w-full max-h-[95vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-xl font-bold">שלח במייל</h3>
         </div>
