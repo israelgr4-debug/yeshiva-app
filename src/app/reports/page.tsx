@@ -10,6 +10,7 @@ import { useStudents } from '@/hooks/useStudents';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { Student } from '@/lib/types';
 import { ReportType } from '@/lib/certificates';
+import { exportCertificateToWord } from '@/lib/cert-to-word';
 
 interface GeneratedCertificate {
   student: Student;
@@ -48,6 +49,20 @@ export default function ReportsPage() {
 
   const handlePrint = () => window.print();
 
+  const handleDownloadWord = async () => {
+    if (!certificate) return;
+    try {
+      await exportCertificateToWord(
+        certificate.student,
+        certificate.reportType,
+        certificate.year,
+        certificate.extras
+      );
+    } catch (err) {
+      alert('שגיאה ביצירת קובץ Word: ' + (err instanceof Error ? err.message : err));
+    }
+  };
+
   // Get the email-version preview element (with signature + letterhead)
   const getEmailPdfElement = (): HTMLElement | null => {
     return previewRef.current?.querySelector('.certificate-page') as HTMLElement | null;
@@ -81,6 +96,9 @@ export default function ReportsPage() {
                 <div className="flex gap-2 w-full sm:w-auto flex-wrap">
                   <Button onClick={handlePrint} variant="secondary" className="flex-1 sm:flex-initial">
                     🖨️ הדפס
+                  </Button>
+                  <Button onClick={handleDownloadWord} variant="secondary" className="flex-1 sm:flex-initial">
+                    📝 הורד Word
                   </Button>
                   <Button onClick={() => setEmailOpen(true)} className="flex-1 sm:flex-initial">
                     📧 שלח במייל

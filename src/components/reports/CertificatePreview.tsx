@@ -326,6 +326,7 @@ export function CertificatePreview({
         .certificate-signature {
           margin-top: 60px;
           line-height: 1.8;
+          text-align: center;
         }
         .signer-name {
           font-weight: bold;
