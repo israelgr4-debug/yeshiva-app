@@ -114,22 +114,23 @@ export default function ReportsPage() {
               </div>
 
               {/* Hidden email version - WITH signature AND letterhead image.
-                  Fixed positioning + explicit width isolates it from mobile media queries
-                  so the PDF still renders at natural A4 size. */}
-              <div
-                ref={previewRef}
-                className="hidden-pdf-source"
-                aria-hidden="true"
-              >
-                <CertificatePreview
-                  student={certificate.student}
-                  reportType={certificate.reportType}
-                  year={certificate.year}
-                  extras={certificate.extras}
-                  signatureUrl={signatureUrl || null}
-                  letterheadUrl={letterheadUrl || null}
-                />
-              </div>
+                  Only rendered when the email dialog opens (keeps mobile layout clean). */}
+              {emailOpen && (
+                <div
+                  ref={previewRef}
+                  className="hidden-pdf-source"
+                  aria-hidden="true"
+                >
+                  <CertificatePreview
+                    student={certificate.student}
+                    reportType={certificate.reportType}
+                    year={certificate.year}
+                    extras={certificate.extras}
+                    signatureUrl={signatureUrl || null}
+                    letterheadUrl={letterheadUrl || null}
+                  />
+                </div>
+              )}
 
               <div className="text-xs mt-2 text-center no-print space-y-1">
                 {signatureUrl ? (
