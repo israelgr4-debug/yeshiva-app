@@ -139,9 +139,9 @@ export default function ReportsPage() {
                   <p className="text-amber-600">⚠️ אין חתימה - העלה בהגדרות</p>
                 )}
                 {letterheadUrl ? (
-                  <p className="text-gray-500">ℹ️ בלאנק יוצג רק במייל. בהדפסה מושאר שטח ריק למעלה לבלאנק פיזי.</p>
+                  <p className="text-gray-500">ℹ️ בלאנק: במייל מוצג כרקע עמוד מלא. בהדפסה מושאר שטח ריק למעלה ולמטה לבלאנק הפיזי.</p>
                 ) : (
-                  <p className="text-amber-600">⚠️ אין בלאנק - העלה בהגדרות כדי שישלח באימייל</p>
+                  <p className="text-amber-600">⚠️ אין בלאנק - העלה בהגדרות (עמוד שלם עם לוגו עליון ותחתון)</p>
                 )}
               </div>
             </div>

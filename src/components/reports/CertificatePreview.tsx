@@ -141,16 +141,9 @@ export function CertificatePreview({
 
   return (
     <div id="certificate-preview" className="certificate-container">
-      <div className="certificate-page">
-        {/* Letterhead image (email) OR reserved space (print) */}
-        {letterheadUrl ? (
-          <div className="letterhead-area">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={letterheadUrl} alt="בלאנק" className="letterhead-img" />
-          </div>
-        ) : reserveLetterheadSpace ? (
-          <div className="letterhead-reserved" aria-hidden="true" />
-        ) : null}
+      <div className={`certificate-page ${letterheadUrl ? 'with-letterhead-bg' : ''}`}>
+        {/* Top spacer - for pre-printed letterhead (print) OR when using full-page background (email) */}
+        {(reserveLetterheadSpace || letterheadUrl) && <div className="letterhead-top-space" aria-hidden="true" />}
 
         {/* Header */}
         <div className="certificate-header">
@@ -195,6 +188,9 @@ export function CertificatePreview({
           {activeSigner.idNumber && <p>{activeSigner.idNumber}</p>}
           {activeSigner.title && <p>{activeSigner.title}</p>}
         </div>
+
+        {/* Bottom spacer - for pre-printed letterhead footer */}
+        {(reserveLetterheadSpace || letterheadUrl) && <div className="letterhead-bottom-space" aria-hidden="true" />}
       </div>
 
       <style jsx>{`
@@ -216,17 +212,19 @@ export function CertificatePreview({
           color: #000;
           position: relative;
         }
-        .letterhead-area {
-          text-align: center;
-          margin-bottom: 15px;
+        /* Full-page letterhead background (email only) */
+        .certificate-page.with-letterhead-bg {
+          background-image: url('${letterheadUrl || ''}');
+          background-size: 100% 100%;
+          background-repeat: no-repeat;
+          background-position: center;
         }
-        .letterhead-img {
-          max-width: 100%;
-          max-height: 120px;
-          object-fit: contain;
+        .letterhead-top-space {
+          height: 35mm; /* space for header / pre-printed letterhead top */
+          width: 100%;
         }
-        .letterhead-reserved {
-          height: 35mm; /* ~4 lines of blank space for pre-printed letterhead */
+        .letterhead-bottom-space {
+          height: 25mm; /* space for footer / pre-printed letterhead bottom */
           width: 100%;
         }
         .certificate-header {

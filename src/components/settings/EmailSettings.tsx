@@ -182,10 +182,13 @@ export function EmailSettings() {
 
         {/* Letterhead upload */}
         <div className="mt-8 pt-6 border-t border-gray-200">
-          <h4 className="text-md font-semibold mb-2">בלאנק (לוגו עליון) לאישורים (PNG)</h4>
+          <h4 className="text-md font-semibold mb-2">בלאנק - עמוד שלם (PNG)</h4>
           <p className="text-sm text-gray-600 mb-4">
-            הבלאנק יופיע <strong>רק</strong> באישורים שנשלחים במייל (למעלה).
-            בהדפסה יישאר שטח ריק למעלה כדי להדפיס על בלאנק פיזי.
+            העלה תמונה של <strong>עמוד שלם</strong> בגודל A4, עם הלוגו העליון והתחתון.
+            <br />
+            <strong>במייל:</strong> התמונה תוצג כרקע של העמוד (הטקסט יופיע מעליה).
+            <br />
+            <strong>בהדפסה:</strong> יישאר שטח ריק למעלה ולמטה כדי שתדפיס על בלאנק פיזי.
           </p>
 
           <div className="flex items-center gap-4">
