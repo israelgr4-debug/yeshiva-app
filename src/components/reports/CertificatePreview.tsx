@@ -219,11 +219,11 @@ export function CertificatePreview({
           background-position: center;
         }
         .letterhead-top-space {
-          height: 35mm; /* space for header / pre-printed letterhead top */
+          height: 55mm; /* space for header / pre-printed letterhead top */
           width: 100%;
         }
         .letterhead-bottom-space {
-          height: 25mm; /* space for footer / pre-printed letterhead bottom */
+          height: 30mm; /* space for footer / pre-printed letterhead bottom */
           width: 100%;
         }
         .certificate-header {
