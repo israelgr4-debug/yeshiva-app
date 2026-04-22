@@ -108,6 +108,13 @@ export default function DormitoryPage() {
             ✏️ ערוך מפה
           </Link>
 
+          <Link
+            href="/dormitory/manage"
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700"
+          >
+            🛠️ ניהול שיבוצים
+          </Link>
+
           <span className="text-sm text-gray-500 ms-auto">
             {loading ? 'טוען...' : `${students.length} תלמידים פעילים עם חדר`}
           </span>
