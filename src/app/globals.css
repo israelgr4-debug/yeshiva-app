@@ -38,6 +38,32 @@ body {
   }
 }
 
+/* Fully isolated hidden source used only for PDF export.
+   Positioned offscreen, forced to natural A4 width so mobile media queries don't shrink it,
+   and contained so it doesn't influence the parent layout width. */
+.hidden-pdf-source {
+  position: fixed !important;
+  top: 0;
+  left: -9999px !important;
+  width: 210mm !important;
+  pointer-events: none;
+  contain: layout paint;
+}
+.hidden-pdf-source .certificate-container,
+.hidden-pdf-source .certificate-scale-wrapper,
+.hidden-pdf-source .certificate-page {
+  transform: none !important;
+  width: 210mm !important;
+  min-height: 297mm !important;
+  aspect-ratio: auto !important;
+  position: static !important;
+  overflow: visible !important;
+  display: block !important;
+}
+.hidden-pdf-source .certificate-container {
+  padding: 0 !important;
+}
+
 /* RTL utilities */
 .text-start {
   text-align: right;

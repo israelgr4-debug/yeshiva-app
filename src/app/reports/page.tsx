@@ -113,8 +113,14 @@ export default function ReportsPage() {
                 />
               </div>
 
-              {/* Hidden email version - WITH signature AND letterhead image */}
-              <div ref={previewRef} style={{ position: 'absolute', left: '-9999px', top: 0 }} aria-hidden="true">
+              {/* Hidden email version - WITH signature AND letterhead image.
+                  Fixed positioning + explicit width isolates it from mobile media queries
+                  so the PDF still renders at natural A4 size. */}
+              <div
+                ref={previewRef}
+                className="hidden-pdf-source"
+                aria-hidden="true"
+              >
                 <CertificatePreview
                   student={certificate.student}
                   reportType={certificate.reportType}
