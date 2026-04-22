@@ -154,13 +154,13 @@ export function CertificatePreview({
               position: absolute;
               top: 0;
               right: 0;
-              transform: scale(calc((100vw - 32px) / 794));
+              transform: scale(calc((100vw - 32px) / 794px));
               transform-origin: top right;
             }
           }
           @media (max-width: 500px) {
             .certificate-scale-wrapper > .certificate-page {
-              transform: scale(calc((100vw - 20px) / 794));
+              transform: scale(calc((100vw - 20px) / 794px));
             }
           }
         `}</style>
@@ -354,14 +354,14 @@ export function CertificatePreview({
             position: absolute;
             top: 0;
             right: 0;
-            transform: scale(calc((100vw - 32px) / 794));
+            transform: scale(calc((100vw - 32px) / 794px));
             transform-origin: top right;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
           }
         }
         @media (max-width: 500px) {
           .certificate-scale-wrapper > .certificate-page {
-            transform: scale(calc((100vw - 20px) / 794));
+            transform: scale(calc((100vw - 20px) / 794px));
           }
         }
       `}</style>
