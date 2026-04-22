@@ -163,7 +163,7 @@ export function StudentCard({ student }: StudentCardProps) {
                       className={`inline-block text-xs px-2 py-1 rounded-full transition-colors ${
                         isActive
                           ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200 line-through'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                       }`}
                       title={isActive ? 'פעיל' : 'לא פעיל'}
                     >
