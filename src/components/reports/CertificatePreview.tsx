@@ -241,7 +241,7 @@ export function CertificatePreview({
           z-index: 1; /* make text appear above the image */
         }
         .letterhead-top-space {
-          height: 40mm; /* space for header (30mm letterhead top + 10mm margin) */
+          height: 30mm; /* space for header (pre-printed letterhead top) */
           width: 100%;
         }
         .letterhead-bottom-space {
