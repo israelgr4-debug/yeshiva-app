@@ -10,7 +10,7 @@ import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { supabase } from '@/lib/supabase';
 import { SHIURIM, getMachzorForNewStudent, DEFAULT_BASE_MACHZOR } from '@/lib/shiurim';
 import { ISRAELI_BANKS } from '@/lib/israeli-banks';
-import { isValidIsraeliId, isValidBankAccount, isValidBranch } from '@/lib/israeli-validators';
+import { isValidIsraeliId, isValidBranch, validateBankAccountFull } from '@/lib/israeli-validators';
 
 interface StudentFormProps {
   student?: Student;
@@ -684,11 +684,13 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               מספר חשבון
-              {familyData.bank_account && (
-                isValidBankAccount(familyData.bank_account)
-                  ? <span className="text-green-600 ms-1">✓</span>
-                  : <span className="text-amber-600 ms-1" title="חשבון צריך להיות 4-9 ספרות">⚠</span>
-              )}
+              {familyData.bank_account && (() => {
+                const bankCode = ISRAELI_BANKS.find((b) => b.shortName === familyData.bank_name)?.code;
+                const result = validateBankAccountFull(bankCode, familyData.bank_branch, familyData.bank_account);
+                if (result === 'valid') return <span className="text-green-600 ms-1" title="תקין">✓</span>;
+                if (result === 'structural') return <span className="text-blue-600 ms-1" title="מבנה תקין (לא נבדק ספרת ביקורת)">○</span>;
+                return <span className="text-amber-600 ms-1" title="ספרת ביקורת לא תקינה - יש לבדוק">⚠</span>;
+              })()}
             </label>
             <input
               name="bank_account"
