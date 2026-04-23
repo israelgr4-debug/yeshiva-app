@@ -80,7 +80,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
   };
 
   // Family / parent fields
-  const [familyData, setFamilyData] = useState({
+  const initialFamilyData = {
     father_name: initialFamily?.father_name || '',
     father_id_number: initialFamily?.father_id_number || '',
     father_phone: initialFamily?.father_phone || '',
@@ -96,7 +96,13 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     bank_branch: initialFamily?.bank_branch || '',
     bank_account: initialFamily?.bank_account || '',
     billing_notes: initialFamily?.billing_notes || '',
-  });
+  };
+  const [familyData, setFamilyData] = useState(initialFamilyData);
+  // Track whether the user actually edited any family field (guards against
+  // accidentally wiping existing data when form was not touched).
+  const [familyTouched, setFamilyTouched] = useState(false);
+  // Silence unused init
+  void initialFamilyData;
 
   // Family matching state
   const [matchedFamily, setMatchedFamily] = useState<Family | null>(null);
@@ -222,6 +228,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
   const handleFamilyChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFamilyData((prev) => ({ ...prev, [name]: value }));
+    setFamilyTouched(true);
 
     // Debounce search on father_id_number
     if (name === 'father_id_number') {
@@ -303,7 +310,12 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
       machzor_id: studentData.machzor_id || null,
       family_id: linkedFamilyId || null,
     };
-    await onSubmit({ student: submitStudentData, family: familyData });
+    // Only pass family data if user actually edited the family form - otherwise
+    // pass empty object so family fields are NOT touched on save
+    await onSubmit({
+      student: submitStudentData,
+      family: familyTouched ? familyData : {},
+    });
   };
 
   return (
