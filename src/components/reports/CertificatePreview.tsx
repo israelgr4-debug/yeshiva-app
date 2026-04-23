@@ -19,6 +19,7 @@ interface CertificatePreviewProps {
   signatureUrl?: string | null; // email only - show signature above signer info
   letterheadUrl?: string | null; // email only - show letterhead image at top
   reserveLetterheadSpace?: boolean; // print - leave blank top area for pre-printed letterhead
+  isChinuch?: boolean; // chinuch sub-institution: hide signer name/id, center signature
 }
 
 export function CertificatePreview({
@@ -30,6 +31,7 @@ export function CertificatePreview({
   signatureUrl,
   letterheadUrl,
   reserveLetterheadSpace,
+  isChinuch,
 }: CertificatePreviewProps) {
   const hebrewDate = toHebrewDate(new Date());
   const gregorianDate = getGregorianDate();
@@ -224,11 +226,15 @@ export function CertificatePreview({
               src={signatureUrl}
               alt="חתימה"
               className="signature-image"
-              style={{ height: '60px', margin: '8px 0' }}
+              style={{
+                height: '80px',
+                margin: '8px auto',
+                display: 'block',
+              }}
             />
           )}
-          {activeSigner.name && <p className="signer-name">{activeSigner.name}</p>}
-          {activeSigner.idNumber && <p>{activeSigner.idNumber}</p>}
+          {!isChinuch && activeSigner.name && <p className="signer-name">{activeSigner.name}</p>}
+          {!isChinuch && activeSigner.idNumber && <p>{activeSigner.idNumber}</p>}
           {activeSigner.title && <p>{activeSigner.title}</p>}
         </div>
 

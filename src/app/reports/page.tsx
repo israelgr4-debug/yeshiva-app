@@ -141,6 +141,7 @@ export default function ReportsPage() {
                   letterheadUrl={isChinuch && letterheadChinuchUrl ? letterheadChinuchUrl : null}
                   signatureUrl={isChinuch && signatureChinuchUrl ? signatureChinuchUrl : null}
                   reserveLetterheadSpace={!(isChinuch && letterheadChinuchUrl)}
+                  isChinuch={isChinuch}
                 />
               </div>
 
@@ -159,6 +160,7 @@ export default function ReportsPage() {
                     extras={certificate.extras}
                     signatureUrl={activeSignatureUrl || null}
                     letterheadUrl={activeLetterheadUrl || null}
+                    isChinuch={isChinuch}
                   />
                 </div>
               )}
