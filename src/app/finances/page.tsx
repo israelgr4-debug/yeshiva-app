@@ -5,6 +5,9 @@ import { Header } from '@/components/layout/Header';
 import { NedarimSummaryCard } from '@/components/finances/NedarimSummaryCard';
 import { TuitionByMethodCard } from '@/components/finances/TuitionByMethodCard';
 import { InactivePayersCard } from '@/components/finances/InactivePayersCard';
+import { MonthlyCollectionGauge } from '@/components/finances/MonthlyCollectionGauge';
+import { Forecast12MonthsCard } from '@/components/finances/Forecast12MonthsCard';
+import { OverdueDebtorsCard } from '@/components/finances/OverdueDebtorsCard';
 
 export default function FinancesPage() {
   return (
@@ -68,8 +71,17 @@ export default function FinancesPage() {
           </div>
         </div>
 
+        {/* 🎯 Dashboard - collection this month */}
+        <MonthlyCollectionGauge />
+
+        {/* ⚠️ Overdue debtors - past due date this month */}
+        <OverdueDebtorsCard />
+
         {/* Main forecast - student tuition breakdown by method */}
         <TuitionByMethodCard />
+
+        {/* 12-month forecast */}
+        <Forecast12MonthsCard />
 
         {/* Nedarim subscriptions summary */}
         <NedarimSummaryCard />
