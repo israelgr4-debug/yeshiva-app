@@ -37,11 +37,18 @@ export function FamilyPicker({ families, activeFamilyIds, value, onChange, place
     const q = query.trim().toLowerCase();
     const list = families.filter((f) => {
       if (!q) return true;
-      return (
-        (f.family_name || '').toLowerCase().includes(q) ||
-        (f.father_name || '').toLowerCase().includes(q) ||
-        (f.father_id_number || '').includes(q)
-      );
+      // Match substring against any field + try individual word matches
+      const haystack = [
+        f.family_name || '',
+        f.father_name || '',
+        f.father_id_number || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (haystack.includes(q)) return true;
+      // Also split query to tokens - all must be somewhere
+      const qTokens = q.split(/\s+/).filter(Boolean);
+      return qTokens.every((t) => haystack.includes(t));
     });
     // Sort: active first, then by family_name Hebrew
     return list.sort((a, b) => {

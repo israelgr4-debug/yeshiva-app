@@ -137,6 +137,7 @@ export default function NedarimMatchPage() {
       }
 
       // 2-4. Name matching - all tokens of family_name / father_name must appear
+      const clientLower = (s.client_name || '').toLowerCase();
       if (clientTokens.length > 0) {
         for (const f of families) {
           const familyNameHit = containsAllTokensOf(clientTokens, f.family_name);
@@ -148,6 +149,16 @@ export default function NedarimMatchPage() {
             addCandidate(f, 0.6, 'שם משפחה');
           } else if (fatherNameHit) {
             addCandidate(f, 0.35, 'שם פרטי (אב)');
+          } else {
+            // Fallback: partial substring match (handles typos like שטייאמן vs שטיימאן)
+            const famLower = (f.family_name || '').toLowerCase();
+            const fatherLower = (f.father_name || '').toLowerCase();
+            if (famLower.length >= 4 && clientLower.includes(famLower.slice(0, Math.max(4, famLower.length - 1)))) {
+              addCandidate(f, 0.25, 'דמיון חלקי בשם משפחה');
+            } else if (fatherLower.length >= 3 && clientLower.includes(fatherLower.split(/\s+/)[0] || '')) {
+              // First word of father's name appears as substring
+              addCandidate(f, 0.15, 'דמיון חלקי בשם אב');
+            }
           }
         }
       }
