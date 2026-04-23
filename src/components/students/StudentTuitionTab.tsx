@@ -30,6 +30,13 @@ interface NedarimSub {
   status: string;
 }
 
+interface SiblingAssignment {
+  student_id: string;
+  student_name: string;
+  nedarim_subscription_id: string;
+  monthly_amount: number;
+}
+
 interface UnifiedPayment {
   id: string;
   source: 'credit' | 'office' | 'bank';
@@ -73,6 +80,7 @@ const SOURCE_LABELS: Record<string, string> = {
 export function StudentTuitionTab({ studentId, familyId }: Props) {
   const [tuition, setTuition] = useState<StudentTuition | null>(null);
   const [familyNedarimSubs, setFamilyNedarimSubs] = useState<NedarimSub[]>([]);
+  const [siblingAssignments, setSiblingAssignments] = useState<SiblingAssignment[]>([]);
   const [payments, setPayments] = useState<UnifiedPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -80,7 +88,7 @@ export function StudentTuitionTab({ studentId, familyId }: Props) {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: t }, { data: subs }, { data: pays }] = await Promise.all([
+    const [{ data: t }, { data: subs }, { data: pays }, { data: siblings }] = await Promise.all([
       supabase.from('student_tuition').select('*').eq('student_id', studentId).maybeSingle(),
       familyId
         ? supabase
@@ -95,7 +103,25 @@ export function StudentTuitionTab({ studentId, familyId }: Props) {
         .eq('student_id', studentId)
         .order('payment_date', { ascending: false })
         .limit(500),
+      // Siblings' tuition assignments (to detect HK sharing / conflicts)
+      familyId
+        ? supabase
+            .from('student_tuition')
+            .select('student_id, nedarim_subscription_id, monthly_amount, students!inner(family_id, first_name, last_name)')
+            .eq('students.family_id', familyId)
+            .neq('student_id', studentId)
+            .not('nedarim_subscription_id', 'is', null)
+        : Promise.resolve({ data: [] }),
     ]);
+
+    setSiblingAssignments(
+      ((siblings || []) as any[]).map((row) => ({
+        student_id: row.student_id,
+        student_name: `${row.students.first_name} ${row.students.last_name}`,
+        nedarim_subscription_id: row.nedarim_subscription_id,
+        monthly_amount: Number(row.monthly_amount) || 0,
+      }))
+    );
 
     setTuition(
       t ||
@@ -120,6 +146,54 @@ export function StudentTuitionTab({ studentId, familyId }: Props) {
 
   const handleSave = async () => {
     if (!tuition) return;
+
+    // Guard: check if we're assigning an HK that's already taken by a sibling
+    if (
+      tuition.payment_method === 'credit_nedarim' &&
+      tuition.nedarim_subscription_id
+    ) {
+      const conflicts = siblingAssignments.filter(
+        (s) => s.nedarim_subscription_id === tuition.nedarim_subscription_id
+      );
+      const sub = familyNedarimSubs.find((s) => s.id === tuition.nedarim_subscription_id);
+      const hkAmount = Number(sub?.amount_per_charge) || 0;
+      const siblingsTotal = conflicts.reduce((sum, c) => sum + c.monthly_amount, 0);
+      const projectedTotal = siblingsTotal + Number(tuition.monthly_amount);
+
+      if (conflicts.length > 0) {
+        // There are siblings already on this HK
+        const siblingsList = conflicts
+          .map((c) => `  • ${c.student_name} - ₪${c.monthly_amount.toLocaleString('he-IL')}`)
+          .join('\n');
+        const remaining = hkAmount - siblingsTotal;
+
+        // Check if original was also on this HK vs reassigning
+        const wasOnThisHK =
+          (tuition.id || false) && siblingAssignments.every((s) => s.nedarim_subscription_id !== tuition.nedarim_subscription_id)
+            ? false
+            : false; // simplified - always warn
+
+        let warning = `⚠️ שים לב!\n\nההוק הזו (₪${hkAmount.toLocaleString('he-IL')}) כבר משויכת לאחים:\n${siblingsList}\n\n`;
+        warning += `סך התלמידים כרגע: ₪${siblingsTotal.toLocaleString('he-IL')}\n`;
+        warning += `אתה מוסיף: ₪${Number(tuition.monthly_amount).toLocaleString('he-IL')}\n`;
+        warning += `סה"כ צפוי: ₪${projectedTotal.toLocaleString('he-IL')}\n\n`;
+
+        if (Math.abs(projectedTotal - hkAmount) > 0.01) {
+          warning += `❌ אי-התאמה! ההוק בבנק/אשראי היא ₪${hkAmount.toLocaleString('he-IL')} (חסר/עודף: ₪${Math.abs(hkAmount - projectedTotal).toLocaleString('he-IL')})\n\n`;
+          warning += `זה אומר שלא כל הסכום יכוסה או שיגבה יותר מהצורך.\n`;
+          warning += `רוצה לבצע את השיוך בכל זאת?`;
+        } else {
+          warning += `✓ סך הסכומים מתאים להוק. להמשיך?`;
+          void remaining;
+          void wasOnThisHK;
+        }
+
+        if (!confirm(warning)) {
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -207,7 +281,18 @@ export function StudentTuitionTab({ studentId, familyId }: Props) {
                     const parts: string[] = [`${formatCurrency(Number(s.amount_per_charge))} / חודש`];
                     if (s.last_4_digits) parts.push(`****${s.last_4_digits}`);
                     if (s.scheduled_day) parts.push(`יום ${s.scheduled_day}`);
-                    if (coverage > 1) parts.push(`מכסה ${coverage} תלמידים`);
+
+                    // Check sibling assignments on this HK
+                    const siblingsOnHK = siblingAssignments.filter((sa) => sa.nedarim_subscription_id === s.id);
+                    const siblingsTotal = siblingsOnHK.reduce((sum, sa) => sum + sa.monthly_amount, 0);
+                    const remaining = Number(s.amount_per_charge) - siblingsTotal;
+
+                    if (siblingsOnHK.length > 0) {
+                      parts.push(`🔒 ${siblingsOnHK.length} אחים משויכים (נותר ₪${remaining.toLocaleString('he-IL')})`);
+                    } else if (coverage > 1) {
+                      parts.push(`מכסה ${coverage} תלמידים`);
+                    }
+
                     return (
                       <option key={s.id} value={s.id}>
                         {parts.join(' · ')}

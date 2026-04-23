@@ -18,6 +18,8 @@ interface Student {
   status: string;
 }
 
+type StatusFilter = 'active' | 'all_enrolled' | 'all';
+
 interface Family {
   id: string;
   family_name: string;
@@ -71,6 +73,7 @@ export default function TuitionSetupPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<PaymentMethod | 'all'>('none');
   const [shiurFilter, setShiurFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [search, setSearch] = useState('');
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
   const [dirty, setDirty] = useState<Record<string, boolean>>({});
@@ -78,7 +81,7 @@ export default function TuitionSetupPage() {
   const load = async () => {
     setLoading(true);
     const [{ data: st }, { data: fam }, { data: tui }, { data: ns }] = await Promise.all([
-      supabase.from('students').select('id, first_name, last_name, family_id, shiur, status').eq('status', 'active'),
+      supabase.from('students').select('id, first_name, last_name, family_id, shiur, status'),
       supabase.from('families').select('id, family_name, father_name, father_phone, bank_number, bank_branch, bank_account'),
       supabase.from('student_tuition').select('*'),
       supabase
@@ -170,6 +173,10 @@ export default function TuitionSetupPage() {
 
   const filtered = useMemo(() => {
     return students.filter((s) => {
+      // Status filter (default: active only - looking forward, no need to show students who left)
+      if (statusFilter === 'active' && s.status !== 'active') return false;
+      if (statusFilter === 'all_enrolled' && s.status !== 'active' && s.status !== 'chizuk') return false;
+
       const t = tuition[s.id];
       if (filter !== 'all' && t?.payment_method !== filter) return false;
       if (shiurFilter && s.shiur !== shiurFilter) return false;
@@ -232,8 +239,8 @@ export default function TuitionSetupPage() {
           ))}
         </div>
 
-        {/* Search / shiur */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Search / shiur / status */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <input
             type="text"
             placeholder="חיפוש לפי שם תלמיד / משפחה / אב"
@@ -252,6 +259,15 @@ export default function TuitionSetupPage() {
                 {s}
               </option>
             ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className="px-4 py-2 border border-gray-300 rounded-lg"
+          >
+            <option value="active">רק פעילים (ברירת מחדל)</option>
+            <option value="all_enrolled">פעילים + חיזוק</option>
+            <option value="all">הכל (כולל שעזבו)</option>
           </select>
         </div>
 
