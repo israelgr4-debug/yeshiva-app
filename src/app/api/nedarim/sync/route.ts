@@ -18,6 +18,14 @@ function adminClient() {
   );
 }
 
+// Auto-classify group names. User can override manually in /finances/nedarim/groups.
+function classifyGroupName(name: string): 'tuition' | 'donation' | 'unclassified' {
+  if (!name) return 'unclassified';
+  if (name.includes('שכר') || name.includes('לימוד')) return 'tuition';
+  if (name.includes('תרומ')) return 'donation';
+  return 'unclassified';
+}
+
 /**
  * POST /api/nedarim/sync
  * Full sync: pulls credit subs + bank subs + categories from Nedarim and
@@ -93,7 +101,10 @@ export async function POST(_req: NextRequest) {
       if (row.groupe) {
         await db
           .from('nedarim_groups')
-          .upsert({ name: row.groupe }, { onConflict: 'name', ignoreDuplicates: true });
+          .upsert(
+            { name: row.groupe, category_type: classifyGroupName(row.groupe) },
+            { onConflict: 'name', ignoreDuplicates: true }
+          );
       }
     }
   } catch (e: any) {
@@ -175,7 +186,10 @@ export async function POST(_req: NextRequest) {
       if (row.groupe) {
         await db
           .from('nedarim_groups')
-          .upsert({ name: row.groupe }, { onConflict: 'name', ignoreDuplicates: true });
+          .upsert(
+            { name: row.groupe, category_type: classifyGroupName(row.groupe) },
+            { onConflict: 'name', ignoreDuplicates: true }
+          );
       }
     }
   } catch (e: any) {
