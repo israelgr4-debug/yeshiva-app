@@ -687,9 +687,10 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
               {familyData.bank_account && (() => {
                 const bankCode = ISRAELI_BANKS.find((b) => b.shortName === familyData.bank_name)?.code;
                 const result = validateBankAccountFull(bankCode, familyData.bank_branch, familyData.bank_account);
-                if (result === 'valid') return <span className="text-green-600 ms-1" title="תקין">✓</span>;
-                if (result === 'structural') return <span className="text-blue-600 ms-1" title="מבנה תקין (לא נבדק ספרת ביקורת)">○</span>;
-                return <span className="text-amber-600 ms-1" title="ספרת ביקורת לא תקינה - יש לבדוק">⚠</span>;
+                if (result === 'valid') return <span className="text-green-600 ms-1" title="תקין - עבר ספרת ביקורת">✓</span>;
+                if (result === 'structural') return <span className="text-blue-600 ms-1" title="מבנה תקין (אלגוריתם הבנק לא מיושם)">○</span>;
+                if (result === 'bad-check') return <span className="text-red-600 ms-1" title="ספרת ביקורת לא תקינה - יש לבדוק">✗</span>;
+                return <span className="text-amber-600 ms-1" title="מבנה לא תקין">⚠</span>;
               })()}
             </label>
             <input
