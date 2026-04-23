@@ -25,7 +25,9 @@ export default function ReportsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [certificate, setCertificate] = useState<GeneratedCertificate | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string>('');
+  const [signatureChinuchUrl, setSignatureChinuchUrl] = useState<string>('');
   const [letterheadUrl, setLetterheadUrl] = useState<string>('');
+  const [letterheadChinuchUrl, setLetterheadChinuchUrl] = useState<string>('');
   const [emailOpen, setEmailOpen] = useState(false);
   const [showMobilePreview, setShowMobilePreview] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
@@ -37,8 +39,15 @@ export default function ReportsPage() {
 
   useEffect(() => {
     getSetting<string>('signature_url', '').then(setSignatureUrl);
+    getSetting<string>('signature_chinuch_url', '').then(setSignatureChinuchUrl);
     getSetting<string>('letterhead_url', '').then(setLetterheadUrl);
+    getSetting<string>('letterhead_chinuch_url', '').then(setLetterheadChinuchUrl);
   }, [getSetting]);
+
+  // Pick the letterhead + signature based on whether the selected student is marked "חינוך"
+  const isChinuch = !!(certificate?.student as any)?.is_chinuch;
+  const activeLetterheadUrl = isChinuch && letterheadChinuchUrl ? letterheadChinuchUrl : letterheadUrl;
+  const activeSignatureUrl = isChinuch && signatureChinuchUrl ? signatureChinuchUrl : signatureUrl;
 
   const handleGenerate = useCallback(
     (student: Student, reportType: ReportType, year: string, extras: Record<string, string>) => {
@@ -127,7 +136,11 @@ export default function ReportsPage() {
                   reportType={certificate.reportType}
                   year={certificate.year}
                   extras={certificate.extras}
-                  reserveLetterheadSpace={true}
+                  // For חינוך students: print the digital letterhead + signature onto the page
+                  // For regular students: leave blank space for a pre-printed letterhead, no signature
+                  letterheadUrl={isChinuch && letterheadChinuchUrl ? letterheadChinuchUrl : null}
+                  signatureUrl={isChinuch && signatureChinuchUrl ? signatureChinuchUrl : null}
+                  reserveLetterheadSpace={!(isChinuch && letterheadChinuchUrl)}
                 />
               </div>
 
@@ -144,8 +157,8 @@ export default function ReportsPage() {
                     reportType={certificate.reportType}
                     year={certificate.year}
                     extras={certificate.extras}
-                    signatureUrl={signatureUrl || null}
-                    letterheadUrl={letterheadUrl || null}
+                    signatureUrl={activeSignatureUrl || null}
+                    letterheadUrl={activeLetterheadUrl || null}
                   />
                 </div>
               )}
@@ -156,7 +169,11 @@ export default function ReportsPage() {
                 ) : (
                   <p className="text-amber-600">⚠️ אין חתימה - העלה בהגדרות</p>
                 )}
-                {letterheadUrl ? (
+                {isChinuch && letterheadChinuchUrl ? (
+                  <p className="text-purple-700">📘 <strong>תלמיד חינוך</strong> - בלאנק חינוך יוצג גם במייל וגם בהדפסה (מודפס על הדף).</p>
+                ) : isChinuch && !letterheadChinuchUrl ? (
+                  <p className="text-amber-600">⚠️ תלמיד מסומן חינוך אבל לא הועלה בלאנק חינוך - העלה בהגדרות</p>
+                ) : letterheadUrl ? (
                   <p className="text-gray-500">ℹ️ בלאנק: במייל מוצג כרקע עמוד מלא. בהדפסה מושאר שטח ריק למעלה ולמטה לבלאנק הפיזי.</p>
                 ) : (
                   <p className="text-amber-600">⚠️ אין בלאנק - העלה בהגדרות (עמוד שלם עם לוגו עליון ותחתון)</p>

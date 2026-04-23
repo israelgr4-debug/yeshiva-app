@@ -21,6 +21,7 @@ export interface Student {
   health_fund_code?: number | null;
   id_type?: string | null;  // '0' or null = Israeli ID, '1' = passport
   passport_number?: string | null;
+  is_chinuch?: boolean | null;
   created_at: string;
   updated_at: string;
 }

@@ -16,9 +16,13 @@ export function EmailSettings() {
   const [appPassword, setAppPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [signatureUrl, setSignatureUrl] = useState('');
+  const [signatureChinuchUrl, setSignatureChinuchUrl] = useState('');
   const [letterheadUrl, setLetterheadUrl] = useState('');
+  const [letterheadChinuchUrl, setLetterheadChinuchUrl] = useState('');
   const [uploadingSig, setUploadingSig] = useState(false);
+  const [uploadingSigC, setUploadingSigC] = useState(false);
   const [uploadingLH, setUploadingLH] = useState(false);
+  const [uploadingLHC, setUploadingLHC] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -28,7 +32,9 @@ export function EmailSettings() {
     setDisplayName(await getSetting<string>('email_display_name', 'ישיבת מיר מודיעין עילית'));
     setAppPassword(await getSetting<string>('email_app_password', ''));
     setSignatureUrl(await getSetting<string>('signature_url', ''));
+    setSignatureChinuchUrl(await getSetting<string>('signature_chinuch_url', ''));
     setLetterheadUrl(await getSetting<string>('letterhead_url', ''));
+    setLetterheadChinuchUrl(await getSetting<string>('letterhead_chinuch_url', ''));
   }, [getSetting]);
 
   useEffect(() => {
@@ -79,6 +85,35 @@ export function EmailSettings() {
     setSignatureUrl('');
   };
 
+  const handleSignatureChinuchUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingSigC(true);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const path = `signature-chinuch-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('signatures')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('signatures').getPublicUrl(path);
+      const url = pub.publicUrl;
+      await setSetting('signature_chinuch_url', url);
+      setSignatureChinuchUrl(url);
+      alert('חתימת חינוך הועלתה בהצלחה');
+    } catch (err: any) {
+      alert('שגיאה: ' + (err?.message || err));
+    } finally {
+      setUploadingSigC(false);
+    }
+  };
+
+  const handleRemoveSignatureChinuch = async () => {
+    if (!confirm('להסיר את חתימת חינוך?')) return;
+    await setSetting('signature_chinuch_url', '');
+    setSignatureChinuchUrl('');
+  };
+
   const handleLetterheadUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -106,6 +141,35 @@ export function EmailSettings() {
     if (!confirm('להסיר את הבלאנק?')) return;
     await setSetting('letterhead_url', '');
     setLetterheadUrl('');
+  };
+
+  const handleLetterheadChinuchUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLHC(true);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const path = `letterhead-chinuch-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('signatures')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('signatures').getPublicUrl(path);
+      const url = pub.publicUrl;
+      await setSetting('letterhead_chinuch_url', url);
+      setLetterheadChinuchUrl(url);
+      alert('בלאנק חינוך הועלה בהצלחה');
+    } catch (err: any) {
+      alert('שגיאה: ' + (err?.message || err));
+    } finally {
+      setUploadingLHC(false);
+    }
+  };
+
+  const handleRemoveLetterheadChinuch = async () => {
+    if (!confirm('להסיר את בלאנק חינוך?')) return;
+    await setSetting('letterhead_chinuch_url', '');
+    setLetterheadChinuchUrl('');
   };
 
   return (
@@ -227,6 +291,52 @@ export function EmailSettings() {
           </div>
         </div>
 
+        {/* Chinuch Letterhead upload */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h4 className="text-md font-semibold mb-2">📘 בלאנק חינוך - עמוד שלם (PNG)</h4>
+          <p className="text-sm text-gray-600 mb-4">
+            בלאנק חלופי לתלמידים המסומנים בתגית <strong>חינוך</strong>.
+            <br />
+            כשתפיק אישור לתלמיד שמסומן כחינוך - יוצג הבלאנק הזה במקום הרגיל,
+            <strong> הן במייל והן בהדפסה</strong> (מודפס על הדף).
+          </p>
+
+          <div className="flex items-center gap-4">
+            {letterheadChinuchUrl ? (
+              <div className="border border-purple-300 rounded-lg p-2 bg-purple-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={letterheadChinuchUrl} alt="בלאנק חינוך" className="h-20 max-w-xs object-contain" />
+              </div>
+            ) : (
+              <div className="w-48 h-20 border-2 border-dashed border-purple-300 rounded-lg flex items-center justify-center text-purple-400 text-sm">
+                אין בלאנק חינוך
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <label className="inline-block cursor-pointer bg-purple-50 hover:bg-purple-100 text-purple-700 px-4 py-2 rounded-lg text-sm font-medium border border-purple-200 text-center">
+                {uploadingLHC ? 'מעלה...' : letterheadChinuchUrl ? 'החלף בלאנק חינוך' : 'העלה בלאנק חינוך'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={handleLetterheadChinuchUpload}
+                  disabled={uploadingLHC}
+                  className="hidden"
+                />
+              </label>
+              {letterheadChinuchUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemoveLetterheadChinuch}
+                  className="text-sm text-red-600 hover:text-red-800 underline"
+                >
+                  הסר בלאנק חינוך
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Signature upload */}
         <div className="mt-8 pt-6 border-t border-gray-200">
           <h4 className="text-md font-semibold mb-2">חתימה לאישורים (PNG)</h4>
@@ -264,6 +374,50 @@ export function EmailSettings() {
                   className="text-sm text-red-600 hover:text-red-800 underline"
                 >
                   הסר חתימה
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Chinuch Signature upload */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h4 className="text-md font-semibold mb-2">📘 חתימת חינוך (PNG)</h4>
+          <p className="text-sm text-gray-600 mb-4">
+            חתימה חלופית לאישורים של תלמידים המסומנים <strong>חינוך</strong>.
+            תופיע במייל ובהדפסה עבור תלמידים אלו, במקום החתימה הרגילה.
+          </p>
+
+          <div className="flex items-center gap-4">
+            {signatureChinuchUrl ? (
+              <div className="border border-purple-300 rounded-lg p-2 bg-purple-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={signatureChinuchUrl} alt="חתימת חינוך" className="h-20 max-w-xs object-contain" />
+              </div>
+            ) : (
+              <div className="w-48 h-20 border-2 border-dashed border-purple-300 rounded-lg flex items-center justify-center text-purple-400 text-sm">
+                אין חתימת חינוך
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <label className="inline-block cursor-pointer bg-purple-50 hover:bg-purple-100 text-purple-700 px-4 py-2 rounded-lg text-sm font-medium border border-purple-200 text-center">
+                {uploadingSigC ? 'מעלה...' : signatureChinuchUrl ? 'החלף חתימת חינוך' : 'העלה חתימת חינוך'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={handleSignatureChinuchUpload}
+                  disabled={uploadingSigC}
+                  className="hidden"
+                />
+              </label>
+              {signatureChinuchUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemoveSignatureChinuch}
+                  className="text-sm text-red-600 hover:text-red-800 underline"
+                >
+                  הסר חתימת חינוך
                 </button>
               )}
             </div>

@@ -94,6 +94,11 @@ export function StudentCard({ student }: StudentCardProps) {
                     {machzor.name}
                   </span>
                 )}
+                {student.is_chinuch && (
+                  <span className="bg-purple-600 text-white px-2 py-0.5 rounded text-xs font-bold">
+                    📘 חינוך
+                  </span>
+                )}
               </div>
             </div>
             <Badge

@@ -5,8 +5,9 @@ import { Header } from '@/components/layout/Header';
 import { MachzorTab } from '@/components/actions/MachzorTab';
 import { EquivalentClassTab } from '@/components/actions/EquivalentClassTab';
 import { BanksTab } from '@/components/actions/BanksTab';
+import { ChinuchTab } from '@/components/actions/ChinuchTab';
 
-type TabId = 'machzor' | 'equivalent' | 'banks';
+type TabId = 'machzor' | 'equivalent' | 'chinuch' | 'banks';
 
 interface TabDef {
   id: TabId;
@@ -17,6 +18,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: 'machzor', label: 'מחזור', icon: '🎓' },
   { id: 'equivalent', label: 'כתה מקבילה', icon: '🏫' },
+  { id: 'chinuch', label: 'חינוך', icon: '📘' },
   { id: 'banks', label: 'בנקים וסניפים', icon: '🏦' },
 ];
 
@@ -52,6 +54,7 @@ export default function ActionsPage() {
         {/* Tab content */}
         {activeTab === 'machzor' && <MachzorTab />}
         {activeTab === 'equivalent' && <EquivalentClassTab />}
+        {activeTab === 'chinuch' && <ChinuchTab />}
         {activeTab === 'banks' && <BanksTab />}
       </div>
     </>
