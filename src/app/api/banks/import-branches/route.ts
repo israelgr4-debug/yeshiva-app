@@ -139,7 +139,7 @@ export async function POST(_req: NextRequest) {
       return null;
     };
 
-    const rows = collected
+    const rowsRaw = collected
       .map((r: any) => ({
         bank_code: Number(
           pick(r, 'Bank_Code', 'bank_code', 'BankCode', 'קוד_בנק', 'קוד בנק')
@@ -152,7 +152,26 @@ export async function POST(_req: NextRequest) {
         city: pick(r, 'City', 'city', 'עיר', 'ישוב'),
         phone: pick(r, 'Branch_Telephone', 'phone', 'Phone', 'Telephone', 'טלפון'),
       }))
-      .filter((r) => Number.isFinite(r.bank_code) && Number.isFinite(r.branch_code));
+      .filter(
+        (r) =>
+          Number.isFinite(r.bank_code) &&
+          Number.isFinite(r.branch_code) &&
+          // Israeli branch codes are 3 digits (1-999), bank codes are 1-99
+          r.bank_code > 0 && r.bank_code < 1000 &&
+          r.branch_code > 0 && r.branch_code < 10000
+      );
+
+    // Dedupe on (bank_code, branch_code) - keep first occurrence
+    const seen = new Set<string>();
+    const rows = [];
+    for (const r of rowsRaw) {
+      const key = `${r.bank_code}:${r.branch_code}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(r);
+    }
+    (summary as any).afterDedupe = rows.length;
+    (summary as any).beforeDedupe = rowsRaw.length;
 
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500);
