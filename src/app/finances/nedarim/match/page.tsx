@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
+import { FamilyPicker } from '@/components/finances/FamilyPicker';
 import { supabase } from '@/lib/supabase';
 
 interface Subscription {
@@ -37,16 +38,13 @@ interface Student {
   status: string;
 }
 
-// Simple Hebrew name similarity using normalized tokens
-function nameScore(a: string, b: string): number {
-  const na = (a || '').trim().split(/\s+/).filter(Boolean);
-  const nb = (b || '').trim().split(/\s+/).filter(Boolean);
-  if (!na.length || !nb.length) return 0;
-  const setA = new Set(na);
-  const setB = new Set(nb);
-  let overlap = 0;
-  for (const t of setA) if (setB.has(t)) overlap++;
-  return overlap / Math.max(setA.size, setB.size);
+function tokens(s: string | null | undefined): string[] {
+  return (s || '').trim().split(/\s+/).filter(Boolean);
+}
+
+function hasToken(clientTokens: string[], t: string | null | undefined): boolean {
+  if (!t) return false;
+  return clientTokens.includes(t.trim());
 }
 
 export default function NedarimMatchPage() {
@@ -69,7 +67,8 @@ export default function NedarimMatchPage() {
         .neq('status', 'deleted')
         .order('amount_per_charge', { ascending: false }),
       supabase.from('families').select('id, family_name, father_name, mother_name, father_id_number, phone'),
-      supabase.from('students').select('id, family_id, first_name, last_name, status').eq('status', 'active'),
+      // Load ALL students (not just active) so we can mark active-vs-inactive families
+      supabase.from('students').select('id, family_id, first_name, last_name, status'),
     ]);
     setSubs((s || []) as Subscription[]);
     setFamilies((f || []) as Family[]);
@@ -77,47 +76,76 @@ export default function NedarimMatchPage() {
     setLoading(false);
   };
 
+  // Active families: those with at least one active student
+  const activeFamilyIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const st of students) if (st.status === 'active') set.add(st.family_id);
+    return set;
+  }, [students]);
+
   useEffect(() => {
     load();
   }, []);
 
-  // Build suggestions map: for each subscription, rank families
+  // Build suggestions map with new priority:
+  // 1. ת.ז (strongest)
+  // 2. שם משפחה + שם אב (both as tokens in client_name) - strongest name match
+  // 3. שם משפחה בלבד
+  // 4. שם פרטי (אב) בלבד - weakest
+  // Active families get a boost.
   const suggestions = useMemo(() => {
     const byFatherId = new Map<string, Family>();
     for (const f of families) {
-      if (f.father_id_number) byFatherId.set(f.father_id_number.trim(), f);
+      if (f.father_id_number) {
+        byFatherId.set(f.father_id_number.trim().replace(/\D/g, ''), f);
+      }
     }
-    const result: Record<string, Array<{ family: Family; score: number; reason: string }>> = {};
+    const result: Record<string, Array<{ family: Family; score: number; reason: string; isActive: boolean }>> = {};
     for (const s of subs) {
-      const candidates: Array<{ family: Family; score: number; reason: string }> = [];
+      const candidates = new Map<string, { family: Family; score: number; reason: string; isActive: boolean }>();
+      const clientTokens = tokens(s.client_name);
 
-      // Exact match by father's ID number
+      const addCandidate = (family: Family, baseScore: number, reason: string) => {
+        const isActive = activeFamilyIds.has(family.id);
+        const score = isActive ? baseScore : baseScore * 0.7; // penalize inactive
+        const existing = candidates.get(family.id);
+        if (!existing || score > existing.score) {
+          candidates.set(family.id, { family, score, reason, isActive });
+        }
+      };
+
+      // 1. Exact ID match (strongest)
       if (s.client_zeout) {
-        const hit = byFatherId.get(s.client_zeout.trim());
-        if (hit) candidates.push({ family: hit, score: 1.0, reason: 'התאמת ת.ז אב' });
+        const normalized = s.client_zeout.replace(/\D/g, '').replace(/^0+/, '');
+        const hit = byFatherId.get(s.client_zeout.trim()) || byFatherId.get(normalized);
+        if (hit) addCandidate(hit, 1.0, 'ת.ז אב');
       }
 
-      // Name matching
-      if (s.client_name) {
+      // 2-4. Name matching
+      if (clientTokens.length > 0) {
         for (const f of families) {
-          const fatherScore = nameScore(s.client_name, f.father_name || '');
-          const familyScore = nameScore(s.client_name, f.family_name || '');
-          const best = Math.max(fatherScore, familyScore);
-          if (best >= 0.4 && !candidates.find((c) => c.family.id === f.id)) {
-            candidates.push({
-              family: f,
-              score: best * 0.8, // lower confidence than zeout match
-              reason: fatherScore > familyScore ? 'התאמת שם אב' : 'התאמת שם משפחה',
-            });
+          const familyNameHit = hasToken(clientTokens, f.family_name);
+          const fatherNameHit = hasToken(clientTokens, f.father_name);
+
+          if (familyNameHit && fatherNameHit) {
+            addCandidate(f, 0.95, 'משפחה + אב');
+          } else if (familyNameHit) {
+            addCandidate(f, 0.6, 'שם משפחה');
+          } else if (fatherNameHit) {
+            addCandidate(f, 0.35, 'שם פרטי (אב)');
           }
         }
       }
 
-      candidates.sort((a, b) => b.score - a.score);
-      result[s.id] = candidates.slice(0, 5);
+      const sorted = Array.from(candidates.values()).sort((a, b) => {
+        // Active first, then by score
+        if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+        return b.score - a.score;
+      });
+      result[s.id] = sorted.slice(0, 6);
     }
     return result;
-  }, [subs, families]);
+  }, [subs, families, activeFamilyIds]);
 
   const handleMatch = async (sub: Subscription) => {
     const familyId = selectedFamily[sub.id];
@@ -240,7 +268,7 @@ export default function NedarimMatchPage() {
               const chosenFamilyId = selectedFamily[sub.id];
               const chosenFamily = chosenFamilyId ? familyById.get(chosenFamilyId) : null;
               const familyStudents = chosenFamilyId
-                ? studentsByFamily.get(chosenFamilyId) || []
+                ? (studentsByFamily.get(chosenFamilyId) || []).filter((s) => s.status === 'active')
                 : [];
               const chosenStudents = selectedStudents[sub.id] || [];
 
@@ -294,13 +322,18 @@ export default function NedarimMatchPage() {
                                   chosenFamilyId === c.family.id
                                     ? 'bg-blue-50 border-blue-400'
                                     : 'bg-white border-gray-200 hover:bg-gray-50'
-                                }`}
+                                } ${!c.isActive ? 'opacity-60' : ''}`}
                               >
-                                <div className="flex justify-between items-center">
-                                  <span className="font-medium">
+                                <div className="flex justify-between items-center gap-2">
+                                  <span className="font-medium flex items-center gap-1">
+                                    {c.isActive ? (
+                                      <span className="inline-block w-2 h-2 rounded-full bg-green-500" title="פעילה" />
+                                    ) : (
+                                      <span className="inline-block w-2 h-2 rounded-full bg-gray-300" title="לא פעילה" />
+                                    )}
                                     {c.family.family_name} / {c.family.father_name}
                                   </span>
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-xs text-gray-500 whitespace-nowrap">
                                     {c.reason} · {Math.round(c.score * 100)}%
                                   </span>
                                 </div>
@@ -314,30 +347,19 @@ export default function NedarimMatchPage() {
                           </div>
                         )}
 
-                        {/* Full dropdown fallback */}
+                        {/* Full searchable picker fallback */}
                         <div>
                           <label className="block text-xs text-gray-500 mb-1">
-                            או חפש מכל המשפחות:
+                            או חפש מכל המשפחות (פעילות ראשונות):
                           </label>
-                          <select
-                            value={chosenFamilyId || ''}
-                            onChange={(e) =>
-                              setSelectedFamily((prev) => ({ ...prev, [sub.id]: e.target.value }))
+                          <FamilyPicker
+                            families={families}
+                            activeFamilyIds={activeFamilyIds}
+                            value={chosenFamilyId || null}
+                            onChange={(id) =>
+                              setSelectedFamily((prev) => ({ ...prev, [sub.id]: id }))
                             }
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                          >
-                            <option value="">-- בחר משפחה --</option>
-                            {families
-                              .slice()
-                              .sort((a, b) => a.family_name.localeCompare(b.family_name, 'he'))
-                              .map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.family_name}
-                                  {f.father_name ? ` · ${f.father_name}` : ''}
-                                  {f.father_id_number ? ` · ${f.father_id_number}` : ''}
-                                </option>
-                              ))}
-                          </select>
+                          />
                         </div>
 
                         {/* Students checkboxes */}

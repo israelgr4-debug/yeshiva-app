@@ -15,8 +15,24 @@ interface PaymentHistoryRow {
   legacy_detail_number: number | null;
 }
 
+interface NedarimSub {
+  id: string;
+  nedarim_keva_id: string;
+  kind: 'credit' | 'bank';
+  status: string;
+  amount_per_charge: number;
+  scheduled_day: number | null;
+  next_charge_date: string | null;
+  last_4_digits: string | null;
+  groupe: string | null;
+  client_name: string | null;
+  family_id: string | null;
+  student_ids: string[] | null;
+}
+
 interface Props {
   studentId: string;
+  familyId?: string;
 }
 
 const methodLabels: Record<string, string> = {
@@ -33,9 +49,10 @@ const statusLabels: Record<string, { label: string; variant: any }> = {
   cancelled: { label: 'בוטל', variant: 'gray' },
 };
 
-export function StudentDonationsTab({ studentId }: Props) {
+export function StudentDonationsTab({ studentId, familyId }: Props) {
   const [charges, setCharges] = useState<TuitionCharge[]>([]);
   const [history, setHistory] = useState<PaymentHistoryRow[]>([]);
+  const [nedarimSubs, setNedarimSubs] = useState<NedarimSub[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -43,7 +60,7 @@ export function StudentDonationsTab({ studentId }: Props) {
     async function load() {
       setLoading(true);
       try {
-        const [chargesRes, historyRes] = await Promise.all([
+        const promises: any[] = [
           supabase
             .from('tuition_charges')
             .select('*')
@@ -56,17 +73,31 @@ export function StudentDonationsTab({ studentId }: Props) {
             .eq('student_id', studentId)
             .order('payment_date', { ascending: false })
             .limit(1000),
-        ]);
-        if (chargesRes.error) throw chargesRes.error;
-        if (historyRes.error) throw historyRes.error;
-        setCharges((chargesRes.data || []) as TuitionCharge[]);
-        setHistory((historyRes.data || []) as PaymentHistoryRow[]);
+        ];
+        // Nedarim subscriptions - match by family_id (subscriptions are family-level)
+        if (familyId) {
+          promises.push(
+            supabase
+              .from('nedarim_subscriptions')
+              .select('id, nedarim_keva_id, kind, status, amount_per_charge, scheduled_day, next_charge_date, last_4_digits, groupe, client_name, family_id, student_ids')
+              .eq('family_id', familyId)
+              .neq('status', 'deleted')
+          );
+        }
+        const results = await Promise.all(promises);
+        if (results[0].error) throw results[0].error;
+        if (results[1].error) throw results[1].error;
+        setCharges((results[0].data || []) as TuitionCharge[]);
+        setHistory((results[1].data || []) as PaymentHistoryRow[]);
+        if (familyId && results[2]) {
+          setNedarimSubs((results[2].data || []) as NedarimSub[]);
+        }
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, [studentId]);
+  }, [studentId, familyId]);
 
   if (loading) {
     return <div className="text-center py-8 text-gray-500">טוען...</div>;
@@ -114,10 +145,58 @@ export function StudentDonationsTab({ studentId }: Props) {
         </div>
       </div>
 
+      {/* Nedarim active subscriptions (family-level) */}
+      {nedarimSubs.filter((s) => s.status === 'active').length > 0 && (
+        <div>
+          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            💳 הוראות קבע פעילות בנדרים פלוס
+            <span className="text-xs font-normal text-gray-500">(ברמת משפחה)</span>
+          </h4>
+          <div className="space-y-2">
+            {nedarimSubs
+              .filter((s) => s.status === 'active')
+              .map((s) => (
+                <div
+                  key={s.id}
+                  className="bg-white border border-gray-200 rounded-lg p-3 flex items-center justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                        {s.kind === 'credit' ? '💳 אשראי' : '🏦 בנקאי'}
+                      </span>
+                      {s.groupe && (
+                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                          {s.groupe}
+                        </span>
+                      )}
+                      {s.student_ids?.includes(studentId) && (
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                          ✓ מיוחס לתלמיד זה
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm mt-1">
+                      {s.scheduled_day && <span>חיוב ב-{s.scheduled_day} לחודש</span>}
+                      {s.last_4_digits && <span className="ms-2 text-gray-500">כרטיס ****{s.last_4_digits}</span>}
+                    </p>
+                  </div>
+                  <div className="text-end">
+                    <p className="font-bold text-lg text-green-700">
+                      ₪{Number(s.amount_per_charge).toLocaleString('he-IL')}
+                    </p>
+                    <p className="text-xs text-gray-500">/ חודש</p>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Active */}
       {active.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">גביות פעילות</h4>
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">גביות פעילות (ישנות)</h4>
           <div className="space-y-2">
             {active.map((c) => (
               <ChargeRow key={c.id} charge={c} studentId={studentId} />

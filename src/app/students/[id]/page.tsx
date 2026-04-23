@@ -484,7 +484,7 @@ export default function StudentDetailPage() {
                   )}
 
                   {activeTab === 'donations' && (
-                    <StudentDonationsTab studentId={student.id} />
+                    <StudentDonationsTab studentId={student.id} familyId={student.family_id || undefined} />
                   )}
 
                   {activeTab === 'dormitory' && (
