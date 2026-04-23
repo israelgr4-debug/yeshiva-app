@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
+import { fetchAll } from '@/lib/supabase-paginate';
 
 interface NedarimSub {
   id: string;
@@ -51,35 +52,36 @@ export default function TuitionSplitPage() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: s }, { data: st }, { data: f }, { data: t }] = await Promise.all([
-      supabase
-        .from('nedarim_subscriptions')
-        .select('id, nedarim_keva_id, family_id, amount_per_charge, last_4_digits, scheduled_day, client_name, student_ids, status')
-        .eq('status', 'active')
-        .not('family_id', 'is', null),
-      supabase.from('students').select('id, family_id, first_name, last_name, status').eq('status', 'active'),
-      supabase.from('families').select('id, family_name, father_name'),
-      supabase.from('student_tuition').select('student_id, payment_method, monthly_amount, nedarim_subscription_id'),
+    const [s, st, f, t] = await Promise.all([
+      fetchAll<NedarimSub>(
+        'nedarim_subscriptions',
+        'id, nedarim_keva_id, family_id, amount_per_charge, last_4_digits, scheduled_day, client_name, student_ids, status',
+        (q) => q.eq('status', 'active').not('family_id', 'is', null)
+      ),
+      fetchAll<Student>('students', 'id, family_id, first_name, last_name, status', (q) =>
+        q.eq('status', 'active')
+      ),
+      fetchAll<Family>('families', 'id, family_name, father_name'),
+      fetchAll<Tuition>('student_tuition', 'student_id, payment_method, monthly_amount, nedarim_subscription_id'),
     ]);
 
     // Only multi-student subs
-    const subsList = (s || []) as NedarimSub[];
-    const multiStudent = subsList.filter((sub) => (sub.student_ids?.length || 0) > 1);
+    const multiStudent = s.filter((sub) => (sub.student_ids?.length || 0) > 1);
     setSubs(multiStudent);
 
     const stMap: Record<string, Student[]> = {};
-    for (const stu of (st || []) as Student[]) {
+    for (const stu of st) {
       if (!stMap[stu.family_id]) stMap[stu.family_id] = [];
       stMap[stu.family_id].push(stu);
     }
     setStudentsByFamily(stMap);
 
     const fmap: Record<string, Family> = {};
-    for (const fam of (f || []) as Family[]) fmap[fam.id] = fam;
+    for (const fam of f) fmap[fam.id] = fam;
     setFamiliesById(fmap);
 
     const tmap: Record<string, Tuition> = {};
-    for (const tui of (t || []) as Tuition[]) tmap[tui.student_id] = tui;
+    for (const tui of t) tmap[tui.student_id] = tui;
     setTuitionByStudent(tmap);
 
     setLoading(false);

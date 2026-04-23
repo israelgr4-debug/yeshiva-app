@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
+import { fetchAll } from '@/lib/supabase-paginate';
 
 interface Subscription {
   id: string;
@@ -70,21 +71,21 @@ export default function NedarimPage() {
     setLoading(true);
 
     // Nedarim subscriptions (credit from API)
-    const { data: ned } = await supabase
-      .from('nedarim_subscriptions')
-      .select('*')
-      .neq('status', 'deleted')
-      .order('status', { ascending: true })
-      .order('client_name', { ascending: true });
+    const ned = await fetchAll<Subscription>('nedarim_subscriptions', '*', (q) =>
+      q
+        .neq('status', 'deleted')
+        .order('status', { ascending: true })
+        .order('client_name', { ascending: true })
+    );
 
     // Our own bank HKs from tuition_charges (Masav managed in-house)
-    const { data: tc } = await supabase
-      .from('tuition_charges')
-      .select('id, family_id, total_amount_per_month, scheduled_day_of_month, status, payment_method, notes, student_ids')
-      .eq('payment_method', 'standing_order')
-      .neq('status', 'cancelled');
+    const tc = await fetchAll<any>(
+      'tuition_charges',
+      'id, family_id, total_amount_per_month, scheduled_day_of_month, status, payment_method, notes, student_ids',
+      (q) => q.eq('payment_method', 'standing_order').neq('status', 'cancelled')
+    );
 
-    const localBank: Subscription[] = (tc || []).map((c: any) => ({
+    const localBank: Subscription[] = tc.map((c: any) => ({
       id: `tc_${c.id}`,
       localChargeId: c.id,
       isLocalBank: true,
@@ -109,13 +110,11 @@ export default function NedarimPage() {
       last_synced_at: new Date().toISOString(),
     }));
 
-    setSubs([...(ned || []) as Subscription[], ...localBank]);
+    setSubs([...ned, ...localBank]);
 
-    const { data: fams } = await supabase
-      .from('families')
-      .select('id, family_name, father_name');
+    const fams = await fetchAll<FamilyLite>('families', 'id, family_name, father_name');
     const map: Record<string, FamilyLite> = {};
-    for (const f of fams || []) map[f.id] = f as FamilyLite;
+    for (const f of fams) map[f.id] = f;
     setFamilies(map);
 
     const { data: log } = await supabase

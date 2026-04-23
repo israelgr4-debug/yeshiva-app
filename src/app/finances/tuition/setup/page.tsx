@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
+import { fetchAll } from '@/lib/supabase-paginate';
 
 type PaymentMethod = 'bank_ho' | 'credit_nedarim' | 'office' | 'exempt' | 'none';
 
@@ -80,26 +81,26 @@ export default function TuitionSetupPage() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: st }, { data: fam }, { data: tui }, { data: ns }] = await Promise.all([
-      supabase.from('students').select('id, first_name, last_name, family_id, shiur, status'),
-      supabase.from('families').select('id, family_name, father_name, father_phone, bank_number, bank_branch, bank_account'),
-      supabase.from('student_tuition').select('*'),
-      supabase
-        .from('nedarim_subscriptions')
-        .select('id, family_id, amount_per_charge, last_4_digits, scheduled_day, student_ids')
-        .eq('status', 'active')
-        .not('family_id', 'is', null),
+    const [st, fam, tui, ns] = await Promise.all([
+      fetchAll<Student>('students', 'id, first_name, last_name, family_id, shiur, status'),
+      fetchAll<Family>('families', 'id, family_name, father_name, father_phone, bank_number, bank_branch, bank_account'),
+      fetchAll<TuitionRow>('student_tuition', '*'),
+      fetchAll<NedarimSub>(
+        'nedarim_subscriptions',
+        'id, family_id, amount_per_charge, last_4_digits, scheduled_day, student_ids',
+        (q) => q.eq('status', 'active').not('family_id', 'is', null)
+      ),
     ]);
 
-    setStudents((st || []) as Student[]);
+    setStudents(st);
     const fmap: Record<string, Family> = {};
-    for (const f of fam || []) fmap[f.id] = f as Family;
+    for (const f of fam) fmap[f.id] = f;
     setFamiliesById(fmap);
 
     const tmap: Record<string, TuitionRow> = {};
-    for (const t of tui || []) tmap[t.student_id] = t as TuitionRow;
+    for (const t of tui) tmap[t.student_id] = t;
     // Ensure every student has a row in state
-    for (const s of st || []) {
+    for (const s of st) {
       if (!tmap[s.id]) {
         tmap[s.id] = {
           student_id: s.id,
@@ -114,7 +115,7 @@ export default function TuitionSetupPage() {
     setTuition(tmap);
 
     const nmap: Record<string, NedarimSub[]> = {};
-    for (const n of (ns || []) as NedarimSub[]) {
+    for (const n of ns) {
       if (!n.family_id) continue;
       if (!nmap[n.family_id]) nmap[n.family_id] = [];
       nmap[n.family_id].push(n);

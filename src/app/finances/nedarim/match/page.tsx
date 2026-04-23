@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { FamilyPicker } from '@/components/finances/FamilyPicker';
 import { supabase } from '@/lib/supabase';
+import { fetchAll } from '@/lib/supabase-paginate';
 
 interface Subscription {
   id: string;
@@ -59,20 +60,16 @@ export default function NedarimMatchPage() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: s }, { data: f }, { data: st }] = await Promise.all([
-      supabase
-        .from('nedarim_subscriptions')
-        .select('*')
-        .is('family_id', null)
-        .neq('status', 'deleted')
-        .order('amount_per_charge', { ascending: false }),
-      supabase.from('families').select('id, family_name, father_name, mother_name, father_id_number, phone'),
-      // Load ALL students (not just active) so we can mark active-vs-inactive families
-      supabase.from('students').select('id, family_id, first_name, last_name, status'),
+    const [s, f, st] = await Promise.all([
+      fetchAll<Subscription>('nedarim_subscriptions', '*', (q) =>
+        q.is('family_id', null).neq('status', 'deleted').order('amount_per_charge', { ascending: false })
+      ),
+      fetchAll<Family>('families', 'id, family_name, father_name, mother_name, father_id_number, phone'),
+      fetchAll<Student>('students', 'id, family_id, first_name, last_name, status'),
     ]);
-    setSubs((s || []) as Subscription[]);
-    setFamilies((f || []) as Family[]);
-    setStudents((st || []) as Student[]);
+    setSubs(s);
+    setFamilies(f);
+    setStudents(st);
     setLoading(false);
   };
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
-import { supabase } from '@/lib/supabase';
+import { fetchAll } from '@/lib/supabase-paginate';
 import { buildMasavFile, buildMasavCsv, downloadFile, MasavCharge } from '@/lib/masav';
 
 interface TuitionRow {
@@ -54,25 +54,25 @@ export default function MasavExportPage() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [{ data: tuitions }, { data: students }, { data: families }] = await Promise.all([
-        supabase
-          .from('student_tuition')
-          .select('student_id, monthly_amount, bank_day')
-          .eq('payment_method', 'bank_ho')
-          .eq('active', true),
-        supabase.from('students').select('id, first_name, last_name, family_id').eq('status', 'active'),
-        supabase.from('families').select('*'),
+      const [tuitions, students, families] = await Promise.all([
+        fetchAll<TuitionRow>('student_tuition', 'student_id, monthly_amount, bank_day', (q) =>
+          q.eq('payment_method', 'bank_ho').eq('active', true)
+        ),
+        fetchAll<StudentLite>('students', 'id, first_name, last_name, family_id', (q) =>
+          q.eq('status', 'active')
+        ),
+        fetchAll<Family>('families', '*'),
       ]);
 
       const studentMap: Record<string, StudentLite> = {};
-      for (const s of (students || []) as StudentLite[]) studentMap[s.id] = s;
+      for (const s of students) studentMap[s.id] = s;
 
       const familyMap: Record<string, Family> = {};
-      for (const f of (families || []) as Family[]) familyMap[f.id] = f;
+      for (const f of families) familyMap[f.id] = f;
 
       // Group tuitions by family_id
       const byFamily: Record<string, FamilyCharge> = {};
-      for (const t of (tuitions || []) as TuitionRow[]) {
+      for (const t of tuitions) {
         const student = studentMap[t.student_id];
         if (!student?.family_id) continue;
         const fam = familyMap[student.family_id];
