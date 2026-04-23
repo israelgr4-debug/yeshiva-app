@@ -152,26 +152,43 @@ export default function TuitionSetupPage() {
       };
 
       // Check if a row already exists
-      const { data: existing } = await supabase
+      const { data: existing, error: existingErr } = await supabase
         .from('student_tuition')
         .select('id')
         .eq('student_id', studentId)
         .maybeSingle();
+      if (existingErr) console.error('Exists-check error:', existingErr);
 
       let err: any = null;
+      let resultData: any = null;
       if (existing) {
-        const { error } = await supabase
+        const { error, data } = await supabase
           .from('student_tuition')
           .update(payload)
-          .eq('student_id', studentId);
+          .eq('student_id', studentId)
+          .select();
         err = error;
+        resultData = data;
       } else {
-        const { error } = await supabase.from('student_tuition').insert(payload);
+        const { error, data } = await supabase
+          .from('student_tuition')
+          .insert(payload)
+          .select();
         err = error;
+        resultData = data;
       }
       if (err) throw err;
+      console.log('✓ Save result:', { payload, resultData, existingRow: existing });
 
-      // Update local state with the saved row (also clear any stale id reference)
+      // Read back to verify
+      const { data: readback } = await supabase
+        .from('student_tuition')
+        .select('*')
+        .eq('student_id', studentId)
+        .maybeSingle();
+      console.log('✓ Readback from DB:', readback);
+
+      // Update local state with the saved row
       setTuition((prev) => ({
         ...prev,
         [studentId]: { ...row, id: existing?.id || prev[studentId]?.id },
