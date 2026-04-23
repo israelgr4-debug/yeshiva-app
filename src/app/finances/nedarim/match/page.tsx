@@ -163,9 +163,12 @@ export default function NedarimMatchPage() {
       const row = Array.isArray(data) ? data[0] : data;
       alert(
         `✓ שיוך אוטומטי הושלם\n\n` +
-          `שויכו אוטומטית: ${row?.matched_count ?? 0}\n` +
-          `עם ת.ז חסרה: ${row?.missing_zeout_count ?? 0}\n` +
-          `ללא משפחה תואמת: ${row?.no_match_count ?? 0}\n` +
+          `לפי ת.ז אב: ${row?.matched_by_father ?? row?.matched_count ?? 0}\n` +
+          `לפי ת.ז אם: ${row?.matched_by_mother ?? 0}\n` +
+          `לפי שם מלא (משפחה + אב): ${row?.matched_by_name ?? 0}\n` +
+          `---\n` +
+          `ללא ת.ז בנדרים: ${row?.missing_zeout_count ?? 0}\n` +
+          `ת.ז לא תואמת לאף משפחה: ${row?.no_match_count ?? 0}\n` +
           `ת.ז תואמת ליותר ממשפחה אחת: ${row?.ambiguous_count ?? 0}\n\n` +
           `הנשארים - שייך ידנית לפי ההצעות.`
       );
