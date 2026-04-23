@@ -110,6 +110,7 @@ export async function POST(_req: NextRequest) {
       title: c.title,
     }));
 
+    const collected: any[] = [];
     let offset = 0;
     const pageSize = 500;
     while (collected.length < 20000) {
