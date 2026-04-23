@@ -31,13 +31,17 @@ BEGIN
       CONTINUE;
     END IF;
 
-    -- Find families with matching father_id_number
-    SELECT COUNT(*), MIN(id)
-      INTO v_count, v_family_id
+    -- Count families with matching father_id_number (MIN doesn't work on UUID)
+    SELECT COUNT(*) INTO v_count
     FROM families
     WHERE TRIM(father_id_number) = TRIM(r.client_zeout);
 
     IF v_count = 1 THEN
+      SELECT id INTO v_family_id
+      FROM families
+      WHERE TRIM(father_id_number) = TRIM(r.client_zeout)
+      LIMIT 1;
+
       UPDATE nedarim_subscriptions
          SET family_id = v_family_id
        WHERE id = r.id;
