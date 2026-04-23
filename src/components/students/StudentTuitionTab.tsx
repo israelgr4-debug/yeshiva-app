@@ -202,11 +202,13 @@ export function StudentTuitionTab({ studentId, familyId }: Props) {
                   <option value="">-- בחר הוראה --</option>
                   {familyNedarimSubs.map((s) => {
                     const coverage = s.student_ids?.length || 0;
+                    const parts: string[] = [`${formatCurrency(Number(s.amount_per_charge))} / חודש`];
+                    if (s.last_4_digits) parts.push(`****${s.last_4_digits}`);
+                    if (s.scheduled_day) parts.push(`יום ${s.scheduled_day}`);
+                    if (coverage > 1) parts.push(`מכסה ${coverage} תלמידים`);
                     return (
                       <option key={s.id} value={s.id}>
-                        {formatCurrency(Number(s.amount_per_charge))} / חודש ·{' '}
-                        {s.last_4_digits ? `****${s.last_4_digits}` : ''} · יום {s.scheduled_day}
-                        {coverage > 1 && ` (מכסה ${coverage} תלמידים)`}
+                        {parts.join(' · ')}
                       </option>
                     );
                   })}

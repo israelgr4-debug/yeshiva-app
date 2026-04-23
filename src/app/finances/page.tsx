@@ -5,6 +5,7 @@ import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { TuitionSummaryCard } from '@/components/finances/TuitionSummaryCard';
 import { NedarimSummaryCard } from '@/components/finances/NedarimSummaryCard';
+import { TuitionByMethodCard } from '@/components/finances/TuitionByMethodCard';
 import { TuitionSetupForm } from '@/components/finances/TuitionSetupForm';
 import { TuitionPaymentsTable } from '@/components/finances/TuitionPaymentsTable';
 import { ActiveChargesTable } from '@/components/finances/ActiveChargesTable';
@@ -17,6 +18,12 @@ export default function FinancesPage() {
       <div className="p-4 md:p-8 space-y-6">
         {/* Quick actions */}
         <div className="flex flex-wrap gap-3">
+          <Link
+            href="/finances/tuition/setup"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+          >
+            🎓 שכר לימוד - הגדרה פר תלמיד
+          </Link>
           <Link
             href="/finances/nedarim"
             className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
@@ -37,7 +44,10 @@ export default function FinancesPage() {
           </Link>
         </div>
 
-        {/* Nedarim summary - new source of truth */}
+        {/* New tuition summary by method - MAIN FORECAST */}
+        <TuitionByMethodCard />
+
+        {/* Nedarim subscriptions summary */}
         <NedarimSummaryCard />
 
         {/* Legacy tuition summary */}
