@@ -21,6 +21,7 @@ interface Subscription {
   amount_per_charge: number;
   groupe: string | null;
   comments: string | null;
+  client_address: string | null;
 }
 
 interface Family {
@@ -69,6 +70,7 @@ export default function NedarimMatchPage() {
   const [autoMatching, setAutoMatching] = useState(false);
   const [selectedFamily, setSelectedFamily] = useState<Record<string, string>>({});
   const [selectedStudents, setSelectedStudents] = useState<Record<string, string[]>>({});
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active_only' | 'frozen_only'>('active_only');
 
   const load = async () => {
     setLoading(true);
@@ -294,6 +296,33 @@ export default function NedarimMatchPage() {
           ℹ️ ההצעות מתבססות על ת.ז של האב ועל התאמת שמות. בחר משפחה מההצעות או מרשימה מלאה, סמן תלמידים רלוונטיים ושייך.
         </div>
 
+        {/* Status filter */}
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-sm text-gray-600">סינון סטטוס:</span>
+          {(['active_only', 'frozen_only', 'all'] as const).map((s) => {
+            const labels = { active_only: '🟢 רק פעילות', frozen_only: '🔵 רק מוקפאות', all: 'הכל' };
+            const counts = {
+              active_only: subs.filter((x) => x.status === 'active').length,
+              frozen_only: subs.filter((x) => x.status === 'frozen').length,
+              all: subs.length,
+            };
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+                  statusFilter === s
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {labels[s]} ({counts[s]})
+              </button>
+            );
+          })}
+        </div>
+
         {loading ? (
           <div className="text-center py-8 text-gray-500">טוען...</div>
         ) : subs.length === 0 ? (
@@ -307,11 +336,27 @@ export default function NedarimMatchPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              {subs.length.toLocaleString('he-IL')} הוראות ממתינות לשיוך
-            </p>
+            {(() => {
+              const filteredSubs = subs.filter((s) =>
+                statusFilter === 'all' ? true :
+                statusFilter === 'active_only' ? s.status === 'active' :
+                s.status === 'frozen'
+              );
+              return (
+                <p className="text-sm text-gray-600">
+                  {filteredSubs.length.toLocaleString('he-IL')} הוראות ממתינות לשיוך
+                  {statusFilter !== 'all' && ` (מתוך ${subs.length})`}
+                </p>
+              );
+            })()}
 
-            {subs.slice(0, 30).map((sub) => {
+            {subs
+              .filter((s) =>
+                statusFilter === 'all' ? true :
+                statusFilter === 'active_only' ? s.status === 'active' :
+                s.status === 'frozen'
+              )
+              .slice(0, 30).map((sub) => {
               const sugg = suggestions[sub.id] || [];
               const chosenFamilyId = selectedFamily[sub.id];
               const chosenFamily = chosenFamilyId ? familyById.get(chosenFamilyId) : null;
@@ -326,10 +371,15 @@ export default function NedarimMatchPage() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {/* Subscription info */}
                       <div className="border-s-4 border-blue-500 ps-4">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
                             {sub.kind === 'credit' ? '💳 אשראי' : '🏦 בנקאי'}
                           </span>
+                          {sub.status === 'frozen' && (
+                            <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">
+                              ❄️ מוקפאת
+                            </span>
+                          )}
                           <span className="text-xs text-gray-500">
                             מזהה: {sub.nedarim_keva_id}
                           </span>
