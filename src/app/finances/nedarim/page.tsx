@@ -61,6 +61,8 @@ export default function NedarimPage() {
   const [tab, setTab] = useState<Tab>('credit');
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [processingQueue, setProcessingQueue] = useState(false);
+  const [queuePending, setQueuePending] = useState(0);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
@@ -124,7 +126,38 @@ export default function NedarimPage() {
       .limit(1);
     setLastSync(log?.[0]?.finished_at || null);
 
+    // Count pending queue items
+    const { count } = await supabase
+      .from('nedarim_action_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending');
+    setQueuePending(count || 0);
+
     setLoading(false);
+  };
+
+  const handleProcessQueue = async () => {
+    setProcessingQueue(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/nedarim/process-queue', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token || ''}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה');
+      alert(
+        `✓ עובדו ${json.summary.processed} פעולות\n\n` +
+          `הצליחו: ${json.summary.succeeded}\n` +
+          `נכשלו: ${json.summary.failed}\n` +
+          (json.summary.errors?.length ? `שגיאות:\n${json.summary.errors.slice(0, 3).join('\n')}` : '')
+      );
+      await load();
+    } catch (e: any) {
+      alert('שגיאה: ' + (e?.message || e));
+    } finally {
+      setProcessingQueue(false);
+    }
   };
 
   useEffect(() => {
@@ -225,7 +258,16 @@ export default function NedarimPage() {
               💰 עסקאות
             </Link>
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center flex-wrap">
+            {queuePending > 0 && (
+              <Button
+                onClick={handleProcessQueue}
+                disabled={processingQueue}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                {processingQueue ? 'מעבד...' : `⚡ בצע ${queuePending} פעולות ממתינות בנדרים`}
+              </Button>
+            )}
             {lastSync && (
               <span className="text-xs text-gray-500">סונכרן לאחרונה: {formatDT(lastSync)}</span>
             )}

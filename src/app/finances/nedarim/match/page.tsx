@@ -156,6 +156,7 @@ export default function NedarimMatchPage() {
     const studentIds = selectedStudents[sub.id] || [];
     setSavingId(sub.id);
     try {
+      // 1. Update the subscription with family + students
       const { error } = await supabase
         .from('nedarim_subscriptions')
         .update({
@@ -164,6 +165,27 @@ export default function NedarimMatchPage() {
         })
         .eq('id', sub.id);
       if (error) throw error;
+
+      // 2. If students were selected, auto-create student_tuition rows
+      //    so the student card shows history + forecast reflects this HK
+      if (studentIds.length > 0) {
+        const subAmount = Number(sub.amount_per_charge) || 0;
+        const perStudent = Math.round((subAmount / studentIds.length) * 100) / 100;
+
+        const tuitionRows = studentIds.map((sid) => ({
+          student_id: sid,
+          payment_method: 'credit_nedarim' as const,
+          monthly_amount: perStudent,
+          nedarim_subscription_id: sub.id,
+          notes: '[אוטומטי] נוצר מתוך שיוך ידני של הוק נדרים',
+          active: true,
+        }));
+
+        for (const row of tuitionRows) {
+          await supabase.from('student_tuition').upsert(row, { onConflict: 'student_id' });
+        }
+      }
+
       // Remove from list
       setSubs((prev) => prev.filter((s) => s.id !== sub.id));
     } catch (e: any) {
