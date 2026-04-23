@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { TuitionSummaryCard } from '@/components/finances/TuitionSummaryCard';
 import { NedarimSummaryCard } from '@/components/finances/NedarimSummaryCard';
 import { TuitionByMethodCard } from '@/components/finances/TuitionByMethodCard';
+import { InactivePayersCard } from '@/components/finances/InactivePayersCard';
 import { TuitionSetupForm } from '@/components/finances/TuitionSetupForm';
 import { TuitionPaymentsTable } from '@/components/finances/TuitionPaymentsTable';
 import { ActiveChargesTable } from '@/components/finances/ActiveChargesTable';
@@ -58,6 +59,9 @@ export default function FinancesPage() {
 
         {/* New tuition summary by method - MAIN FORECAST */}
         <TuitionByMethodCard />
+
+        {/* Inactive students still paying - red flag */}
+        <InactivePayersCard />
 
         {/* Nedarim subscriptions summary */}
         <NedarimSummaryCard />
