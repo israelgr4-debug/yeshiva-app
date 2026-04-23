@@ -28,6 +28,9 @@ interface Subscription {
   groupe: string | null;
   last_error: string | null;
   last_synced_at: string;
+  // Synthetic: whether this record comes from our own tuition_charges (bank)
+  isLocalBank?: boolean;
+  localChargeId?: string;
 }
 
 interface FamilyLite {
@@ -63,13 +66,48 @@ export default function NedarimPage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
+
+    // Nedarim subscriptions (credit from API)
+    const { data: ned } = await supabase
       .from('nedarim_subscriptions')
       .select('*')
       .neq('status', 'deleted')
       .order('status', { ascending: true })
       .order('client_name', { ascending: true });
-    setSubs((data || []) as Subscription[]);
+
+    // Our own bank HKs from tuition_charges (Masav managed in-house)
+    const { data: tc } = await supabase
+      .from('tuition_charges')
+      .select('id, family_id, total_amount_per_month, scheduled_day_of_month, status, payment_method, notes, student_ids')
+      .eq('payment_method', 'standing_order')
+      .neq('status', 'cancelled');
+
+    const localBank: Subscription[] = (tc || []).map((c: any) => ({
+      id: `tc_${c.id}`,
+      localChargeId: c.id,
+      isLocalBank: true,
+      nedarim_keva_id: '—',
+      kind: 'bank' as const,
+      status: c.status === 'active' ? 'active' : c.status === 'suspended' ? 'frozen' : c.status,
+      family_id: c.family_id,
+      client_zeout: null,
+      client_name: null,
+      client_phone: null,
+      amount_per_charge: Number(c.total_amount_per_month) || 0,
+      scheduled_day: c.scheduled_day_of_month || null,
+      next_charge_date: null,
+      remaining_charges: null,
+      successful_charges: null,
+      last_4_digits: null,
+      bank_number: null,
+      bank_agency: null,
+      bank_account: null,
+      groupe: 'שכר לימוד',
+      last_error: null,
+      last_synced_at: new Date().toISOString(),
+    }));
+
+    setSubs([...(ned || []) as Subscription[], ...localBank]);
 
     const { data: fams } = await supabase
       .from('families')
@@ -122,7 +160,7 @@ export default function NedarimPage() {
     let list = subs;
     if (tab === 'credit') list = list.filter((s) => s.kind === 'credit');
     else if (tab === 'bank') list = list.filter((s) => s.kind === 'bank');
-    else if (tab === 'unmatched') list = list.filter((s) => !s.family_id);
+    else if (tab === 'unmatched') list = list.filter((s) => !s.family_id && !s.isLocalBank);
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -139,7 +177,7 @@ export default function NedarimPage() {
   const counts = {
     credit: subs.filter((s) => s.kind === 'credit').length,
     bank: subs.filter((s) => s.kind === 'bank').length,
-    unmatched: subs.filter((s) => !s.family_id).length,
+    unmatched: subs.filter((s) => !s.family_id && !s.isLocalBank).length,
   };
 
   const activeTotal = filtered

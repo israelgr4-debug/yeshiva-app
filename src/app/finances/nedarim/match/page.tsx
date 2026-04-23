@@ -55,6 +55,7 @@ export default function NedarimMatchPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [autoMatching, setAutoMatching] = useState(false);
   const [selectedFamily, setSelectedFamily] = useState<Record<string, string>>({});
   const [selectedStudents, setSelectedStudents] = useState<Record<string, string[]>>({});
 
@@ -149,6 +150,33 @@ export default function NedarimMatchPage() {
     setSubs((prev) => prev.filter((s) => s.id !== subId));
   };
 
+  const handleAutoMatch = async () => {
+    if (!confirm(
+      'הסקריפט ישייך אוטומטית רק הוקים שיש להם ת.ז אב זהה למשפחה אחת בדיוק.\n\n' +
+        'הוקים עם שם זהה בלבד (ללא ת.ז) יישארו להצעה ידנית.\n\n' +
+        'להמשיך?'
+    )) return;
+    setAutoMatching(true);
+    try {
+      const { data, error } = await supabase.rpc('auto_match_nedarim_by_zeout');
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      alert(
+        `✓ שיוך אוטומטי הושלם\n\n` +
+          `שויכו אוטומטית: ${row?.matched_count ?? 0}\n` +
+          `עם ת.ז חסרה: ${row?.missing_zeout_count ?? 0}\n` +
+          `ללא משפחה תואמת: ${row?.no_match_count ?? 0}\n` +
+          `ת.ז תואמת ליותר ממשפחה אחת: ${row?.ambiguous_count ?? 0}\n\n` +
+          `הנשארים - שייך ידנית לפי ההצעות.`
+      );
+      await load();
+    } catch (e: any) {
+      alert('שגיאה: ' + (e?.message || e));
+    } finally {
+      setAutoMatching(false);
+    }
+  };
+
   const familyById = useMemo(() => {
     const m = new Map<string, Family>();
     for (const f of families) m.set(f.id, f);
@@ -171,13 +199,16 @@ export default function NedarimMatchPage() {
       <Header title="שיוך נדרים למשפחות" subtitle="עבור על כל הוראת קבע ושייך למשפחה" />
 
       <div className="p-4 md:p-8 space-y-4">
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center justify-between">
           <Link
             href="/finances/nedarim"
             className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
           >
             ← חזרה לרשימה
           </Link>
+          <Button onClick={handleAutoMatch} disabled={autoMatching || loading}>
+            {autoMatching ? 'משייך...' : '⚡ שיוך אוטומטי לפי ת.ז'}
+          </Button>
         </div>
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
