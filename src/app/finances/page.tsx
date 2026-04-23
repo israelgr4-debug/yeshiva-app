@@ -17,6 +17,12 @@ export default function FinancesPage() {
         {/* Quick actions */}
         <div className="flex flex-wrap gap-3">
           <Link
+            href="/finances/nedarim"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+          >
+            🔗 נדרים פלוס (גביות פעילות)
+          </Link>
+          <Link
             href="/finances/collection"
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
           >
