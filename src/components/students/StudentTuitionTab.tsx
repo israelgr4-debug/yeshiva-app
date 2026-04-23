@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { supabase } from '@/lib/supabase';
+import { OfficePaymentDialog } from '@/components/finances/OfficePaymentDialog';
 
 type PaymentMethod = 'bank_ho' | 'credit_nedarim' | 'office' | 'exempt' | 'none';
 
@@ -75,6 +76,7 @@ export function StudentTuitionTab({ studentId, familyId }: Props) {
   const [payments, setPayments] = useState<UnifiedPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [officeDialogOpen, setOfficeDialogOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -286,10 +288,24 @@ export function StudentTuitionTab({ studentId, familyId }: Props) {
         </div>
       </div>
 
+      {/* Office payment button */}
+      {tuition.payment_method === 'office' && (
+        <div className="flex justify-end">
+          <Button onClick={() => setOfficeDialogOpen(true)}>💰 רשום תשלום שהתקבל במשרד</Button>
+        </div>
+      )}
+
       {/* Payment history (all sources unified) */}
       {payments.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">היסטוריית תשלומים</h4>
+          <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-gray-700">היסטוריית תשלומים</h4>
+            {tuition.payment_method !== 'office' && (
+              <Button size="sm" variant="secondary" onClick={() => setOfficeDialogOpen(true)}>
+                + תשלום נוסף במשרד
+              </Button>
+            )}
+          </div>
           <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
@@ -333,6 +349,17 @@ export function StudentTuitionTab({ studentId, familyId }: Props) {
           </div>
         </div>
       )}
+
+      <OfficePaymentDialog
+        isOpen={officeDialogOpen}
+        studentId={studentId}
+        defaultAmount={tuition.monthly_amount > 0 ? tuition.monthly_amount : undefined}
+        onClose={() => setOfficeDialogOpen(false)}
+        onDone={() => {
+          setOfficeDialogOpen(false);
+          load();
+        }}
+      />
     </div>
   );
 }

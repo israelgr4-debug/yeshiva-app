@@ -25,6 +25,18 @@ export default function FinancesPage() {
             🎓 שכר לימוד - הגדרה פר תלמיד
           </Link>
           <Link
+            href="/finances/tuition/masav"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+          >
+            🏦 ייצוא קובץ מס״ב
+          </Link>
+          <Link
+            href="/finances/tuition/split"
+            className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+          >
+            ✂️ חלוקת הוקים משותפות
+          </Link>
+          <Link
             href="/finances/nedarim"
             className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
           >
