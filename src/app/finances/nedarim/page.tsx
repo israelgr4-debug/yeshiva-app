@@ -212,6 +212,12 @@ export default function NedarimPage() {
                 🔗 שיוך למשפחות ({counts.unmatched})
               </Link>
             )}
+            <Link
+              href="/finances/nedarim/groups"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+            >
+              🏷️ קטגוריות
+            </Link>
           </div>
           <div className="flex gap-2 items-center">
             {lastSync && (
