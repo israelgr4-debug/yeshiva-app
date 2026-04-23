@@ -150,17 +150,40 @@ export default function TuitionSetupPage() {
         notes: row.notes,
         active: true,
       };
-      const { error } = await supabase
+
+      // Check if a row already exists
+      const { data: existing } = await supabase
         .from('student_tuition')
-        .upsert(payload, { onConflict: 'student_id' });
-      if (error) throw error;
+        .select('id')
+        .eq('student_id', studentId)
+        .maybeSingle();
+
+      let err: any = null;
+      if (existing) {
+        const { error } = await supabase
+          .from('student_tuition')
+          .update(payload)
+          .eq('student_id', studentId);
+        err = error;
+      } else {
+        const { error } = await supabase.from('student_tuition').insert(payload);
+        err = error;
+      }
+      if (err) throw err;
+
+      // Update local state with the saved row (also clear any stale id reference)
+      setTuition((prev) => ({
+        ...prev,
+        [studentId]: { ...row, id: existing?.id || prev[studentId]?.id },
+      }));
       setDirty((prev) => {
         const next = { ...prev };
         delete next[studentId];
         return next;
       });
     } catch (e: any) {
-      alert('שגיאה: ' + (e?.message || e));
+      console.error('saveRow error', e);
+      alert('שגיאה בשמירה: ' + (e?.message || e?.details || JSON.stringify(e)));
     } finally {
       setSavingIds((prev) => ({ ...prev, [studentId]: false }));
     }
