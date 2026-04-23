@@ -9,6 +9,8 @@ import { useSupabase } from '@/hooks/useSupabase';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { supabase } from '@/lib/supabase';
 import { SHIURIM, getMachzorForNewStudent, DEFAULT_BASE_MACHZOR } from '@/lib/shiurim';
+import { ISRAELI_BANKS } from '@/lib/israeli-banks';
+import { isValidIsraeliId, isValidBankAccount, isValidBranch } from '@/lib/israeli-validators';
 
 interface StudentFormProps {
   student?: Student;
@@ -46,6 +48,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     machzor_id: student?.machzor_id || '',
     family_id: student?.family_id || '',
     photo_url: student?.photo_url || '',
+    id_type: student?.id_type || '0',  // '0' = ID, '1' = passport
   });
 
   // Photo upload state
@@ -389,13 +392,35 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             onChange={handleStudentChange}
             required
           />
-          <Input
-            label="תז או דרכון"
-            name="id_number"
-            value={studentData.id_number}
-            onChange={handleStudentChange}
-            required
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              תעודת זהות / דרכון
+              {studentData.id_number && !studentData.id_type && (
+                isValidIsraeliId(studentData.id_number)
+                  ? <span className="text-green-600 ms-1">✓</span>
+                  : <span className="text-amber-600 ms-1" title="ת.ז לא תקינה - אם זה דרכון סמן את הבוקס">⚠</span>
+              )}
+            </label>
+            <input
+              name="id_number"
+              value={studentData.id_number}
+              onChange={handleStudentChange}
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <label className="flex items-center gap-2 mt-1 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={Number(studentData.id_type) === 1}
+                onChange={(e) =>
+                  handleStudentChange({
+                    target: { name: 'id_type', value: e.target.checked ? '1' : '0' },
+                  } as any)
+                }
+              />
+              זה דרכון (לא ת.ז)
+            </label>
+          </div>
           <Input
             label="טלפון"
             name="phone"
@@ -525,13 +550,23 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             value={familyData.father_name}
             onChange={handleFamilyChange}
           />
-          <Input
-            label="תז אב"
-            name="father_id_number"
-            value={familyData.father_id_number}
-            onChange={handleFamilyChange}
-            placeholder="הקלד תז אב לחיפוש אחים"
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              תז אב
+              {familyData.father_id_number && (
+                isValidIsraeliId(familyData.father_id_number)
+                  ? <span className="text-green-600 ms-1">✓</span>
+                  : <span className="text-amber-600 ms-1" title="ת.ז לא תקינה - יכול להיות דרכון">⚠</span>
+              )}
+            </label>
+            <input
+              name="father_id_number"
+              value={familyData.father_id_number}
+              onChange={handleFamilyChange}
+              placeholder="הקלד תז אב לחיפוש אחים"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
           <Input
             label="טלפון אב"
             name="father_phone"
@@ -556,12 +591,22 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             value={familyData.mother_name}
             onChange={handleFamilyChange}
           />
-          <Input
-            label="תז אם"
-            name="mother_id_number"
-            value={familyData.mother_id_number}
-            onChange={handleFamilyChange}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              תז אם
+              {familyData.mother_id_number && (
+                isValidIsraeliId(familyData.mother_id_number)
+                  ? <span className="text-green-600 ms-1">✓</span>
+                  : <span className="text-amber-600 ms-1">⚠</span>
+              )}
+            </label>
+            <input
+              name="mother_id_number"
+              value={familyData.mother_id_number}
+              onChange={handleFamilyChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
           <Input
             label="טלפון אם"
             name="mother_phone"
@@ -604,24 +649,54 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
         {/* בנק */}
         <h4 className="text-sm font-semibold text-gray-600 mb-3 mt-6">פרטי בנק</h4>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Input
-            label="שם בנק"
-            name="bank_name"
-            value={familyData.bank_name}
-            onChange={handleFamilyChange}
-          />
-          <Input
-            label="סניף"
-            name="bank_branch"
-            value={familyData.bank_branch}
-            onChange={handleFamilyChange}
-          />
-          <Input
-            label="מספר חשבון"
-            name="bank_account"
-            value={familyData.bank_account}
-            onChange={handleFamilyChange}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">שם בנק</label>
+            <select
+              name="bank_name"
+              value={familyData.bank_name}
+              onChange={handleFamilyChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">-- בחר --</option>
+              {ISRAELI_BANKS.map((b) => (
+                <option key={b.code} value={b.shortName}>
+                  {b.code} - {b.shortName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              סניף
+              {familyData.bank_branch && (
+                isValidBranch(familyData.bank_branch)
+                  ? <span className="text-green-600 ms-1">✓</span>
+                  : <span className="text-amber-600 ms-1">⚠</span>
+              )}
+            </label>
+            <input
+              name="bank_branch"
+              value={familyData.bank_branch}
+              onChange={handleFamilyChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              מספר חשבון
+              {familyData.bank_account && (
+                isValidBankAccount(familyData.bank_account)
+                  ? <span className="text-green-600 ms-1">✓</span>
+                  : <span className="text-amber-600 ms-1" title="חשבון צריך להיות 4-9 ספרות">⚠</span>
+              )}
+            </label>
+            <input
+              name="bank_account"
+              value={familyData.bank_account}
+              onChange={handleFamilyChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
         </div>
 
         {/* הערות גביה */}

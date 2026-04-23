@@ -19,6 +19,8 @@ export interface Student {
   room_number?: number | null;
   health_fund_name?: string | null;
   health_fund_code?: number | null;
+  id_type?: string | null;  // '0' or null = Israeli ID, '1' = passport
+  passport_number?: string | null;
   created_at: string;
   updated_at: string;
 }
