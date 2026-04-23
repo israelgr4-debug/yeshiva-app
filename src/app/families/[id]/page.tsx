@@ -83,15 +83,17 @@ export default function FamilyDetailPage() {
     <>
       <Header title={family.family_name} subtitle={family.father_name} />
 
+      {/* Sticky back navigation */}
+      <div className="sticky top-0 z-30 bg-gray-50 border-b border-gray-200 px-4 md:px-8 py-2 flex items-center gap-2 flex-wrap">
+        <Link
+          href="/families"
+          className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium"
+        >
+          ← רשימת משפחות
+        </Link>
+      </div>
+
       <div className="p-4 md:p-8 space-y-4">
-        <div className="flex gap-2 flex-wrap">
-          <Link
-            href="/families"
-            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-          >
-            ← רשימת משפחות
-          </Link>
-        </div>
 
         {/* Family info */}
         <Card>

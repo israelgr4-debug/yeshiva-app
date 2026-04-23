@@ -338,6 +338,24 @@ export default function StudentDetailPage() {
         }
       />
 
+      {/* Sticky back navigation */}
+      <div className="sticky top-0 z-30 bg-gray-50 border-b border-gray-200 px-4 md:px-8 py-2 flex items-center gap-2 flex-wrap">
+        <Link
+          href="/students"
+          className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium"
+        >
+          ← חזרה לרשימת תלמידים
+        </Link>
+        {student?.family_id && (
+          <Link
+            href={`/families/${student.family_id}`}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium"
+          >
+            🏠 כרטיס משפחה
+          </Link>
+        )}
+      </div>
+
       <div className="p-4 md:p-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Student Card */}
@@ -389,6 +407,8 @@ export default function StudentDetailPage() {
                         </p>
                       </div>
                       <DetailRow label="כתה מקבילה" value={student.equivalent_year} />
+                      <DetailRow label="קופת חולים" value={student.health_fund_name} />
+                      <DetailRow label="תאריך לידה" value={student.date_of_birth} />
                     </div>
                   )}
 
