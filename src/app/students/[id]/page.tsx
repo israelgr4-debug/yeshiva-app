@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { StudentForm } from '@/components/students/StudentForm';
 import { StudentCard } from '@/components/students/StudentCard';
 import { EducationHistory } from '@/components/students/EducationHistory';
-import { StudentDonationsTab } from '@/components/students/StudentDonationsTab';
+import { StudentTuitionTab } from '@/components/students/StudentTuitionTab';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useTuitionLifecycle, LeaveStatus } from '@/hooks/useTuitionLifecycle';
@@ -316,7 +316,7 @@ export default function StudentDetailPage() {
     { key: 'details', label: 'פרטי תלמיד' },
     { key: 'family', label: 'פרטי הורים' },
     { key: 'education', label: 'היסטוריה לימודית' },
-    { key: 'donations', label: 'תרומות' },
+    { key: 'donations', label: 'שכר לימוד' },
     { key: 'dormitory', label: 'פנימיה' },
   ];
 
@@ -484,7 +484,7 @@ export default function StudentDetailPage() {
                   )}
 
                   {activeTab === 'donations' && (
-                    <StudentDonationsTab studentId={student.id} familyId={student.family_id || undefined} />
+                    <StudentTuitionTab studentId={student.id} familyId={student.family_id || undefined} />
                   )}
 
                   {activeTab === 'dormitory' && (
