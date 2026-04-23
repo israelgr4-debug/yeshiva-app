@@ -43,7 +43,7 @@ export async function POST(_req: NextRequest) {
       const row = {
         nedarim_keva_id: kevaId,
         kind: 'credit' as const,
-        status: creditKevaStatus(k.Enabled),
+        status: creditKevaStatus(k.Enabled, undefined, k.ErrorText),
         amount_per_charge: Number(k.Amount) || 0,
         currency: Number(k.Currency) || 1,
         next_charge_date: normalizeDate(k.NextDate as string),

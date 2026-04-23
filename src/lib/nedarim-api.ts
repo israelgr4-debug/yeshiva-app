@@ -278,11 +278,18 @@ export async function getBankHistory(from: string, to: string) {
 // =============================================================================
 
 // Map Nedarim Enabled flag (credit) → our status
-export function creditKevaStatus(enabled: string | number | undefined, kevaStatus?: string | number): 'active' | 'frozen' | 'deleted' {
+export function creditKevaStatus(
+  enabled: string | number | undefined,
+  kevaStatus?: string | number,
+  errorText?: string
+): 'active' | 'frozen' | 'deleted' {
   const s = Number(kevaStatus);
   if (s === 2) return 'frozen';
   if (s === 3) return 'deleted';
   if (Number(enabled) === 0) return 'frozen';
+  // Hidden in Nedarim UI because payments were exhausted ("אין יתרת תשלומים")
+  // or the HK is otherwise inactive but not explicitly frozen
+  if (errorText && /לא פעיל|אין יתרת/.test(errorText)) return 'frozen';
   return 'active';
 }
 
