@@ -22,11 +22,20 @@ export function NedarimSummaryCard() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [{ data: subs }, { data: groups }, { data: log }] = await Promise.all([
-        supabase
+      // Paginate subs past 1000 limit
+      const subs: any[] = [];
+      for (let p = 0; p < 10; p++) {
+        const { data } = await supabase
           .from('nedarim_subscriptions')
           .select('status, amount_per_charge, groupe, family_id')
-          .neq('status', 'deleted'),
+          .neq('status', 'deleted')
+          .range(p * 1000, (p + 1) * 1000 - 1);
+        if (!data || data.length === 0) break;
+        subs.push(...data);
+        if (data.length < 1000) break;
+      }
+
+      const [{ data: groups }, { data: log }] = await Promise.all([
         supabase.from('nedarim_groups').select('name, category_type'),
         supabase
           .from('nedarim_sync_log')
@@ -50,7 +59,7 @@ export function NedarimSummaryCard() {
         lastSync: log?.[0]?.finished_at || null,
       };
 
-      for (const sub of subs || []) {
+      for (const sub of subs) {
         const amount = Number(sub.amount_per_charge) || 0;
         if (sub.status === 'active') {
           s.totalActive++;

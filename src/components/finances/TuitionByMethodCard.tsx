@@ -50,17 +50,25 @@ export function TuitionByMethodCard() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      // Join with students to count only active students
-      const { data } = await supabase
-        .from('student_tuition')
-        .select('payment_method, monthly_amount, student_id, students!inner(status)')
-        .eq('students.status', 'active');
+      // Paginate past Supabase 1000-row limit
+      const all: any[] = [];
+      for (let p = 0; p < 20; p++) {
+        const { data, error } = await supabase
+          .from('student_tuition')
+          .select('payment_method, monthly_amount, student_id, students!inner(status)')
+          .eq('students.status', 'active')
+          .range(p * 1000, (p + 1) * 1000 - 1);
+        if (error) break;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < 1000) break;
+      }
 
       const grouped: Record<string, MethodStat> = {};
       for (const m of METHOD_ORDER) {
         grouped[m] = { method: m, students: 0, monthly: 0 };
       }
-      for (const row of (data || []) as any[]) {
+      for (const row of all) {
         const m = row.payment_method;
         if (!grouped[m]) grouped[m] = { method: m, students: 0, monthly: 0 };
         grouped[m].students++;
