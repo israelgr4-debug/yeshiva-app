@@ -235,7 +235,7 @@ export function CertificatePreview({
           )}
           {!isChinuch && activeSigner.name && <p className="signer-name">{activeSigner.name}</p>}
           {!isChinuch && activeSigner.idNumber && <p>{activeSigner.idNumber}</p>}
-          {activeSigner.title && <p>{activeSigner.title}</p>}
+          {!isChinuch && activeSigner.title && <p>{activeSigner.title}</p>}
         </div>
 
         {/* Bottom spacer - for pre-printed letterhead footer */}
