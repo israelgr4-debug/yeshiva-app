@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
 import { fetchAll } from '@/lib/supabase-paginate';
@@ -130,9 +129,58 @@ export default function TuitionSetupPage() {
     load();
   }, []);
 
-  const updateRow = (studentId: string, patch: Partial<TuitionRow>) => {
-    setTuition((prev) => ({ ...prev, [studentId]: { ...prev[studentId], ...patch } }));
+  const updateRow = (studentId: string, patch: Partial<TuitionRow>, autoSave = false) => {
+    setTuition((prev) => {
+      const merged = { ...prev[studentId], ...patch };
+      const next = { ...prev, [studentId]: merged };
+      if (autoSave) {
+        // Save immediately with the merged value (avoiding async state race)
+        saveWithPayload(studentId, merged);
+      }
+      return next;
+    });
     setDirty((prev) => ({ ...prev, [studentId]: true }));
+  };
+
+  const saveWithPayload = async (studentId: string, row: TuitionRow) => {
+    setSavingIds((prev) => ({ ...prev, [studentId]: true }));
+    try {
+      const payload = {
+        student_id: studentId,
+        payment_method: row.payment_method,
+        monthly_amount: Number(row.monthly_amount) || 0,
+        nedarim_subscription_id:
+          row.payment_method === 'credit_nedarim' ? row.nedarim_subscription_id : null,
+        bank_day: row.payment_method === 'bank_ho' ? Number(row.bank_day) || 20 : null,
+        notes: row.notes,
+        active: true,
+      };
+      const { data: existing } = await supabase
+        .from('student_tuition')
+        .select('id')
+        .eq('student_id', studentId)
+        .maybeSingle();
+      if (existing) {
+        const { error } = await supabase
+          .from('student_tuition')
+          .update(payload)
+          .eq('student_id', studentId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('student_tuition').insert(payload);
+        if (error) throw error;
+      }
+      setDirty((prev) => {
+        const next = { ...prev };
+        delete next[studentId];
+        return next;
+      });
+    } catch (e: any) {
+      console.error('saveWithPayload error', e);
+      alert('שגיאה בשמירה: ' + (e?.message || JSON.stringify(e)));
+    } finally {
+      setSavingIds((prev) => ({ ...prev, [studentId]: false }));
+    }
   };
 
   const saveRow = async (studentId: string) => {
@@ -366,10 +414,14 @@ export default function TuitionSetupPage() {
                             <select
                               value={t?.payment_method || 'none'}
                               onChange={(e) =>
-                                updateRow(s.id, {
-                                  payment_method: e.target.value as PaymentMethod,
-                                  nedarim_subscription_id: null,
-                                })
+                                updateRow(
+                                  s.id,
+                                  {
+                                    payment_method: e.target.value as PaymentMethod,
+                                    nedarim_subscription_id: null,
+                                  },
+                                  true /* autoSave */
+                                )
                               }
                               className={`text-xs px-2 py-1 rounded ${METHOD_COLORS[t?.payment_method || 'none']}`}
                             >
@@ -385,7 +437,7 @@ export default function TuitionSetupPage() {
                               <select
                                 value={t.nedarim_subscription_id || ''}
                                 onChange={(e) =>
-                                  updateRow(s.id, { nedarim_subscription_id: e.target.value || null })
+                                  updateRow(s.id, { nedarim_subscription_id: e.target.value || null }, true)
                                 }
                                 className="text-xs px-2 py-1 border border-gray-300 rounded w-full"
                               >
@@ -407,6 +459,7 @@ export default function TuitionSetupPage() {
                                 placeholder="יום"
                                 value={t.bank_day || 20}
                                 onChange={(e) => updateRow(s.id, { bank_day: Number(e.target.value) })}
+                                onBlur={() => saveRow(s.id)}
                                 className="text-xs px-2 py-1 border border-gray-300 rounded w-16"
                               />
                             )}
@@ -422,19 +475,18 @@ export default function TuitionSetupPage() {
                                 onChange={(e) =>
                                   updateRow(s.id, { monthly_amount: Number(e.target.value) || 0 })
                                 }
+                                onBlur={() => saveRow(s.id)}
                                 className="text-xs px-2 py-1 border border-gray-300 rounded w-24"
                               />
                             )}
                           </td>
-                          <td className="px-2 py-2">
-                            {isDirty && (
-                              <Button
-                                size="sm"
-                                onClick={() => saveRow(s.id)}
-                                disabled={savingIds[s.id]}
-                              >
-                                {savingIds[s.id] ? '...' : 'שמור'}
-                              </Button>
+                          <td className="px-2 py-2 text-xs">
+                            {savingIds[s.id] ? (
+                              <span className="text-blue-600">💾</span>
+                            ) : isDirty ? (
+                              <span className="text-amber-600" title="לחץ מחוץ לשדה לשמירה">●</span>
+                            ) : (
+                              <span className="text-green-600">✓</span>
                             )}
                           </td>
                         </tr>
