@@ -24,27 +24,38 @@ export async function POST(_req: NextRequest) {
   const summary = { fetched: 0, upserted: 0, errors: [] as string[] };
 
   try {
-    // 1. Discover the current resource_id via data.gov.il package_search
-    //    (Bank of Israel's branches dataset gets republished periodically
-    //    under new resource IDs - so we look it up dynamically.)
-    let resourceId: string | null = null;
+    // Find the LARGEST bank branches dataset on data.gov.il.
+    // data.gov.il has multiple related datasets (ATMs, corps, branches) and some
+    // are small/stale. We pick by row count.
+    const candidates: Array<{ id: string; count: number; title?: string }> = [];
+
     try {
       const pkgRes = await fetch(
-        'https://data.gov.il/api/3/action/package_search?q=bank+branches+israel+bank',
+        'https://data.gov.il/api/3/action/package_search?q=סניפי+בנקים&rows=30',
         { cache: 'no-store' }
       );
       if (pkgRes.ok) {
         const pkgJson = await pkgRes.json();
         const results = pkgJson?.result?.results || [];
-        // Find the package that looks like bank branches (title contains "סניפי" or bank keywords)
         for (const pkg of results) {
           const title = (pkg.title || '') + ' ' + (pkg.name || '');
-          if (/branch|סניף|בנק/i.test(title)) {
-            const activeResources = (pkg.resources || []).filter((r: any) => r?.active !== false);
-            if (activeResources.length > 0) {
-              resourceId = activeResources[0].id;
-              break;
-            }
+          // Include package if it mentions branches explicitly
+          const looksRelevant = /branch|סניפ|ATM|מסוף|כספומט|בנק/i.test(title);
+          if (!looksRelevant) continue;
+          for (const res of pkg.resources || []) {
+            if (res?.active === false) continue;
+            if (res?.datastore_active !== true) continue;
+            // Probe for record count
+            try {
+              const testUrl = `https://data.gov.il/api/3/action/datastore_search?resource_id=${res.id}&limit=1`;
+              const tr = await fetch(testUrl, { cache: 'no-store' });
+              if (!tr.ok) continue;
+              const tj = await tr.json();
+              if (tj?.success) {
+                const total = tj?.result?.total || 0;
+                candidates.push({ id: res.id, count: total, title: `${title} / ${res.name || res.id}` });
+              }
+            } catch { /* skip */ }
           }
         }
       }
@@ -52,32 +63,52 @@ export async function POST(_req: NextRequest) {
       summary.errors.push(`package_search: ${e?.message}`);
     }
 
-    // Fallback: try known resource IDs in order
-    const fallbackIds = [
-      '1c5bc716-8210-4ec7-85be-92e6271955c2',
-      '3bbfda1a-32f6-4f46-855a-7a4b9a2b4b9e',
-      '7d6c8fe3-df8a-4b99-93db-0e7c8e9f8b12',
-    ];
-    const candidateIds = resourceId ? [resourceId, ...fallbackIds] : fallbackIds;
-
-    const collected: any[] = [];
-    let chosenId: string | null = null;
-    for (const rid of candidateIds) {
-      // Test with a small fetch
-      const testUrl = `https://data.gov.il/api/3/action/datastore_search?resource_id=${rid}&limit=5`;
-      const tr = await fetch(testUrl, { cache: 'no-store' });
-      if (!tr.ok) continue;
-      const tj = await tr.json();
-      if (tj?.success && tj?.result?.records?.length > 0) {
-        chosenId = rid;
-        break;
+    // Also try English keyword search
+    try {
+      const pkgRes = await fetch(
+        'https://data.gov.il/api/3/action/package_search?q=bank+branches&rows=30',
+        { cache: 'no-store' }
+      );
+      if (pkgRes.ok) {
+        const pkgJson = await pkgRes.json();
+        const results = pkgJson?.result?.results || [];
+        for (const pkg of results) {
+          for (const res of pkg.resources || []) {
+            if (res?.active === false || res?.datastore_active !== true) continue;
+            if (candidates.find((c) => c.id === res.id)) continue;
+            try {
+              const testUrl = `https://data.gov.il/api/3/action/datastore_search?resource_id=${res.id}&limit=1`;
+              const tr = await fetch(testUrl, { cache: 'no-store' });
+              if (!tr.ok) continue;
+              const tj = await tr.json();
+              if (tj?.success) {
+                candidates.push({
+                  id: res.id,
+                  count: tj?.result?.total || 0,
+                  title: `${pkg.title || ''} / ${res.name || res.id}`,
+                });
+              }
+            } catch { /* skip */ }
+          }
+        }
       }
-    }
+    } catch { /* skip */ }
 
+    // Sort by row count descending - the biggest one is most likely the full branches
+    candidates.sort((a, b) => b.count - a.count);
+
+    const chosenId = candidates[0]?.id;
     if (!chosenId) {
-      summary.errors.push('לא נמצא resource_id תקין. כנראה יש שינוי ב-data.gov.il - יש לקבל ID חדש.');
+      summary.errors.push('לא נמצא resource_id תקין. יש לקבל ID חדש.');
       return NextResponse.json({ ok: false, summary }, { status: 200 });
     }
+    (summary as any).dataset = candidates[0].title;
+    (summary as any).datasetTotalRows = candidates[0].count;
+    (summary as any).allCandidates = candidates.slice(0, 10).map((c) => ({
+      id: c.id,
+      rows: c.count,
+      title: c.title,
+    }));
 
     let offset = 0;
     const pageSize = 500;
