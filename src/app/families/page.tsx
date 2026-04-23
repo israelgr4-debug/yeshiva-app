@@ -106,10 +106,13 @@ export default function FamiliesPage() {
                 key={family.id}
                 className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow"
               >
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="text-lg font-bold text-gray-900">
-                    {family.family_name || 'ללא שם'}
-                  </h3>
+                <div className="flex justify-between items-start mb-3 gap-2">
+                  <Link
+                    href={`/families/${family.id}`}
+                    className="text-lg font-bold text-gray-900 hover:text-blue-600 hover:underline truncate"
+                  >
+                    {family.family_name || 'ללא שם'} ←
+                  </Link>
                   {kids.length > 0 && (
                     <div className="flex flex-col items-end gap-1">
                       <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">

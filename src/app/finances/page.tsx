@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { TuitionSummaryCard } from '@/components/finances/TuitionSummaryCard';
+import { NedarimSummaryCard } from '@/components/finances/NedarimSummaryCard';
 import { TuitionSetupForm } from '@/components/finances/TuitionSetupForm';
 import { TuitionPaymentsTable } from '@/components/finances/TuitionPaymentsTable';
 import { ActiveChargesTable } from '@/components/finances/ActiveChargesTable';
@@ -36,7 +37,10 @@ export default function FinancesPage() {
           </Link>
         </div>
 
-        {/* Tuition summary */}
+        {/* Nedarim summary - new source of truth */}
+        <NedarimSummaryCard />
+
+        {/* Legacy tuition summary */}
         <TuitionSummaryCard />
 
         {/* Setup new tuition */}
