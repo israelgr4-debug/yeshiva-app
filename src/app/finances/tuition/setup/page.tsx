@@ -76,6 +76,8 @@ export default function TuitionSetupPage() {
   const [shiurFilter, setShiurFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<'student' | 'family' | 'method' | 'amount' | 'shiur'>('student');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
   const [dirty, setDirty] = useState<Record<string, boolean>>({});
 
@@ -284,8 +286,47 @@ export default function TuitionSetupPage() {
           return false;
       }
       return true;
+    }).sort((a, b) => {
+      const dir = sortDir === 'asc' ? 1 : -1;
+      const ta = tuition[a.id];
+      const tb = tuition[b.id];
+      const famA = a.family_id ? familiesById[a.family_id] : null;
+      const famB = b.family_id ? familiesById[b.family_id] : null;
+      switch (sortKey) {
+        case 'student':
+          return dir * (`${a.last_name} ${a.first_name}`).localeCompare(`${b.last_name} ${b.first_name}`, 'he');
+        case 'family':
+          return dir * ((famA?.family_name || '').localeCompare(famB?.family_name || '', 'he'));
+        case 'shiur':
+          return dir * ((a.shiur || '').localeCompare(b.shiur || '', 'he'));
+        case 'method':
+          return dir * ((ta?.payment_method || '').localeCompare(tb?.payment_method || ''));
+        case 'amount':
+          return dir * ((Number(ta?.monthly_amount) || 0) - (Number(tb?.monthly_amount) || 0));
+      }
+      return 0;
     });
-  }, [students, tuition, filter, shiurFilter, search, familiesById]);
+  }, [students, tuition, filter, shiurFilter, search, familiesById, sortKey, sortDir]);
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const SortHeader = ({ label, k }: { label: string; k: typeof sortKey }) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(k)}
+      className="flex items-center gap-1 font-bold hover:text-blue-600"
+    >
+      {label}
+      {sortKey === k && <span className="text-blue-600">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+    </button>
+  );
 
   // Counts per method (only yeshiva students - no kollel)
   const counts = useMemo(() => {
@@ -382,11 +423,11 @@ export default function TuitionSetupPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-2 py-2 text-start">תלמיד</th>
-                      <th className="px-2 py-2 text-start">משפחה</th>
-                      <th className="px-2 py-2 text-start">שיטה</th>
+                      <th className="px-2 py-2 text-start"><SortHeader label="תלמיד" k="student" /></th>
+                      <th className="px-2 py-2 text-start"><SortHeader label="משפחה" k="family" /></th>
+                      <th className="px-2 py-2 text-start"><SortHeader label="שיטה" k="method" /></th>
                       <th className="px-2 py-2 text-start">פרטים</th>
-                      <th className="px-2 py-2 text-start">סכום</th>
+                      <th className="px-2 py-2 text-start"><SortHeader label="סכום" k="amount" /></th>
                       <th className="px-2 py-2 text-start"></th>
                     </tr>
                   </thead>
