@@ -76,7 +76,12 @@ export default function NedarimMatchPage() {
     setLoading(true);
     const [s, f, st] = await Promise.all([
       fetchAll<Subscription>('nedarim_subscriptions', '*', (q) =>
-        q.is('family_id', null).neq('status', 'deleted').order('amount_per_charge', { ascending: false })
+        q
+          .is('family_id', null)
+          .neq('status', 'deleted')
+          // Exclude donation subs - they're not tuition and don't belong on the matching page
+          .or('groupe.is.null,groupe.neq.תרומה')
+          .order('amount_per_charge', { ascending: false })
       ),
       fetchAll<Family>('families', 'id, family_name, father_name, mother_name, father_id_number, mother_id_number, phone'),
       fetchAll<Student>('students', 'id, family_id, first_name, last_name, status'),
