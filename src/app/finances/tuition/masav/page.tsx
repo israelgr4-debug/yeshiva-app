@@ -101,7 +101,8 @@ export default function MasavExportPage() {
         if (!fc.family.bank_number) issues.push('חסר בנק');
         if (!fc.family.bank_branch) issues.push('חסר סניף');
         if (!fc.family.bank_account) issues.push('חסר חשבון');
-        if (!fc.family.father_id_number) issues.push('חסרה ת.ז אב');
+        // Note: missing father_id is a WARNING, not an error - row is still included
+        // if (!fc.family.father_id_number) issues.push('חסרה ת.ז אב');
         if (fc.totalAmount <= 0) issues.push('סכום 0');
         fc.issues = issues;
         fc.valid = issues.length === 0;
@@ -228,7 +229,7 @@ export default function MasavExportPage() {
         </Card>
 
         {/* Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-green-50 rounded-lg p-4 text-center">
             <p className="text-xs text-gray-600 mb-1">משפחות לחיוב</p>
             <p className="text-3xl font-bold text-green-700">{validCharges.length}</p>
@@ -239,8 +240,15 @@ export default function MasavExportPage() {
             <p className="text-3xl font-bold text-blue-700">{formatCurrency(totalAmount)}</p>
           </div>
           <div className="bg-amber-50 rounded-lg p-4 text-center">
-            <p className="text-xs text-gray-600 mb-1">משפחות עם בעיות</p>
-            <p className="text-3xl font-bold text-amber-700">{invalidCharges.length}</p>
+            <p className="text-xs text-gray-600 mb-1">חסרה ת.ז אב</p>
+            <p className="text-3xl font-bold text-amber-700">
+              {validCharges.filter((c) => !c.family.father_id_number).length}
+            </p>
+            <p className="text-xs text-gray-500">ייכללו בקובץ (להשלים)</p>
+          </div>
+          <div className="bg-red-50 rounded-lg p-4 text-center">
+            <p className="text-xs text-gray-600 mb-1">חסר בנק - לא יוצאות</p>
+            <p className="text-3xl font-bold text-red-700">{invalidCharges.length}</p>
             <p className="text-xs text-gray-500">לא ייכללו בקובץ</p>
           </div>
         </div>
@@ -322,6 +330,9 @@ export default function MasavExportPage() {
                             {c.family.family_name}
                           </Link>
                           <div className="text-xs text-gray-500">{c.family.father_name}</div>
+                          {!c.family.father_id_number && (
+                            <div className="text-xs text-amber-700 font-medium">⚠ חסרה ת.ז אב</div>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-xs">
                           {c.family.bank_number}-{c.family.bank_branch}-{c.family.bank_account}
