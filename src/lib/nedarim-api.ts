@@ -305,3 +305,12 @@ export function normalizeDate(d: string | undefined): string | null {
   const [, dd, mm, yy] = m;
   return `${yy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
 }
+
+// Normalize a Nedarim dd/mm/yyyy HH:MM:SS datetime to ISO 8601
+export function normalizeDateTime(d: string | undefined): string | null {
+  if (!d) return null;
+  const m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (!m) return null;
+  const [, dd, mm, yy, hh = '00', mi = '00', ss = '00'] = m;
+  return `${yy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T${hh.padStart(2, '0')}:${mi.padStart(2, '0')}:${ss.padStart(2, '0')}`;
+}

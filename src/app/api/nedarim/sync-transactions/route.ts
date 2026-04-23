@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getCreditTransactionsHistory, normalizeDate } from '@/lib/nedarim-api';
+import { getCreditTransactionsHistory, normalizeDate, normalizeDateTime } from '@/lib/nedarim-api';
 
 export const maxDuration = 300;
 
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
           amount: Number(t.Amount) || 0,
           currency: Number(t.Currency) || 1,
           transaction_date: normalizeDate(t.TransactionTime) || null,
-          transaction_time: t.TransactionTime || null,
+          transaction_time: normalizeDateTime(t.TransactionTime),
           result: 'success' as const, // History only returns completed transactions
           status_text: t.TransactionType || null,
           kind: 'credit' as const,
