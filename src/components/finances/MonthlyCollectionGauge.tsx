@@ -28,8 +28,9 @@ export function MonthlyCollectionGauge() {
       for (let p = 0; p < 20; p++) {
         const { data } = await supabase
           .from('student_tuition')
-          .select('monthly_amount, payment_method, students!inner(status)')
+          .select('monthly_amount, payment_method, students!inner(status, institution_name)')
           .eq('students.status', 'active')
+          .eq('students.institution_name', 'ישיבה')
           .in('payment_method', ['bank_ho', 'credit_nedarim', 'office'])
           .range(p * 1000, (p + 1) * 1000 - 1);
         if (!data || data.length === 0) break;

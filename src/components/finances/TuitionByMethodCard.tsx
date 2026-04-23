@@ -55,8 +55,9 @@ export function TuitionByMethodCard() {
       for (let p = 0; p < 20; p++) {
         const { data, error } = await supabase
           .from('student_tuition')
-          .select('payment_method, monthly_amount, student_id, students!inner(status)')
+          .select('payment_method, monthly_amount, student_id, students!inner(status, institution_name)')
           .eq('students.status', 'active')
+          .eq('students.institution_name', 'ישיבה')
           .range(p * 1000, (p + 1) * 1000 - 1);
         if (error) break;
         if (!data || data.length === 0) break;

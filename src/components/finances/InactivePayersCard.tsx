@@ -33,10 +33,11 @@ export function InactivePayersCard() {
         .from('student_tuition')
         .select(`
           student_id, payment_method, monthly_amount, nedarim_subscription_id,
-          students!inner(id, first_name, last_name, family_id, status),
+          students!inner(id, first_name, last_name, family_id, status, institution_name),
           nedarim_subscriptions(status)
         `)
         .neq('students.status', 'active')
+        .eq('students.institution_name', 'ישיבה')
         .in('payment_method', ['credit_nedarim', 'bank_ho', 'office'])
         .eq('active', true);
 

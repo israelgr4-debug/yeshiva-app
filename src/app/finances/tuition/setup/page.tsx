@@ -16,6 +16,7 @@ interface Student {
   family_id: string | null;
   shiur: string | null;
   status: string;
+  institution_name: string | null;
 }
 
 type StatusFilter = 'active' | 'all_enrolled' | 'all';
@@ -81,7 +82,7 @@ export default function TuitionSetupPage() {
   const load = async () => {
     setLoading(true);
     const [st, fam, tui, ns] = await Promise.all([
-      fetchAll<Student>('students', 'id, first_name, last_name, family_id, shiur, status'),
+      fetchAll<Student>('students', 'id, first_name, last_name, family_id, shiur, status, institution_name'),
       fetchAll<Family>('families', 'id, family_name, father_name, father_phone, bank_number, bank_branch, bank_account'),
       fetchAll<TuitionRow>('student_tuition', '*'),
       fetchAll<NedarimSub>(
@@ -262,6 +263,9 @@ export default function TuitionSetupPage() {
 
   const filtered = useMemo(() => {
     return students.filter((s) => {
+      // Only yeshiva students have tuition (not kollel)
+      if (s.institution_name !== 'ישיבה') return false;
+
       // Status filter (default: active only - looking forward, no need to show students who left)
       if (statusFilter === 'active' && s.status !== 'active') return false;
       if (statusFilter === 'all_enrolled' && s.status !== 'active' && s.status !== 'chizuk') return false;
@@ -283,16 +287,20 @@ export default function TuitionSetupPage() {
     });
   }, [students, tuition, filter, shiurFilter, search, familiesById]);
 
-  // Counts per method
+  // Counts per method (only yeshiva students - no kollel)
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: students.length, bank_ho: 0, credit_nedarim: 0, office: 0, exempt: 0, none: 0 };
-    for (const s of students) {
+    const yeshivaStudents = students.filter((s) => s.institution_name === 'ישיבה');
+    const c: Record<string, number> = { all: yeshivaStudents.length, bank_ho: 0, credit_nedarim: 0, office: 0, exempt: 0, none: 0 };
+    for (const s of yeshivaStudents) {
+      // Apply same status filter as the view
+      if (statusFilter === 'active' && s.status !== 'active') continue;
+      if (statusFilter === 'all_enrolled' && s.status !== 'active' && s.status !== 'chizuk') continue;
       const t = tuition[s.id];
       if (!t) continue;
       c[t.payment_method]++;
     }
     return c;
-  }, [students, tuition]);
+  }, [students, tuition, statusFilter]);
 
   return (
     <>

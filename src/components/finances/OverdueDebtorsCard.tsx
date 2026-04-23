@@ -41,10 +41,11 @@ export function OverdueDebtorsCard() {
           .from('student_tuition')
           .select(`
             student_id, payment_method, monthly_amount, bank_day, nedarim_subscription_id,
-            students!inner(id, first_name, last_name, family_id, status),
+            students!inner(id, first_name, last_name, family_id, status, institution_name),
             nedarim_subscriptions(status, scheduled_day, next_charge_date)
           `)
           .eq('students.status', 'active')
+          .eq('students.institution_name', 'ישיבה')
           .eq('active', true)
           .in('payment_method', ['bank_ho', 'credit_nedarim'])
           .range(p * 1000, (p + 1) * 1000 - 1);
