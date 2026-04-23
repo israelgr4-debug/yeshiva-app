@@ -28,6 +28,7 @@ interface Family {
   father_name: string | null;
   mother_name: string | null;
   father_id_number: string | null;
+  mother_id_number: string | null;
   phone: string | null;
 }
 
@@ -43,9 +44,19 @@ function tokens(s: string | null | undefined): string[] {
   return (s || '').trim().split(/\s+/).filter(Boolean);
 }
 
-function hasToken(clientTokens: string[], t: string | null | undefined): boolean {
+// Normalize id: digits only, no leading zeros
+function normId(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s).replace(/\D/g, '').replace(/^0+/, '');
+}
+
+// Check if EVERY word of `t` appears as a token in clientTokens.
+// This handles multi-word father names like "יעקב צבי" correctly.
+function containsAllTokensOf(clientTokens: string[], t: string | null | undefined): boolean {
   if (!t) return false;
-  return clientTokens.includes(t.trim());
+  const needles = tokens(t);
+  if (needles.length === 0) return false;
+  return needles.every((n) => clientTokens.includes(n));
 }
 
 export default function NedarimMatchPage() {
@@ -64,7 +75,7 @@ export default function NedarimMatchPage() {
       fetchAll<Subscription>('nedarim_subscriptions', '*', (q) =>
         q.is('family_id', null).neq('status', 'deleted').order('amount_per_charge', { ascending: false })
       ),
-      fetchAll<Family>('families', 'id, family_name, father_name, mother_name, father_id_number, phone'),
+      fetchAll<Family>('families', 'id, family_name, father_name, mother_name, father_id_number, mother_id_number, phone'),
       fetchAll<Student>('students', 'id, family_id, first_name, last_name, status'),
     ]);
     setSubs(s);
@@ -91,11 +102,14 @@ export default function NedarimMatchPage() {
   // 4. שם פרטי (אב) בלבד - weakest
   // Active families get a boost.
   const suggestions = useMemo(() => {
+    // Build ID maps - normalized (digits only, no leading zeros) for both father & mother
     const byFatherId = new Map<string, Family>();
+    const byMotherId = new Map<string, Family>();
     for (const f of families) {
-      if (f.father_id_number) {
-        byFatherId.set(f.father_id_number.trim().replace(/\D/g, ''), f);
-      }
+      const fid = normId(f.father_id_number);
+      if (fid && fid.length >= 5) byFatherId.set(fid, f);
+      const mid = normId(f.mother_id_number);
+      if (mid && mid.length >= 5) byMotherId.set(mid, f);
     }
     const result: Record<string, Array<{ family: Family; score: number; reason: string; isActive: boolean }>> = {};
     for (const s of subs) {
@@ -104,25 +118,29 @@ export default function NedarimMatchPage() {
 
       const addCandidate = (family: Family, baseScore: number, reason: string) => {
         const isActive = activeFamilyIds.has(family.id);
-        const score = isActive ? baseScore : baseScore * 0.7; // penalize inactive
+        const score = isActive ? baseScore : baseScore * 0.7;
         const existing = candidates.get(family.id);
         if (!existing || score > existing.score) {
           candidates.set(family.id, { family, score, reason, isActive });
         }
       };
 
-      // 1. Exact ID match (strongest)
+      // 1. Exact ID match - try father then mother (strongest)
       if (s.client_zeout) {
-        const normalized = s.client_zeout.replace(/\D/g, '').replace(/^0+/, '');
-        const hit = byFatherId.get(s.client_zeout.trim()) || byFatherId.get(normalized);
-        if (hit) addCandidate(hit, 1.0, 'ת.ז אב');
+        const nid = normId(s.client_zeout);
+        if (nid.length >= 5) {
+          const fHit = byFatherId.get(nid);
+          if (fHit) addCandidate(fHit, 1.0, 'ת.ז אב');
+          const mHit = byMotherId.get(nid);
+          if (mHit) addCandidate(mHit, 0.95, 'ת.ז אם');
+        }
       }
 
-      // 2-4. Name matching
+      // 2-4. Name matching - all tokens of family_name / father_name must appear
       if (clientTokens.length > 0) {
         for (const f of families) {
-          const familyNameHit = hasToken(clientTokens, f.family_name);
-          const fatherNameHit = hasToken(clientTokens, f.father_name);
+          const familyNameHit = containsAllTokensOf(clientTokens, f.family_name);
+          const fatherNameHit = containsAllTokensOf(clientTokens, f.father_name);
 
           if (familyNameHit && fatherNameHit) {
             addCandidate(f, 0.95, 'משפחה + אב');
@@ -135,7 +153,6 @@ export default function NedarimMatchPage() {
       }
 
       const sorted = Array.from(candidates.values()).sort((a, b) => {
-        // Active first, then by score
         if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
         return b.score - a.score;
       });
