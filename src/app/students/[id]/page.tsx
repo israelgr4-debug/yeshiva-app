@@ -73,25 +73,32 @@ export default function StudentDetailPage() {
       const { student: studentFormData, family: familyFormData } = formPayload;
       let familyId = studentFormData.family_id;
 
-      // If we have a linked family, update it
+      // If we have a linked family, update it - but ONLY fields that were actually changed
+      // to avoid wiping existing data when form wasn't edited
       if (familyId) {
-        await updateData<Family>('families', familyId, {
-          father_name: familyFormData.father_name,
-          father_id_number: familyFormData.father_id_number,
-          father_phone: familyFormData.father_phone,
-          father_occupation: familyFormData.father_occupation,
-          mother_name: familyFormData.mother_name,
-          mother_id_number: familyFormData.mother_id_number,
-          mother_phone: familyFormData.mother_phone,
-          mother_occupation: familyFormData.mother_occupation,
-          address: familyFormData.address,
-          city: familyFormData.city,
-          home_phone: familyFormData.home_phone,
-          bank_name: familyFormData.bank_name,
-          bank_branch: familyFormData.bank_branch,
-          bank_account: familyFormData.bank_account,
-          billing_notes: familyFormData.billing_notes,
-        } as Partial<Family>);
+        const existingFamilies = await fetchData<Family>('families', { id: familyId });
+        const existing = existingFamilies[0] || ({} as Family);
+        // Only include fields where the form value is non-empty AND different from existing.
+        // This prevents wiping when form has empty strings (e.g. after status change without editing family).
+        const updates: Partial<Family> = {};
+        const fields: (keyof Family)[] = [
+          'father_name', 'father_id_number', 'father_phone', 'father_occupation',
+          'mother_name', 'mother_id_number', 'mother_phone', 'mother_occupation',
+          'address', 'city', 'home_phone',
+          'bank_name', 'bank_branch', 'bank_account', 'billing_notes',
+        ];
+        for (const k of fields) {
+          const formVal = (familyFormData as any)[k];
+          // Only update if form has a real non-empty value
+          if (formVal !== null && formVal !== undefined && String(formVal).trim() !== '') {
+            (updates as any)[k] = formVal;
+          }
+        }
+        if (Object.keys(updates).length > 0) {
+          await updateData<Family>('families', familyId, updates);
+        }
+        // Silence unused var warning
+        void existing;
       } else {
         // No family linked - first check if family with same father_id_number exists
         const hasParentData = familyFormData.father_name || familyFormData.mother_name || familyFormData.father_id_number;
