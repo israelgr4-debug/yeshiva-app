@@ -20,6 +20,7 @@ interface Subscription {
   client_phone: string | null;
   amount_per_charge: number;
   groupe: string | null;
+  comments: string | null;
 }
 
 interface Family {
@@ -345,6 +346,14 @@ export default function NedarimMatchPage() {
                         </p>
                         {sub.groupe && (
                           <p className="text-xs text-gray-500 mt-1">קטגוריה: {sub.groupe}</p>
+                        )}
+                        {sub.comments && (
+                          <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded px-2 py-1">
+                            <span className="text-xs text-gray-500">הערה מנדרים: </span>
+                            <span className="text-sm font-medium text-amber-900">
+                              ({sub.comments})
+                            </span>
+                          </div>
                         )}
                       </div>
 
