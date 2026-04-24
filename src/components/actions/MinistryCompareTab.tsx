@@ -19,6 +19,10 @@ interface MinistryRow {
   entitlement?: string;
   entryDate?: string;
   idType?: string;
+  /** Ministry of Religion: 300/600/700/720 */
+  studyTypeId?: string;
+  /** Ministry of Religion: birth date DD/MM/YYYY */
+  birthDate?: string;
   /** Chinuch: שכבה/כיתת אם */
   classroom?: string;
   /** Chinuch: תקין / שגוי */
@@ -118,6 +122,8 @@ function parseDatCsv(text: string): MinistryRow[] {
     entitlement: header.indexOf('EntitlementStatusName'),
     entryDate: header.indexOf('DateFrom'),
     idType: header.indexOf('IdentificationTypeName'),
+    studyType: header.indexOf('StudyTypeID'),
+    birthDate: header.indexOf('BirthDate'),
   };
 
   const rows: MinistryRow[] = [];
@@ -135,6 +141,8 @@ function parseDatCsv(text: string): MinistryRow[] {
       entitlement,
       entryDate: (cols[idx.entryDate] || '').trim(),
       idType: (cols[idx.idType] || '').trim(),
+      studyTypeId: idx.studyType >= 0 ? (cols[idx.studyType] || '').trim() : '',
+      birthDate: idx.birthDate >= 0 ? (cols[idx.birthDate] || '').trim() : '',
     });
   }
   return rows;

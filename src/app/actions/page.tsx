@@ -6,9 +6,10 @@ import { MachzorTab } from '@/components/actions/MachzorTab';
 import { EquivalentClassTab } from '@/components/actions/EquivalentClassTab';
 import { BanksTab } from '@/components/actions/BanksTab';
 import { ChinuchTab } from '@/components/actions/ChinuchTab';
+import { OlamHaTorahTab } from '@/components/actions/OlamHaTorahTab';
 import { MinistryCompareTab } from '@/components/actions/MinistryCompareTab';
 
-type TabId = 'machzor' | 'equivalent' | 'chinuch' | 'ministry' | 'banks';
+type TabId = 'machzor' | 'equivalent' | 'chinuch' | 'ministry' | 'olam' | 'banks';
 
 interface TabDef {
   id: TabId;
@@ -21,6 +22,7 @@ const TABS: TabDef[] = [
   { id: 'equivalent', label: 'כתה מקבילה', icon: '🏫' },
   { id: 'chinuch', label: 'חינוך', icon: '📘' },
   { id: 'ministry', label: 'השוואת משרדים', icon: '📊' },
+  { id: 'olam', label: 'עולם התורה', icon: '📚' },
   { id: 'banks', label: 'בנקים וסניפים', icon: '🏦' },
 ];
 
@@ -34,7 +36,7 @@ export default function ActionsPage() {
       <div className="p-4 md:p-8">
         {/* Tab navigation */}
         <div className="border-b border-gray-200 mb-6">
-          <nav className="flex gap-2" aria-label="Tabs">
+          <nav className="flex gap-2 overflow-x-auto whitespace-nowrap" aria-label="Tabs">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -58,6 +60,7 @@ export default function ActionsPage() {
         {activeTab === 'equivalent' && <EquivalentClassTab />}
         {activeTab === 'chinuch' && <ChinuchTab />}
         {activeTab === 'ministry' && <MinistryCompareTab />}
+        {activeTab === 'olam' && <OlamHaTorahTab />}
         {activeTab === 'banks' && <BanksTab />}
       </div>
     </>
