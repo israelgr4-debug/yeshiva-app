@@ -167,14 +167,21 @@ export function MinistryCompareTab() {
 
     const sections: CompareSection[] = [];
 
+    // Which institutions belong to each ministry report
+    const belongsToMinistry = (s: Student): boolean => {
+      if (ministryType === 'chinuch') return !!s.is_chinuch;
+      // dat: ישיבה + כולל only. Exclude "כולל של ר' יצחק פינקל" (historical only)
+      const inst = s.institution_name || '';
+      if (inst === "כולל של ר' יצחק פינקל" || inst === 'כולל של ר׳ יצחק פינקל') return false;
+      return inst === 'ישיבה' || inst === 'כולל' || inst === '' || !inst;
+    };
+
     // 1. Active in yeshiva but NOT in ministry
     {
       const rows: CompareSection['rows'] = [];
       for (const s of students) {
         if (!isActiveSet.has(s.status)) continue;
-        // Only compare ישיבה (not כולל) against Ministry of Religion
-        if (ministryType === 'dat' && s.institution_name && s.institution_name !== 'ישיבה') continue;
-        if (ministryType === 'chinuch' && !s.is_chinuch) continue;
+        if (!belongsToMinistry(s)) continue;
         const k = normalizeId(s.id_number || s.passport_number);
         if (!k) continue;
         if (!ministryById.has(k)) {
@@ -182,7 +189,7 @@ export function MinistryCompareTab() {
             firstName: s.first_name || '',
             lastName: s.last_name || '',
             idNumber: s.id_number || s.passport_number || '',
-            extra: s.shiur || '',
+            extra: [s.shiur, s.institution_name].filter(Boolean).join(' · '),
           });
         }
       }
@@ -254,7 +261,35 @@ export function MinistryCompareTab() {
       });
     }
 
-    // 4. In ministry but no student record at all
+    // 4. Active in yeshiva + in ministry BUT marked "אינו זכאי"
+    {
+      const rows: CompareSection['rows'] = [];
+      for (const s of students) {
+        if (s.status !== 'active') continue;
+        if (!belongsToMinistry(s)) continue;
+        const k = normalizeId(s.id_number || s.passport_number);
+        if (!k) continue;
+        const m = ministryById.get(k);
+        if (!m) continue;
+        if (m.entitlement === 'זכאי') continue;
+        rows.push({
+          firstName: s.first_name || m.firstName,
+          lastName: s.last_name || m.lastName,
+          idNumber: s.id_number || s.passport_number || '',
+          extra: `${m.entitlement} · ${s.shiur || ''}`,
+        });
+      }
+      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      sections.push({
+        key: 'registered-not-entitled',
+        title: `פעיל אצלנו ורשום ב${ministryType === 'dat' ? 'משרד הדתות' : 'משרד החינוך'} אך אינו זכאי`,
+        tone: 'amber',
+        description: 'תלמידים פעילים שהמשרד לא מזכה עליהם - כדאי לבדוק את הסיבה (גיל, נוכחות, ימי לימוד וכו׳)',
+        rows,
+      });
+    }
+
+    // 5. In ministry but no student record at all
     {
       const rows: CompareSection['rows'] = [];
       for (const r of ministryRows) {
@@ -279,12 +314,9 @@ export function MinistryCompareTab() {
     }
 
     // Summary stats
-    const activeYeshiva = students.filter((s) => {
-      if (s.status !== 'active') return false;
-      if (ministryType === 'dat' && s.institution_name && s.institution_name !== 'ישיבה') return false;
-      if (ministryType === 'chinuch' && !s.is_chinuch) return false;
-      return true;
-    }).length;
+    const activeYeshiva = students.filter(
+      (s) => s.status === 'active' && belongsToMinistry(s)
+    ).length;
 
     return {
       sections,
