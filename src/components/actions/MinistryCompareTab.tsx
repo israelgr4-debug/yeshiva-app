@@ -759,6 +759,16 @@ function ComparisonView({
   sections: CompareSection[];
   combined?: boolean;
 }) {
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
+  const toggleKey = (key: string) =>
+    setCollapsedKeys((prev) => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+  const collapseAll = () => setCollapsedKeys(new Set(sections.map((s) => s.key)));
+  const expandAll = () => setCollapsedKeys(new Set());
   const handlePrintPdf = () => window.print();
   return (
     <div className="print-area">
@@ -785,13 +795,26 @@ function ComparisonView({
         )}
       </div>
 
-      <div className="flex justify-end mb-3 no-print">
+      <div className="flex justify-between items-center mb-3 no-print gap-2 flex-wrap">
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={collapseAll}>
+            🗜️ קפל הכל
+          </Button>
+          <Button size="sm" variant="secondary" onClick={expandAll}>
+            📂 פתח הכל
+          </Button>
+        </div>
         <Button onClick={handlePrintPdf}>🖨️ ייצוא ל-PDF</Button>
       </div>
 
       <div className="space-y-5">
         {sections.map((section) => (
-          <SectionBlock key={section.key} section={section} />
+          <SectionBlock
+            key={section.key}
+            section={section}
+            collapsed={collapsedKeys.has(section.key)}
+            onToggle={() => toggleKey(section.key)}
+          />
         ))}
       </div>
     </div>
@@ -814,7 +837,15 @@ function StatCard({ label, value, tone, sub }: { label: string; value: number; t
   );
 }
 
-function SectionBlock({ section }: { section: CompareSection }) {
+function SectionBlock({
+  section,
+  collapsed,
+  onToggle,
+}: {
+  section: CompareSection;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const toneClasses: Record<string, string> = {
     red: 'border-red-300 bg-red-50',
     amber: 'border-amber-300 bg-amber-50',
@@ -829,13 +860,22 @@ function SectionBlock({ section }: { section: CompareSection }) {
   };
   return (
     <div className={`border rounded-lg ${toneClasses[section.tone]} print:break-inside-avoid`}>
-      <div className="px-4 py-3 border-b border-inherit">
-        <h3 className={`font-bold ${titleClass[section.tone]}`}>
-          {section.title} ({section.rows.length})
-        </h3>
-        <p className="text-xs text-gray-700 mt-1">{section.description}</p>
-      </div>
-      {section.rows.length === 0 ? (
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full px-4 py-3 border-b border-inherit text-start hover:bg-black/5 transition-colors flex items-start justify-between gap-3 print:cursor-default"
+      >
+        <div className="flex-1 min-w-0">
+          <h3 className={`font-bold ${titleClass[section.tone]}`}>
+            {section.title} ({section.rows.length})
+          </h3>
+          <p className="text-xs text-gray-700 mt-1">{section.description}</p>
+        </div>
+        <span className={`text-xl ${titleClass[section.tone]} select-none no-print`}>
+          {collapsed ? '▸' : '▾'}
+        </span>
+      </button>
+      {collapsed ? null : section.rows.length === 0 ? (
         <p className="px-4 py-3 text-sm text-gray-500">✓ אין אי-התאמות בקטגוריה זו</p>
       ) : (
         <div className="overflow-x-auto">
