@@ -182,6 +182,7 @@ export function MinistryCompareTab() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState<MinistryType | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<MinistryType | null>(null);
   const [activeView, setActiveView] = useState<'dat' | 'chinuch' | 'combined'>('dat');
 
   // Initial load: persisted uploads + students
@@ -221,17 +222,27 @@ export function MinistryCompareTab() {
     setLoading(false);
   };
 
-  const handleFile = async (type: MinistryType, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processFile = async (type: MinistryType, file: File) => {
     setParseError(null);
     setUploading(type);
     try {
       let rows: MinistryRow[];
+      const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+      const isCsv = /\.(csv|txt)$/i.test(file.name);
       if (type === 'dat') {
+        if (!isCsv) {
+          setParseError('משרד הדתות: צריך קובץ CSV. הקובץ שבחרת הוא ' + file.name);
+          setUploading(null);
+          return;
+        }
         const text = await file.text();
         rows = parseDatCsv(text);
       } else {
+        if (!isExcel) {
+          setParseError('משרד החינוך: צריך קובץ XLSX/XLS. הקובץ שבחרת הוא ' + file.name);
+          setUploading(null);
+          return;
+        }
         rows = await parseChinuchXlsx(file);
       }
       if (rows.length === 0) {
@@ -257,9 +268,23 @@ export function MinistryCompareTab() {
       setParseError('שגיאה בקריאת הקובץ: ' + (err?.message || err));
     } finally {
       setUploading(null);
-      // Clear input so the same file can be re-uploaded
-      e.target.value = '';
     }
+  };
+
+  const handleFile = async (type: MinistryType, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processFile(type, file);
+    // Clear input so the same file can be re-uploaded
+    e.target.value = '';
+  };
+
+  const handleDrop = async (type: MinistryType, e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(null);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    await processFile(type, file);
   };
 
   const handleClear = async (type: MinistryType) => {
@@ -569,8 +594,19 @@ export function MinistryCompareTab() {
     const label = type === 'dat' ? 'משרד הדתות' : 'משרד החינוך';
     const ext = type === 'dat' ? '.csv' : '.xlsx';
     const icon = type === 'dat' ? '📜' : '📘';
+    const isDragging = dragOver === type;
     return (
-      <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(type); }}
+        onDragEnter={(e) => { e.preventDefault(); setDragOver(type); }}
+        onDragLeave={() => setDragOver(null)}
+        onDrop={(e) => handleDrop(type, e)}
+        className={`border-2 rounded-lg p-4 transition-colors ${
+          isDragging
+            ? 'border-blue-500 bg-blue-100 border-dashed'
+            : 'border-gray-200 bg-gray-50'
+        }`}
+      >
         <div className="flex items-center justify-between mb-2">
           <h4 className="font-semibold text-gray-800">{icon} {label}</h4>
           {data && (
@@ -584,9 +620,12 @@ export function MinistryCompareTab() {
             {data.fileName} · הועלה {formatDate(data.uploadedAt)}
           </p>
         )}
+        <p className="text-xs text-gray-500 mb-2">
+          {isDragging ? '🎯 שחרר כאן...' : `גרור לכאן קובץ ${ext} או השתמש בכפתור`}
+        </p>
         <div className="flex gap-2">
           <label className="flex-1 cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded text-sm font-medium border border-blue-200 text-center">
-            {uploading === type ? 'מעלה...' : data ? 'החלף קובץ' : `העלה ${ext}`}
+            {uploading === type ? 'מעלה...' : data ? 'החלף קובץ' : `📁 בחר ${ext}`}
             <input
               type="file"
               accept={type === 'dat' ? '.csv,text/csv' : '.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
