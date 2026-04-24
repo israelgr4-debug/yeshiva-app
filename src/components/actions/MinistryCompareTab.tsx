@@ -269,6 +269,8 @@ export function MinistryCompareTab() {
   // Ministry belonging helper for comparison
   const belongsToMinistry = (s: Student, type: MinistryType): boolean => {
     if (type === 'chinuch') return !!s.is_chinuch;
+    // Dat: ישיבה/כולל, but NOT chinuch students (they belong to Ministry of Education)
+    if (s.is_chinuch) return false;
     const inst = s.institution_name || '';
     if (inst === "כולל של ר' יצחק פינקל" || inst === 'כולל של ר׳ יצחק פינקל') return false;
     return inst === 'ישיבה' || inst === 'כולל' || !inst;
@@ -326,6 +328,10 @@ export function MinistryCompareTab() {
         if (!k) continue;
         const s = studentsById.get(k);
         if (!s || s.status === 'active') continue;
+        // Dat: skip chinuch students (they belong to Ministry of Education)
+        if (type === 'dat' && s.is_chinuch) continue;
+        // Chinuch: skip students not flagged is_chinuch
+        if (type === 'chinuch' && !s.is_chinuch) continue;
         const statusLabel = ({ chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים' } as any)[s.status] || s.status;
         rows.push({
           firstName: s.first_name || r.firstName,
@@ -352,6 +358,8 @@ export function MinistryCompareTab() {
         if (!k) continue;
         const s = studentsById.get(k);
         if (!s || s.status !== 'chizuk') continue;
+        if (type === 'dat' && s.is_chinuch) continue;
+        if (type === 'chinuch' && !s.is_chinuch) continue;
         rows.push({
           firstName: s.first_name || r.firstName,
           lastName: s.last_name || r.lastName,
