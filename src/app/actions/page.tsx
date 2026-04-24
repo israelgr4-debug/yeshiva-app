@@ -6,8 +6,9 @@ import { MachzorTab } from '@/components/actions/MachzorTab';
 import { EquivalentClassTab } from '@/components/actions/EquivalentClassTab';
 import { BanksTab } from '@/components/actions/BanksTab';
 import { ChinuchTab } from '@/components/actions/ChinuchTab';
+import { MinistryCompareTab } from '@/components/actions/MinistryCompareTab';
 
-type TabId = 'machzor' | 'equivalent' | 'chinuch' | 'banks';
+type TabId = 'machzor' | 'equivalent' | 'chinuch' | 'ministry' | 'banks';
 
 interface TabDef {
   id: TabId;
@@ -19,6 +20,7 @@ const TABS: TabDef[] = [
   { id: 'machzor', label: 'מחזור', icon: '🎓' },
   { id: 'equivalent', label: 'כתה מקבילה', icon: '🏫' },
   { id: 'chinuch', label: 'חינוך', icon: '📘' },
+  { id: 'ministry', label: 'השוואת משרדים', icon: '📊' },
   { id: 'banks', label: 'בנקים וסניפים', icon: '🏦' },
 ];
 
@@ -55,6 +57,7 @@ export default function ActionsPage() {
         {activeTab === 'machzor' && <MachzorTab />}
         {activeTab === 'equivalent' && <EquivalentClassTab />}
         {activeTab === 'chinuch' && <ChinuchTab />}
+        {activeTab === 'ministry' && <MinistryCompareTab />}
         {activeTab === 'banks' && <BanksTab />}
       </div>
     </>
