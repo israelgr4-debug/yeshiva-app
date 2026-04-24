@@ -93,20 +93,59 @@ export default function StudentsPage() {
   const filteredStudents = useMemo(() => {
     let filtered = students;
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (s) =>
-          (s.first_name || '').toLowerCase().includes(query) ||
-          (s.last_name || '').toLowerCase().includes(query) ||
-          (s.id_number || '').includes(query)
-      );
+      // Smart search: split the query into tokens and require every token to match
+      // somewhere in the student's searchable fields (name either order, id, phone,
+      // passport, parents, address). Works for "last first", "first last", partial
+      // phone numbers with or without dashes, etc.
+      const digits = (v: string) => v.replace(/\D/g, '');
+      const tokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      filtered = filtered.filter((s) => {
+        const fam = s.family_id ? families[s.family_id] : undefined;
+        const textPool = [
+          s.first_name,
+          s.last_name,
+          s.id_number,
+          s.passport_number,
+          s.phone,
+          s.email,
+          s.shiur,
+          fam?.father_name,
+          fam?.mother_name,
+          fam?.father_phone,
+          fam?.mother_phone,
+          fam?.home_phone,
+          fam?.family_name,
+          fam?.address,
+          fam?.city,
+        ]
+          .filter(Boolean)
+          .map((v) => String(v).toLowerCase())
+          .join(' ');
+        const digitPool = [
+          s.id_number,
+          s.passport_number,
+          s.phone,
+          fam?.father_phone,
+          fam?.mother_phone,
+          fam?.home_phone,
+        ]
+          .filter(Boolean)
+          .map((v) => digits(String(v)))
+          .join(' ');
+        return tokens.every((tok) => {
+          if (/^\d/.test(tok)) {
+            return digitPool.includes(digits(tok)) || textPool.includes(tok);
+          }
+          return textPool.includes(tok);
+        });
+      });
     }
     if (selectedShiur) filtered = filtered.filter((s) => s.shiur === selectedShiur);
     if (selectedStatus) filtered = filtered.filter((s) => s.status === selectedStatus);
     if (selectedInstitution) filtered = filtered.filter((s) => s.institution_name === selectedInstitution);
     if (onlyChinuch) filtered = filtered.filter((s) => s.is_chinuch);
     return filtered;
-  }, [students, searchQuery, selectedShiur, selectedStatus, selectedInstitution, onlyChinuch]);
+  }, [students, families, searchQuery, selectedShiur, selectedStatus, selectedInstitution, onlyChinuch]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -189,7 +228,7 @@ export default function StudentsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             <FilterField label="חיפוש">
               <SearchInput
-                placeholder="שם או ת״ז..."
+                placeholder="שם / ת״ז / טלפון / אב..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />

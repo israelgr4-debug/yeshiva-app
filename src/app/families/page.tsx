@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
 import { SearchInput } from '@/components/ui/SearchInput';
+import { Select } from '@/components/ui/Select';
 import { useSupabase } from '@/hooks/useSupabase';
 import { Family, Student } from '@/lib/types';
 import Link from 'next/link';
@@ -14,6 +15,7 @@ export default function FamiliesPage() {
   const [studentsByFamily, setStudentsByFamily] = useState<Record<string, Student[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active');
+  const [cityFilter, setCityFilter] = useState('');
   const { fetchData } = useSupabase();
 
   useEffect(() => {
@@ -34,33 +36,69 @@ export default function FamiliesPage() {
     loadData();
   }, [fetchData]);
 
+  // Distinct cities for filter
+  const cityOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of families) {
+      if (f.city) set.add(f.city.trim());
+    }
+    return [
+      { value: '', label: 'כל הערים' },
+      ...Array.from(set)
+        .sort((a, b) => a.localeCompare(b, 'he'))
+        .map((c) => ({ value: c, label: c })),
+    ];
+  }, [families]);
+
   const filteredFamilies = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
     return families.filter((f) => {
-      // Active filter
       if (activeFilter !== 'all') {
         const kids = studentsByFamily[f.id] || [];
         const hasActive = kids.some((k) => k.status === 'active' || k.status === 'chizuk');
         if (activeFilter === 'active' && !hasActive) return false;
         if (activeFilter === 'inactive' && hasActive) return false;
       }
+      if (cityFilter && f.city !== cityFilter) return false;
 
-      // Search filter
-      if (query) {
-        const matches =
-          f.family_name?.toLowerCase().includes(query) ||
-          f.father_name?.toLowerCase().includes(query) ||
-          f.mother_name?.toLowerCase().includes(query) ||
-          f.father_id_number?.includes(query) ||
-          f.city?.toLowerCase().includes(query);
-        if (!matches) return false;
+      if (searchQuery.trim()) {
+        const digits = (v: string) => v.replace(/\D/g, '');
+        const tokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const kids = studentsByFamily[f.id] || [];
+        const textPool = [
+          f.family_name,
+          f.father_name,
+          f.mother_name,
+          f.father_id_number,
+          f.mother_id_number,
+          f.father_phone,
+          f.mother_phone,
+          f.home_phone,
+          f.city,
+          f.address,
+          ...kids.flatMap((k) => [k.first_name, k.last_name, k.id_number, k.phone]),
+        ]
+          .filter(Boolean)
+          .map((v) => String(v).toLowerCase())
+          .join(' ');
+        const digitPool = [
+          f.father_id_number,
+          f.mother_id_number,
+          f.father_phone,
+          f.mother_phone,
+          f.home_phone,
+          ...kids.flatMap((k) => [k.id_number, k.phone]),
+        ]
+          .filter(Boolean)
+          .map((v) => digits(String(v)))
+          .join(' ');
+        return tokens.every((tok) =>
+          /^\d/.test(tok) ? digitPool.includes(digits(tok)) || textPool.includes(tok) : textPool.includes(tok)
+        );
       }
-
       return true;
     });
-  }, [families, studentsByFamily, searchQuery, activeFilter]);
+  }, [families, studentsByFamily, searchQuery, activeFilter, cityFilter]);
 
-  // Counts for the filter buttons
   const activeCount = useMemo(
     () =>
       families.filter((f) => {
@@ -71,55 +109,109 @@ export default function FamiliesPage() {
   );
   const inactiveCount = families.length - activeCount;
 
+  const statusFilterOptions = [
+    { value: 'active', label: `פעילות (${activeCount.toLocaleString('he-IL')})` },
+    { value: 'inactive', label: `לא פעילות (${inactiveCount.toLocaleString('he-IL')})` },
+    { value: 'all', label: `הכל (${families.length.toLocaleString('he-IL')})` },
+  ];
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setActiveFilter('active');
+    setCityFilter('');
+  };
+  const hasActive = searchQuery || activeFilter !== 'active' || cityFilter;
+
   return (
     <>
       <Header title="משפחות" subtitle="ניהול משפחות ואחים" />
 
-      <div className="p-4 md:p-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-          <SearchInput
-            placeholder="חיפוש לפי שם משפחה, שם הורה, תז אב או עיר..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <select
-            value={activeFilter}
-            onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="active">פעילות ({activeCount.toLocaleString('he-IL')})</option>
-            <option value="inactive">לא פעילות ({inactiveCount.toLocaleString('he-IL')})</option>
-            <option value="all">הכל ({families.length.toLocaleString('he-IL')})</option>
-          </select>
+      <div className="p-4 md:p-8 space-y-4 animate-fadeIn">
+        {/* Filters */}
+        <div className="bg-white rounded-2xl border border-slate-200 elevation-1 p-4 md:p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <span className="w-1 h-4 bg-gradient-to-b from-violet-500 to-purple-600 rounded-full" />
+              סינון וחיפוש
+            </h3>
+            {hasActive && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+              >
+                ✕ נקה סינון
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <FilterField label="חיפוש">
+              <SearchInput
+                placeholder="שם משפחה / הורה / ת״ז / טלפון / עיר / תלמיד..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </FilterField>
+            <FilterField label="סטטוס">
+              <Select
+                options={statusFilterOptions}
+                value={activeFilter}
+                onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
+              />
+            </FilterField>
+            <FilterField label="עיר">
+              <Select
+                options={cityOptions}
+                value={cityFilter}
+                onChange={(e) => setCityFilter(e.target.value)}
+              />
+            </FilterField>
+          </div>
         </div>
 
-        <div className="mb-4 text-sm text-gray-600">
-          {filteredFamilies.length} משפחות
+        {/* Summary */}
+        <div className="text-sm text-slate-600">
+          <span className="font-bold text-slate-900 text-base">
+            {filteredFamilies.length.toLocaleString('he-IL')}
+          </span>{' '}
+          משפחות
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {/* Cards grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
           {filteredFamilies.map((family) => {
             const kids = studentsByFamily[family.id] || [];
             const activeKids = kids.filter((k) => k.status === 'active' || k.status === 'chizuk');
+            const initials = (family.family_name || '—')[0] || '—';
             return (
               <div
                 key={family.id}
-                className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow"
+                className="group bg-white rounded-2xl border border-slate-200 elevation-1 hover:elevation-3 hover:-translate-y-0.5 transition-all duration-150 overflow-hidden"
               >
-                <div className="flex justify-between items-start mb-3 gap-2">
-                  <Link
-                    href={`/families/${family.id}`}
-                    className="text-lg font-bold text-gray-900 hover:text-blue-600 hover:underline truncate"
-                  >
-                    {family.family_name || 'ללא שם'} ←
-                  </Link>
+                {/* Header strip */}
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 bg-gradient-to-l from-slate-50 to-white">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center text-lg font-bold shadow-md shrink-0">
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <Link
+                      href={`/families/${family.id}`}
+                      className="block font-bold text-slate-900 hover:text-blue-700 truncate text-base"
+                      style={{ fontFamily: "'Frank Ruhl Libre', serif" }}
+                    >
+                      {family.family_name || 'ללא שם'}
+                    </Link>
+                    {family.city && (
+                      <p className="text-[11px] text-slate-500 truncate">📍 {family.city}</p>
+                    )}
+                  </div>
                   {kids.length > 0 && (
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">
-                        {kids.length} {kids.length === 1 ? 'תלמיד' : 'תלמידים'}
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <span className="inline-flex items-center bg-blue-50 text-blue-700 ring-1 ring-blue-100 px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums">
+                        {kids.length}
                       </span>
                       {activeKids.length > 0 && activeKids.length !== kids.length && (
-                        <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium">
+                        <span className="inline-flex items-center bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 px-1.5 py-0 rounded-full text-[10px] font-semibold tabular-nums">
                           {activeKids.length} פעילים
                         </span>
                       )}
@@ -127,73 +219,88 @@ export default function FamiliesPage() {
                   )}
                 </div>
 
-                <div className="space-y-1 text-sm mb-3">
+                {/* Body - parents */}
+                <div className="px-4 py-3 space-y-1.5 text-sm">
                   {family.father_name && (
-                    <div className="flex gap-2">
-                      <span className="text-gray-500">אב:</span>
-                      <span className="font-medium">{family.father_name}</span>
-                      {family.father_phone && (
-                        <span className="text-gray-400 text-xs">({family.father_phone})</span>
-                      )}
-                    </div>
+                    <ParentRow label="אב" name={family.father_name} phone={family.father_phone} />
                   )}
                   {family.mother_name && (
-                    <div className="flex gap-2">
-                      <span className="text-gray-500">אם:</span>
-                      <span className="font-medium">{family.mother_name}</span>
-                      {family.mother_phone && (
-                        <span className="text-gray-400 text-xs">({family.mother_phone})</span>
-                      )}
-                    </div>
+                    <ParentRow label="אם" name={family.mother_name} phone={family.mother_phone} />
                   )}
-                  {family.city && (
-                    <div className="flex gap-2">
-                      <span className="text-gray-500">עיר:</span>
-                      <span>{family.city}</span>
-                    </div>
+                  {!family.father_name && !family.mother_name && (
+                    <p className="text-xs text-slate-400 italic">אין פרטי הורים</p>
                   )}
                 </div>
 
-                {kids.length > 0 ? (
-                  <div className="border-t border-gray-100 pt-3">
-                    <p className="text-xs text-gray-500 mb-2">תלמידים במשפחה:</p>
-                    <div className="flex flex-wrap gap-1">
+                {/* Students */}
+                <div className="px-4 pb-3 pt-1 border-t border-slate-100 bg-slate-50/40">
+                  {kids.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 pt-2">
                       {kids.map((kid) => {
-                        const isInactive = kid.status !== 'active' && kid.status !== 'chizuk';
+                        const isActive = kid.status === 'active' || kid.status === 'chizuk';
                         return (
                           <Link
                             key={kid.id}
                             href={`/students/${kid.id}`}
-                            className={`inline-block text-xs px-2 py-1 rounded-full transition-colors ${
-                              isInactive
-                                ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                : 'bg-green-50 text-green-700 hover:bg-green-100'
+                            className={`inline-flex items-center text-[11px] px-2 py-0.5 rounded-md transition-colors ring-1 ${
+                              isActive
+                                ? 'bg-white text-slate-700 ring-slate-200 hover:ring-blue-300 hover:text-blue-700'
+                                : 'bg-slate-100 text-slate-500 ring-slate-200 hover:text-slate-700'
                             }`}
-                            title={isInactive ? 'לא פעיל' : 'פעיל'}
+                            title={isActive ? 'פעיל' : 'לא פעיל'}
                           >
                             {kid.first_name} {kid.last_name}
-                            {kid.shiur && ` - ${kid.shiur}`}
+                            {kid.shiur && <span className="text-slate-400 ms-1">· {kid.shiur}</span>}
                           </Link>
                         );
                       })}
                     </div>
-                  </div>
-                ) : (
-                  <div className="border-t border-gray-100 pt-3">
-                    <p className="text-xs text-gray-400">אין תלמידים משויכים</p>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic pt-2">אין תלמידים משויכים</p>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
 
         {filteredFamilies.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500 text-lg">אין משפחות להצגה</p>
+          <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
+            <p className="text-5xl mb-3 opacity-40">🔍</p>
+            <p className="text-slate-500 text-base font-medium">לא נמצאו משפחות</p>
+            <p className="text-slate-400 text-sm mt-1">נסה לשנות את הסינון</p>
           </div>
         )}
       </div>
     </>
+  );
+}
+
+function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function ParentRow({ label, name, phone }: { label: string; name: string; phone?: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 w-6">{label}</span>
+      <span className="font-medium text-slate-800 flex-1 min-w-0 truncate">{name}</span>
+      {phone && (
+        <a
+          href={`tel:${phone}`}
+          className="text-[11px] font-medium text-slate-500 hover:text-blue-700 tabular-nums"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {phone}
+        </a>
+      )}
+    </div>
   );
 }
