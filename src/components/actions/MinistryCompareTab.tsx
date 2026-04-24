@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase';
 import { Student } from '@/lib/types';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
+import { SHIURIM } from '@/lib/shiurim';
 
 type MinistryType = 'dat' | 'chinuch';
 
@@ -36,7 +37,21 @@ interface CompareRow {
   firstName: string;
   lastName: string;
   idNumber: string;
+  shiur?: string;
   extra?: string;
+}
+
+const SHIUR_ORDER = new Map<string, number>(SHIURIM.map((s, i) => [s.name, i]));
+function shiurRank(name?: string): number {
+  if (!name) return 9999;
+  const r = SHIUR_ORDER.get(name);
+  return r === undefined ? 9998 : r;
+}
+function compareRows(a: CompareRow, b: CompareRow): number {
+  const sa = shiurRank(a.shiur);
+  const sb = shiurRank(b.shiur);
+  if (sa !== sb) return sa - sb;
+  return (a.lastName || '').localeCompare(b.lastName || '', 'he');
 }
 
 interface CompareSection {
@@ -336,10 +351,11 @@ export function MinistryCompareTab() {
           firstName: s.first_name || '',
           lastName: s.last_name || '',
           idNumber: s.id_number || s.passport_number || '',
+          shiur: s.shiur || undefined,
           extra: [s.shiur, s.institution_name].filter(Boolean).join(' · '),
         });
       }
-      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      rows.sort(compareRows);
       sections.push({
         key: 'only-yeshiva',
         tone: 'red',
@@ -366,10 +382,11 @@ export function MinistryCompareTab() {
           firstName: s.first_name || r.firstName,
           lastName: s.last_name || r.lastName,
           idNumber: r.idNumber,
+          shiur: s.shiur || undefined,
           extra: `אצלנו: ${statusLabel}`,
         });
       }
-      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      rows.sort(compareRows);
       sections.push({
         key: 'ministry-yeshiva-not-active',
         tone: 'amber',
@@ -393,10 +410,11 @@ export function MinistryCompareTab() {
           firstName: s.first_name || r.firstName,
           lastName: s.last_name || r.lastName,
           idNumber: r.idNumber,
+          shiur: s.shiur || undefined,
           extra: s.shiur || '',
         });
       }
-      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      rows.sort(compareRows);
       sections.push({
         key: 'chizuk',
         tone: 'amber',
@@ -429,10 +447,11 @@ export function MinistryCompareTab() {
           firstName: s.first_name || m.firstName,
           lastName: s.last_name || m.lastName,
           idNumber: s.id_number || s.passport_number || '',
+          shiur: s.shiur || undefined,
           extra: `${problem} · ${s.shiur || ''}`,
         });
       }
-      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      rows.sort(compareRows);
       sections.push({
         key: 'registered-but-problem',
         tone: 'amber',
@@ -459,7 +478,7 @@ export function MinistryCompareTab() {
           extra: r.entitlement || r.classroom || '',
         });
       }
-      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      rows.sort(compareRows);
       sections.push({
         key: 'ministry-only',
         tone: 'red',
@@ -507,10 +526,11 @@ export function MinistryCompareTab() {
           firstName: s.first_name,
           lastName: s.last_name,
           idNumber: s.id_number || s.passport_number || '',
+          shiur: s.shiur || undefined,
           extra: datIds.has(k) ? 'רשום במשרד הדתות' : 'חסר בשני המשרדים',
         });
       }
-      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      rows.sort(compareRows);
       sections.push({
         key: 'chinuch-missing-from-chinuch',
         tone: 'red',
@@ -533,10 +553,11 @@ export function MinistryCompareTab() {
           firstName: s.first_name || r.firstName,
           lastName: s.last_name || r.lastName,
           idNumber: r.idNumber,
+          shiur: s.shiur || undefined,
           extra: `${r.classroom || ''} · סטטוס אצלנו: ${s.status}`,
         });
       }
-      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      rows.sort(compareRows);
       sections.push({
         key: 'in-chinuch-not-flagged',
         tone: 'amber',
@@ -557,10 +578,11 @@ export function MinistryCompareTab() {
           firstName: s.first_name || '',
           lastName: s.last_name || '',
           idNumber: s.id_number || s.passport_number || '',
+          shiur: s.shiur || undefined,
           extra: `סטטוס: ${s.status}${s.is_chinuch ? ' · חינוך ✓' : ''}`,
         });
       }
-      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      rows.sort(compareRows);
       sections.push({
         key: 'in-both',
         tone: 'blue',
@@ -883,6 +905,7 @@ function SectionBlock({
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-2 text-start font-semibold">#</th>
+                <th className="px-3 py-2 text-start font-semibold">שיעור</th>
                 <th className="px-3 py-2 text-start font-semibold">שם משפחה</th>
                 <th className="px-3 py-2 text-start font-semibold">שם פרטי</th>
                 <th className="px-3 py-2 text-start font-semibold">ת״ז</th>
@@ -893,6 +916,7 @@ function SectionBlock({
               {section.rows.map((row, i) => (
                 <tr key={i} className="border-t border-gray-100">
                   <td className="px-3 py-2 text-gray-500">{i + 1}</td>
+                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.shiur || '—'}</td>
                   <td className="px-3 py-2 font-medium">{row.lastName}</td>
                   <td className="px-3 py-2">{row.firstName}</td>
                   <td className="px-3 py-2 font-mono text-xs">{row.idNumber}</td>
