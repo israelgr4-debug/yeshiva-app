@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Header } from '@/components/layout/Header';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { StudentTable } from '@/components/students/StudentTable';
+import { StudentTable, SortKey, SortDir } from '@/components/students/StudentTable';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -33,25 +33,35 @@ const institutionOptions = [
   { value: "כולל של ר' יצחק פינקל", label: "כולל ר' יצחק פינקל" },
 ];
 
+const pageSizeOptions = [
+  { value: '50', label: '50 בעמוד' },
+  { value: '100', label: '100 בעמוד' },
+  { value: '250', label: '250 בעמוד' },
+  { value: 'all', label: 'הצג הכל' },
+];
+
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
-  const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
   const [families, setFamilies] = useState<Record<string, Family>>({});
   const [machzorot, setMachzorot] = useState<Record<string, Machzor>>({});
   const [siblingCounts, setSiblingCounts] = useState<Record<string, number>>({});
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedShiur, setSelectedShiur] = useState('');
   const [selectedInstitution, setSelectedInstitution] = useState('');
-  // Default to 'active' - show only active students by default
   const [selectedStatus, setSelectedStatus] = useState('active');
+  const [onlyChinuch, setOnlyChinuch] = useState(false);
+
+  const [sortKey, setSortKey] = useState<SortKey>('last_name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const [pageSize, setPageSize] = useState<number | 'all'>(50);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 25;
 
   const { getStudents, loading } = useStudents();
   const { fetchData } = useSupabase();
   const { permissions } = useAuth();
 
-  // Load students, families, machzorot in parallel
   useEffect(() => {
     async function loadAll() {
       const [studentsData, familiesData, machzorData] = await Promise.all([
@@ -60,7 +70,6 @@ export default function StudentsPage() {
         fetchData<Machzor>('machzorot'),
       ]);
       setStudents(studentsData);
-      setFilteredStudents(studentsData);
 
       const famMap: Record<string, Family> = {};
       for (const f of familiesData) famMap[f.id] = f;
@@ -70,7 +79,6 @@ export default function StudentsPage() {
       for (const m of machzorData) machMap[m.id] = m;
       setMachzorot(machMap);
 
-      // Compute sibling counts - ONLY active students
       const counts: Record<string, number> = {};
       for (const s of studentsData) {
         if (s.family_id && s.status === 'active') {
@@ -82,9 +90,8 @@ export default function StudentsPage() {
     loadAll();
   }, [getStudents, fetchData]);
 
-  useEffect(() => {
+  const filteredStudents = useMemo(() => {
     let filtered = students;
-
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -94,31 +101,39 @@ export default function StudentsPage() {
           (s.id_number || '').includes(query)
       );
     }
+    if (selectedShiur) filtered = filtered.filter((s) => s.shiur === selectedShiur);
+    if (selectedStatus) filtered = filtered.filter((s) => s.status === selectedStatus);
+    if (selectedInstitution) filtered = filtered.filter((s) => s.institution_name === selectedInstitution);
+    if (onlyChinuch) filtered = filtered.filter((s) => s.is_chinuch);
+    return filtered;
+  }, [students, searchQuery, selectedShiur, selectedStatus, selectedInstitution, onlyChinuch]);
 
-    if (selectedShiur) {
-      filtered = filtered.filter((s) => s.shiur === selectedShiur);
-    }
-
-    if (selectedStatus) {
-      filtered = filtered.filter((s) => s.status === selectedStatus);
-    }
-
-    if (selectedInstitution) {
-      filtered = filtered.filter((s) => s.institution_name === selectedInstitution);
-    }
-
-    setFilteredStudents(filtered);
+  useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedShiur, selectedStatus, selectedInstitution, students]);
+  }, [searchQuery, selectedShiur, selectedStatus, selectedInstitution, onlyChinuch, pageSize]);
 
-  const paginatedStudents = filteredStudents.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const activeCount = useMemo(
+    () => filteredStudents.filter((s) => s.status === 'active').length,
+    [filteredStudents]
   );
 
-  const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+  const paginatedStudents =
+    pageSize === 'all'
+      ? filteredStudents
+      : filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Helpful: short page jump to avoid 100+ page buttons
+  const totalPages =
+    pageSize === 'all' ? 1 : Math.max(1, Math.ceil(filteredStudents.length / pageSize));
+
   const pageWindow = (() => {
     const windowSize = 7;
     const half = Math.floor(windowSize / 2);
@@ -128,71 +143,147 @@ export default function StudentsPage() {
     return { start, end };
   })();
 
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedShiur('');
+    setSelectedInstitution('');
+    setSelectedStatus('active');
+    setOnlyChinuch(false);
+  };
+
+  const hasActiveFilters =
+    searchQuery || selectedShiur || selectedInstitution || selectedStatus !== 'active' || onlyChinuch;
+
   return (
     <>
-      <Header title="תלמידים" subtitle="ניהול רשימת התלמידים" />
+      <Header
+        title="תלמידים"
+        subtitle="ניהול רשומות תלמידים"
+        action={
+          permissions.canWrite ? (
+            <Link href="/students/new">
+              <Button size="sm">＋ תלמיד חדש</Button>
+            </Link>
+          ) : undefined
+        }
+      />
 
-      <div className="p-4 md:p-8">
-        {/* Filters and Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-          <SearchInput
-            placeholder="חיפוש לפי שם או תעודת זהות..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <Select
-            options={institutionOptions}
-            value={selectedInstitution}
-            onChange={(e) => setSelectedInstitution(e.target.value)}
-          />
-          <Select
-            options={shiurOptions}
-            value={selectedShiur}
-            onChange={(e) => setSelectedShiur(e.target.value)}
-          />
-          <Select
-            options={statusOptions}
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-          />
-          <div className="flex gap-2">
-            {permissions.canWrite && (
-              <Link href="/students/new" className="flex-1">
-                <Button className="w-full">הוסף תלמיד</Button>
-              </Link>
+      <div className="p-4 md:p-8 space-y-4 animate-fadeIn">
+        {/* Filter card */}
+        <div className="bg-white rounded-2xl border border-slate-200 elevation-1 p-4 md:p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <span className="w-1 h-4 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-full" />
+              סינון וחיפוש
+            </h3>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+              >
+                ✕ נקה סינון
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            <FilterField label="חיפוש">
+              <SearchInput
+                placeholder="שם או ת״ז..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </FilterField>
+            <FilterField label="מוסד">
+              <Select
+                options={institutionOptions}
+                value={selectedInstitution}
+                onChange={(e) => setSelectedInstitution(e.target.value)}
+              />
+            </FilterField>
+            <FilterField label="שיעור">
+              <Select
+                options={shiurOptions}
+                value={selectedShiur}
+                onChange={(e) => setSelectedShiur(e.target.value)}
+              />
+            </FilterField>
+            <FilterField label="סטטוס">
+              <Select
+                options={statusOptions}
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+              />
+            </FilterField>
+            <FilterField label="תצוגה">
+              <div className="flex items-center gap-2">
+                <Select
+                  options={pageSizeOptions}
+                  value={String(pageSize)}
+                  onChange={(e) =>
+                    setPageSize(e.target.value === 'all' ? 'all' : Number(e.target.value))
+                  }
+                />
+              </div>
+            </FilterField>
+          </div>
+          {/* Chinuch toggle chip */}
+          <div className="mt-3 flex items-center gap-2">
+            <label className="inline-flex items-center gap-2 text-xs cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={onlyChinuch}
+                onChange={(e) => setOnlyChinuch(e.target.checked)}
+                className="rounded accent-purple-600"
+              />
+              <span className="text-slate-600 group-hover:text-slate-900 transition-colors">
+                📘 רק מסומני חינוך
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {/* Result summary strip */}
+        <div className="flex items-center justify-between text-sm">
+          <div className="text-slate-600">
+            <span className="font-bold text-slate-900 text-base">
+              {filteredStudents.length.toLocaleString('he-IL')}
+            </span>{' '}
+            תלמידים
+            <span className="text-slate-400 mx-2">·</span>
+            <span className="text-emerald-700 font-semibold">
+              {activeCount.toLocaleString('he-IL')} פעילים
+            </span>
+            {totalPages > 1 && (
+              <span className="text-slate-400 mx-2 hidden md:inline">
+                · עמוד {currentPage} מתוך {totalPages}
+              </span>
             )}
           </div>
         </div>
 
-        {/* Results Count */}
-        <div className="mb-4 text-sm text-gray-600">
-          {filteredStudents.length} תלמידים
-          {totalPages > 1 && (
-            <span className="ms-2 text-gray-400">
-              (עמוד {currentPage} מתוך {totalPages})
-            </span>
-          )}
-        </div>
-
-        {/* Student Table */}
+        {/* Table */}
         <StudentTable
           students={paginatedStudents}
           families={families}
           machzorot={machzorot}
           siblingCounts={siblingCounts}
           isLoading={loading}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSortChange={handleSort}
         />
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex justify-center gap-2 mt-6 flex-wrap">
+          <div className="flex justify-center gap-1 mt-2 flex-wrap">
             <Button
               variant="secondary"
               onClick={() => setCurrentPage(1)}
               disabled={currentPage === 1}
               size="sm"
             >
-              ראשון
+              «
             </Button>
             <Button
               variant="secondary"
@@ -200,7 +291,7 @@ export default function StudentsPage() {
               disabled={currentPage === 1}
               size="sm"
             >
-              הקודם
+              ‹ הקודם
             </Button>
             <div className="flex items-center gap-1">
               {Array.from({ length: pageWindow.end - pageWindow.start + 1 }).map((_, i) => {
@@ -223,7 +314,7 @@ export default function StudentsPage() {
               disabled={currentPage === totalPages}
               size="sm"
             >
-              הבא
+              הבא ›
             </Button>
             <Button
               variant="secondary"
@@ -231,11 +322,22 @@ export default function StudentsPage() {
               disabled={currentPage === totalPages}
               size="sm"
             >
-              אחרון
+              »
             </Button>
           </div>
         )}
       </div>
     </>
+  );
+}
+
+function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+        {label}
+      </label>
+      {children}
+    </div>
   );
 }

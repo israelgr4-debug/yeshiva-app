@@ -7,7 +7,7 @@ interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
 
 export const Table = React.forwardRef<HTMLTableElement, TableProps>(
   ({ className, ...props }, ref) => (
-    <div className="w-full overflow-x-auto border border-gray-200 rounded-lg">
+    <div className="w-full overflow-x-auto bg-white border border-slate-200 rounded-2xl elevation-1">
       <table
         ref={ref}
         className={cn('w-full border-collapse', className)}
@@ -25,7 +25,7 @@ interface TableHeaderProps extends React.HTMLAttributes<HTMLTableSectionElement>
 
 export const TableHeader = React.forwardRef<HTMLTableSectionElement, TableHeaderProps>(
   ({ className, ...props }, ref) => (
-    <thead ref={ref} className={cn('bg-gray-50 border-b border-gray-200', className)} {...props} />
+    <thead ref={ref} className={cn('bg-slate-50/80 border-b border-slate-200', className)} {...props} />
   )
 );
 
@@ -51,7 +51,7 @@ export const TableRow = React.forwardRef<HTMLTableRowElement, TableRowProps>(
     <tr
       ref={ref}
       className={cn(
-        'border-b border-gray-200 hover:bg-gray-50 transition-colors',
+        'border-b border-slate-100 hover:bg-blue-50/40 transition-colors last:border-b-0',
         isClickable && 'cursor-pointer',
         className
       )}
@@ -72,13 +72,16 @@ export const TableCell = React.forwardRef<HTMLTableCellElement, TableCellProps>(
     isHeader ? (
       <th
         ref={ref as React.ForwardedRef<HTMLTableHeaderCellElement>}
-        className={cn('px-3 md:px-6 py-3 text-right font-semibold text-gray-700 text-sm whitespace-nowrap', className)}
+        className={cn(
+          'px-3 md:px-4 py-2.5 text-right font-semibold text-slate-600 text-xs uppercase tracking-wider whitespace-nowrap',
+          className
+        )}
         {...(props as React.ThHTMLAttributes<HTMLTableHeaderCellElement>)}
       />
     ) : (
       <td
         ref={ref as React.ForwardedRef<HTMLTableDataCellElement>}
-        className={cn('px-3 md:px-6 py-3 md:py-4 text-gray-900', className)}
+        className={cn('px-3 md:px-4 py-2.5 text-slate-800 text-sm', className)}
         {...(props as React.TdHTMLAttributes<HTMLTableDataCellElement>)}
       />
     )

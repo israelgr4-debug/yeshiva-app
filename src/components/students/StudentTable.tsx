@@ -5,6 +5,20 @@ import { Badge } from '@/components/ui/Badge';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/Table';
 import { getStatusLabel } from '@/lib/utils';
 import Link from 'next/link';
+import { useMemo } from 'react';
+import { SHIURIM } from '@/lib/shiurim';
+
+export type SortKey =
+  | 'last_name'
+  | 'first_name'
+  | 'id_number'
+  | 'institution'
+  | 'shiur'
+  | 'machzor'
+  | 'address'
+  | 'status';
+
+export type SortDir = 'asc' | 'desc';
 
 interface StudentTableProps {
   students: Student[];
@@ -12,7 +26,12 @@ interface StudentTableProps {
   families?: Record<string, Family>;
   siblingCounts?: Record<string, number>;
   isLoading?: boolean;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSortChange: (key: SortKey) => void;
 }
+
+const SHIUR_ORDER = new Map(SHIURIM.map((s, i) => [s.name, i]));
 
 function StatusBadge({ status }: { status: string }) {
   return (
@@ -32,13 +51,15 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function InstitutionBadge({ name }: { name?: string | null }) {
-  if (!name) return <span className="text-gray-400 text-xs">-</span>;
+function InstitutionChip({ name }: { name?: string | null }) {
+  if (!name) return <span className="text-slate-300 text-xs">—</span>;
   const isYeshiva = name === 'ישיבה';
   return (
     <span
-      className={`px-2 py-0.5 rounded text-xs font-medium ${
-        isYeshiva ? 'bg-blue-50 text-blue-700' : 'bg-green-50 text-green-700'
+      className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
+        isYeshiva
+          ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
+          : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
       }`}
     >
       {name}
@@ -52,12 +73,42 @@ export function StudentTable({
   families = {},
   siblingCounts = {},
   isLoading,
+  sortKey,
+  sortDir,
+  onSortChange,
 }: StudentTableProps) {
+  const sortedStudents = useMemo(() => {
+    const list = [...students];
+    const mul = sortDir === 'asc' ? 1 : -1;
+    const getVal = (s: Student): string | number => {
+      switch (sortKey) {
+        case 'last_name': return s.last_name || '';
+        case 'first_name': return s.first_name || '';
+        case 'id_number': return s.id_number || '';
+        case 'institution': return s.institution_name || '';
+        case 'shiur': return SHIUR_ORDER.get(s.shiur || '') ?? 9999;
+        case 'machzor': return (s.machzor_id && machzorot[s.machzor_id]?.number) || 0;
+        case 'address': {
+          const f = s.family_id ? families[s.family_id] : undefined;
+          return (f?.city || '') + (f?.address || '');
+        }
+        case 'status': return s.status;
+      }
+    };
+    list.sort((a, b) => {
+      const va = getVal(a);
+      const vb = getVal(b);
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * mul;
+      return String(va).localeCompare(String(vb), 'he') * mul;
+    });
+    return list;
+  }, [students, sortKey, sortDir, machzorot, families]);
+
   if (isLoading) {
     return (
-      <div className="space-y-2">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-12 bg-gray-200 rounded animate-pulse"></div>
+      <div className="space-y-1.5">
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -65,71 +116,125 @@ export function StudentTable({
 
   if (students.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500 text-lg">אין תלמידים להצגה</p>
+      <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
+        <p className="text-5xl mb-3 opacity-40">🔍</p>
+        <p className="text-slate-500 text-base font-medium">לא נמצאו תלמידים</p>
+        <p className="text-slate-400 text-sm mt-1">נסה לשנות את הסינון</p>
       </div>
     );
   }
 
+  const SortHeader = ({ label, field }: { label: string; field: SortKey }) => {
+    const active = sortKey === field;
+    return (
+      <TableCell isHeader className="p-0">
+        <button
+          type="button"
+          onClick={() => onSortChange(field)}
+          className={`w-full text-start px-3 md:px-4 py-2.5 flex items-center gap-1.5 transition-colors ${
+            active ? 'text-slate-900 bg-slate-100/50' : 'hover:text-slate-800 hover:bg-slate-50'
+          }`}
+        >
+          <span>{label}</span>
+          <span
+            className={`text-[10px] transition-opacity ${active ? 'opacity-100' : 'opacity-30'}`}
+            aria-hidden
+          >
+            {active ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+          </span>
+        </button>
+      </TableCell>
+    );
+  };
+
   return (
     <>
-      {/* Desktop table - hidden on mobile */}
+      {/* Desktop table */}
       <div className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableCell isHeader>שם משפחה</TableCell>
-              <TableCell isHeader>שם פרטי</TableCell>
-              <TableCell isHeader>תעודת זהות</TableCell>
-              <TableCell isHeader>מוסד</TableCell>
-              <TableCell isHeader>שיעור</TableCell>
-              <TableCell isHeader>מחזור</TableCell>
-              <TableCell isHeader>כתובת</TableCell>
-              <TableCell isHeader>סטטוס</TableCell>
+              <SortHeader label="שם משפחה" field="last_name" />
+              <SortHeader label="שם פרטי" field="first_name" />
+              <SortHeader label="ת״ז" field="id_number" />
+              <SortHeader label="מוסד" field="institution" />
+              <SortHeader label="שיעור" field="shiur" />
+              <SortHeader label="מחזור" field="machzor" />
+              <SortHeader label="כתובת" field="address" />
+              <SortHeader label="סטטוס" field="status" />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {students.map((student) => {
+            {sortedStudents.map((student) => {
               const family = student.family_id ? families[student.family_id] : undefined;
               const siblings = student.family_id ? siblingCounts[student.family_id] || 0 : 0;
-              const addressText = family ? [family.address, family.city].filter(Boolean).join(', ') : '';
+              const addressText = family
+                ? [family.address, family.city].filter(Boolean).join(', ')
+                : '';
+              const mach =
+                student.machzor_id && machzorot[student.machzor_id]
+                  ? machzorot[student.machzor_id]
+                  : null;
 
               return (
                 <TableRow key={student.id} isClickable>
                   <TableCell>
-                    <Link href={`/students/${student.id}`} className="text-blue-600 hover:underline font-medium">
+                    <Link
+                      href={`/students/${student.id}`}
+                      className="text-blue-700 hover:text-blue-800 hover:underline font-semibold"
+                    >
                       {student.last_name}
                     </Link>
                     {siblings > 1 && (
                       <span
-                        className="ms-2 inline-flex items-center bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded text-xs font-medium"
+                        className="ms-1.5 inline-flex items-center bg-amber-50 text-amber-800 px-1.5 py-0 rounded-md text-[10px] font-bold ring-1 ring-amber-200"
                         title={`${siblings} אחים פעילים במשפחה`}
                       >
                         👥 {siblings}
                       </span>
                     )}
+                    {student.is_chinuch && (
+                      <span
+                        className="ms-1 inline-flex items-center bg-purple-600 text-white px-1.5 py-0 rounded-md text-[10px] font-bold"
+                        title="מסומן חינוך"
+                      >
+                        📘
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <Link href={`/students/${student.id}`} className="text-blue-600 hover:underline">
+                    <Link
+                      href={`/students/${student.id}`}
+                      className="text-blue-700 hover:text-blue-800 hover:underline"
+                    >
                       {student.first_name}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-sm text-gray-600">{student.id_number}</TableCell>
-                  <TableCell><InstitutionBadge name={student.institution_name} /></TableCell>
-                  <TableCell>{student.shiur}</TableCell>
+                  <TableCell className="text-xs text-slate-500 font-mono tabular-nums">
+                    {student.id_number}
+                  </TableCell>
                   <TableCell>
-                    {student.machzor_id && machzorot[student.machzor_id] ? (
-                      <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-xs font-medium">
-                        {machzorot[student.machzor_id].name}
+                    <InstitutionChip name={student.institution_name} />
+                  </TableCell>
+                  <TableCell className="text-slate-700">{student.shiur || '—'}</TableCell>
+                  <TableCell>
+                    {mach ? (
+                      <span className="inline-flex items-center bg-violet-50 text-violet-700 px-2 py-0.5 rounded-md text-xs font-medium ring-1 ring-violet-100">
+                        {mach.name}
                       </span>
                     ) : (
-                      '-'
+                      <span className="text-slate-300">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm text-gray-600" title={addressText}>
-                    {addressText || <span className="text-gray-400">-</span>}
+                  <TableCell
+                    className="text-xs text-slate-500 max-w-[200px] truncate"
+                    title={addressText}
+                  >
+                    {addressText || <span className="text-slate-300">—</span>}
                   </TableCell>
-                  <TableCell><StatusBadge status={student.status} /></TableCell>
+                  <TableCell>
+                    <StatusBadge status={student.status} />
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -137,51 +242,58 @@ export function StudentTable({
         </Table>
       </div>
 
-      {/* Mobile card list - visible only on mobile */}
-      <div className="md:hidden space-y-3">
-        {students.map((student) => {
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {sortedStudents.map((student) => {
           const family = student.family_id ? families[student.family_id] : undefined;
           const siblings = student.family_id ? siblingCounts[student.family_id] || 0 : 0;
-          const addressText = family ? [family.address, family.city].filter(Boolean).join(', ') : '';
+          const addressText = family
+            ? [family.address, family.city].filter(Boolean).join(', ')
+            : '';
           const machzor = student.machzor_id ? machzorot[student.machzor_id] : null;
 
           return (
             <Link
               key={student.id}
               href={`/students/${student.id}`}
-              className="block bg-white border border-gray-200 rounded-lg p-4 active:bg-gray-50"
+              className="block bg-white border border-slate-200 rounded-xl p-3 active:bg-slate-50 elevation-1 hover:elevation-2 transition-all"
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-gray-900">
+                  <h3 className="font-bold text-slate-900 text-sm">
                     {student.last_name} {student.first_name}
+                    {siblings > 1 && (
+                      <span className="ms-1.5 inline-flex items-center bg-amber-50 text-amber-800 px-1.5 rounded-md text-[10px] font-bold">
+                        👥 {siblings}
+                      </span>
+                    )}
+                    {student.is_chinuch && (
+                      <span className="ms-1 inline-flex items-center bg-purple-600 text-white px-1.5 rounded-md text-[10px] font-bold">
+                        📘
+                      </span>
+                    )}
                   </h3>
-                  <p className="text-xs text-gray-500">ת"ז: {student.id_number}</p>
+                  <p className="text-[11px] text-slate-400 font-mono mt-0.5">ת"ז: {student.id_number}</p>
                 </div>
                 <StatusBadge status={student.status} />
               </div>
 
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                <InstitutionBadge name={student.institution_name} />
+              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                <InstitutionChip name={student.institution_name} />
                 {student.shiur && (
-                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">
+                  <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-xs">
                     {student.shiur}
                   </span>
                 )}
                 {machzor && (
-                  <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-xs">
+                  <span className="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-md text-xs ring-1 ring-violet-100">
                     {machzor.name}
-                  </span>
-                )}
-                {siblings > 1 && (
-                  <span className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded text-xs">
-                    👥 {siblings} אחים
                   </span>
                 )}
               </div>
 
               {addressText && (
-                <p className="text-xs text-gray-600 truncate">📍 {addressText}</p>
+                <p className="text-[11px] text-slate-500 truncate">📍 {addressText}</p>
               )}
             </Link>
           );
