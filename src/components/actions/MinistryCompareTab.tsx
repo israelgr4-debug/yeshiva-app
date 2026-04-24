@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase';
 import { Student } from '@/lib/types';
+import { useSystemSettings } from '@/hooks/useSystemSettings';
 
 type MinistryType = 'dat' | 'chinuch';
 
@@ -12,23 +14,37 @@ interface MinistryRow {
   firstName: string;
   lastName: string;
   idNumber: string;
-  entitlement: string; // זכאי / אינו זכאי
-  entryDate: string;
-  idType: string; // תעודת זהות / דרכון
-  raw: string[];
+  /** Ministry of Religion: זכאי / אינו זכאי */
+  entitlement?: string;
+  entryDate?: string;
+  idType?: string;
+  /** Chinuch: שכבה/כיתת אם */
+  classroom?: string;
+  /** Chinuch: תקין / שגוי */
+  validity?: string;
+  /** Chinuch: מוצהר / ריק */
+  declared?: string;
+}
+
+interface StoredData {
+  rows: MinistryRow[];
+  uploadedAt: string;
+  fileName: string;
+}
+
+interface CompareRow {
+  firstName: string;
+  lastName: string;
+  idNumber: string;
+  extra?: string;
 }
 
 interface CompareSection {
   key: string;
   title: string;
-  tone: 'red' | 'amber' | 'blue';
+  tone: 'red' | 'amber' | 'blue' | 'purple';
   description: string;
-  rows: Array<{
-    firstName: string;
-    lastName: string;
-    idNumber: string;
-    extra?: string;
-  }>;
+  rows: CompareRow[];
 }
 
 /** Normalize Israeli ID: strip non-digits, strip leading zeros */
@@ -38,13 +54,24 @@ function normalizeId(id: string | null | undefined): string {
   return digits;
 }
 
-/** Parse Ministry of Religion CSV - Row 4 is header, rows 5+ are data. */
-function parseMinistryCsv(text: string): MinistryRow[] {
-  // Strip BOM
+/** Split Hebrew full name "last_name first_name rest..." */
+function splitHebrewName(full: string): { firstName: string; lastName: string } {
+  const trimmed = (full || '').trim().replace(/\s+/g, ' ');
+  if (!trimmed) return { firstName: '', lastName: '' };
+  const parts = trimmed.split(' ');
+  // Compound surnames (בן X, בר X, בית X) need 2 words
+  const compoundPrefixes = ['בן', 'בר', 'בית', 'אבן', 'אבו', 'בני', 'דה', "ד'", 'ון', 'דר'];
+  let lastLen = 1;
+  if (parts.length >= 3 && compoundPrefixes.includes(parts[0])) lastLen = 2;
+  const lastName = parts.slice(0, lastLen).join(' ');
+  const firstName = parts.slice(lastLen).join(' ');
+  return { firstName, lastName };
+}
+
+/** Parse Ministry of Religion CSV */
+function parseDatCsv(text: string): MinistryRow[] {
   const cleaned = text.replace(/^\uFEFF/, '');
   const lines = cleaned.split(/\r?\n/);
-
-  // Simple CSV row parser (handles quoted fields)
   const parseRow = (line: string): string[] => {
     const out: string[] = [];
     let cur = '';
@@ -62,7 +89,6 @@ function parseMinistryCsv(text: string): MinistryRow[] {
     return out;
   };
 
-  // Find the header row - looks for "StudentIdentity"
   let headerIdx = -1;
   for (let i = 0; i < Math.min(10, lines.length); i++) {
     if (lines[i].includes('StudentIdentity')) { headerIdx = i; break; }
@@ -86,8 +112,7 @@ function parseMinistryCsv(text: string): MinistryRow[] {
     const cols = parseRow(line);
     const id = (cols[idx.id] || '').trim();
     const entitlement = (cols[idx.entitlement] || '').trim();
-    // Skip total/summary rows - they have no entitlement per-student
-    if (!id || !entitlement) continue;
+    if (!id || !entitlement) continue; // skip totals
     rows.push({
       firstName: (cols[idx.firstName] || '').trim(),
       lastName: (cols[idx.lastName] || '').trim(),
@@ -95,22 +120,86 @@ function parseMinistryCsv(text: string): MinistryRow[] {
       entitlement,
       entryDate: (cols[idx.entryDate] || '').trim(),
       idType: (cols[idx.idType] || '').trim(),
-      raw: cols,
+    });
+  }
+  return rows;
+}
+
+/** Parse Ministry of Education xlsx. Format:
+ *  col 0: מספר זהות, col 1: שם התלמיד (last first), col 3: שכבה, col 4: סטטוס,
+ *  col 5: הצהרת מנהל, col 7: תקינות מצבת
+ */
+async function parseChinuchXlsx(file: File): Promise<MinistryRow[]> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  if (data.length < 2) return [];
+  const header = data[0].map((h) => String(h || '').trim());
+
+  // Find columns by Hebrew headers (robust to column order)
+  const findCol = (...names: string[]): number => {
+    for (const n of names) {
+      const i = header.findIndex((h) => h.includes(n));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const idCol = findCol('מספר זהות', 'זהות');
+  const nameCol = findCol('שם התלמיד', 'שם');
+  const classCol = findCol('שכבה', 'כיתת');
+  const statusCol = findCol('סטטוס');
+  const declCol = findCol('הצהרת');
+  const validCol = findCol('תקינות');
+
+  const rows: MinistryRow[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    if (!r || r.length === 0) continue;
+    const id = String(r[idCol] || '').trim();
+    const fullName = String(r[nameCol] || '').trim();
+    if (!id || !fullName) continue;
+    const { firstName, lastName } = splitHebrewName(fullName);
+    rows.push({
+      firstName,
+      lastName,
+      idNumber: id,
+      classroom: classCol >= 0 ? String(r[classCol] || '').trim() : '',
+      validity: validCol >= 0 ? String(r[validCol] || '').trim() : '',
+      declared: declCol >= 0 ? String(r[declCol] || '').trim() : '',
+      entitlement: statusCol >= 0 ? String(r[statusCol] || '').trim() : '',
     });
   }
   return rows;
 }
 
 export function MinistryCompareTab() {
-  const [ministryType, setMinistryType] = useState<MinistryType>('dat');
-  const [ministryRows, setMinistryRows] = useState<MinistryRow[] | null>(null);
-  const [fileName, setFileName] = useState<string>('');
+  const { getSetting, setSetting } = useSystemSettings();
+
+  const [datData, setDatData] = useState<StoredData | null>(null);
+  const [chinuchData, setChinuchData] = useState<StoredData | null>(null);
   const [students, setStudents] = useState<Student[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState<MinistryType | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<'dat' | 'chinuch' | 'combined'>('dat');
 
-  const loadStudents = async () => {
-    setLoading(true);
+  // Initial load: persisted uploads + students
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const [dat, ch] = await Promise.all([
+        getSetting<StoredData | null>('ministry_dat_data', null),
+        getSetting<StoredData | null>('ministry_chinuch_data', null),
+      ]);
+      setDatData(dat);
+      setChinuchData(ch);
+      await loadStudents();
+      setLoading(false);
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadStudents = useCallback(async () => {
     const all: Student[] = [];
     for (let p = 0; p < 20; p++) {
       const from = p * 1000;
@@ -124,100 +213,120 @@ export function MinistryCompareTab() {
       if (data.length < 1000) break;
     }
     setStudents(all);
+  }, []);
+
+  const handleRecheck = async () => {
+    setLoading(true);
+    await loadStudents();
     setLoading(false);
   };
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (type: MinistryType, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setParseError(null);
-    setFileName(file.name);
+    setUploading(type);
     try {
-      const text = await file.text();
-      const parsed = parseMinistryCsv(text);
-      if (parsed.length === 0) {
-        setParseError('לא נמצאו רשומות תקינות בקובץ. ודא שזה קובץ CSV של דוח משרד הדתות/החינוך.');
-        setMinistryRows(null);
+      let rows: MinistryRow[];
+      if (type === 'dat') {
+        const text = await file.text();
+        rows = parseDatCsv(text);
+      } else {
+        rows = await parseChinuchXlsx(file);
+      }
+      if (rows.length === 0) {
+        setParseError(`לא נמצאו רשומות ב${type === 'dat' ? 'קובץ משרד הדתות' : 'קובץ משרד החינוך'}. בדוק שזה הקובץ הנכון.`);
+        setUploading(null);
         return;
       }
-      setMinistryRows(parsed);
-      if (!students) await loadStudents();
+      const stored: StoredData = {
+        rows,
+        uploadedAt: new Date().toISOString(),
+        fileName: file.name,
+      };
+      const key = type === 'dat' ? 'ministry_dat_data' : 'ministry_chinuch_data';
+      await setSetting(key, stored);
+      if (type === 'dat') setDatData(stored);
+      else setChinuchData(stored);
+      setActiveView(type);
     } catch (err: any) {
       setParseError('שגיאה בקריאת הקובץ: ' + (err?.message || err));
+    } finally {
+      setUploading(null);
+      // Clear input so the same file can be re-uploaded
+      e.target.value = '';
     }
   };
 
-  const comparison = useMemo(() => {
-    if (!ministryRows || !students) return null;
+  const handleClear = async (type: MinistryType) => {
+    if (!confirm(`למחוק את הדוח של ${type === 'dat' ? 'משרד הדתות' : 'משרד החינוך'}?`)) return;
+    const key = type === 'dat' ? 'ministry_dat_data' : 'ministry_chinuch_data';
+    await setSetting(key, null);
+    if (type === 'dat') setDatData(null);
+    else setChinuchData(null);
+  };
 
-    // Build lookup maps by normalized ID
+  // Ministry belonging helper for comparison
+  const belongsToMinistry = (s: Student, type: MinistryType): boolean => {
+    if (type === 'chinuch') return !!s.is_chinuch;
+    const inst = s.institution_name || '';
+    if (inst === "כולל של ר' יצחק פינקל" || inst === 'כולל של ר׳ יצחק פינקל') return false;
+    return inst === 'ישיבה' || inst === 'כולל' || !inst;
+  };
+
+  // Run comparison for a specific ministry
+  const buildComparison = (type: MinistryType): { sections: CompareSection[]; stats: any } | null => {
+    const data = type === 'dat' ? datData : chinuchData;
+    if (!data || !students) return null;
+
     const ministryById = new Map<string, MinistryRow>();
-    for (const r of ministryRows) {
+    for (const r of data.rows) {
       const k = normalizeId(r.idNumber);
       if (k) ministryById.set(k, r);
     }
-
     const studentsById = new Map<string, Student>();
     for (const s of students) {
       const k = normalizeId(s.id_number || s.passport_number);
       if (k) studentsById.set(k, s);
     }
 
-    const isActiveSet = new Set(['active']);
-
+    const label = type === 'dat' ? 'משרד הדתות' : 'משרד החינוך';
     const sections: CompareSection[] = [];
-
-    // Which institutions belong to each ministry report
-    const belongsToMinistry = (s: Student): boolean => {
-      if (ministryType === 'chinuch') return !!s.is_chinuch;
-      // dat: ישיבה + כולל only. Exclude "כולל של ר' יצחק פינקל" (historical only)
-      const inst = s.institution_name || '';
-      if (inst === "כולל של ר' יצחק פינקל" || inst === 'כולל של ר׳ יצחק פינקל') return false;
-      return inst === 'ישיבה' || inst === 'כולל' || inst === '' || !inst;
-    };
 
     // 1. Active in yeshiva but NOT in ministry
     {
-      const rows: CompareSection['rows'] = [];
+      const rows: CompareRow[] = [];
       for (const s of students) {
-        if (!isActiveSet.has(s.status)) continue;
-        if (!belongsToMinistry(s)) continue;
+        if (s.status !== 'active') continue;
+        if (!belongsToMinistry(s, type)) continue;
         const k = normalizeId(s.id_number || s.passport_number);
-        if (!k) continue;
-        if (!ministryById.has(k)) {
-          rows.push({
-            firstName: s.first_name || '',
-            lastName: s.last_name || '',
-            idNumber: s.id_number || s.passport_number || '',
-            extra: [s.shiur, s.institution_name].filter(Boolean).join(' · '),
-          });
-        }
+        if (!k || ministryById.has(k)) continue;
+        rows.push({
+          firstName: s.first_name || '',
+          lastName: s.last_name || '',
+          idNumber: s.id_number || s.passport_number || '',
+          extra: [s.shiur, s.institution_name].filter(Boolean).join(' · '),
+        });
       }
       rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
       sections.push({
         key: 'only-yeshiva',
-        title: `פעיל בישיבה ולא מופיע ב${ministryType === 'dat' ? 'משרד הדתות' : 'משרד החינוך'}`,
         tone: 'red',
-        description: 'תלמידים שאצלנו פעילים אבל לא מופיעים בדוח - חסר להם רישום',
+        title: `פעיל אצלנו ולא ב${label}`,
+        description: 'תלמידים פעילים אצלנו שאין להם רישום בדוח',
         rows,
       });
     }
 
-    // 2. In ministry but yeshiva status is NOT active
+    // 2. In ministry but yeshiva status != active
     {
-      const rows: CompareSection['rows'] = [];
-      for (const r of ministryRows) {
+      const rows: CompareRow[] = [];
+      for (const r of data.rows) {
         const k = normalizeId(r.idNumber);
         if (!k) continue;
         const s = studentsById.get(k);
-        if (!s) continue; // different section
-        if (s.status === 'active') continue;
-        const statusLabel = {
-          active: 'פעיל',
-          chizuk: 'חיזוק',
-          inactive: 'לא פעיל',
-          graduated: 'סיים',
-        }[s.status] || s.status;
+        if (!s || s.status === 'active') continue;
+        const statusLabel = ({ chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים' } as any)[s.status] || s.status;
         rows.push({
           firstName: s.first_name || r.firstName,
           lastName: s.last_name || r.lastName,
@@ -228,154 +337,282 @@ export function MinistryCompareTab() {
       rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
       sections.push({
         key: 'ministry-yeshiva-not-active',
-        title: `מופיע ב${ministryType === 'dat' ? 'משרד הדתות' : 'משרד החינוך'} אבל לא פעיל בישיבה`,
         tone: 'amber',
-        description: 'תלמידים שהמשרד מזכה/משלם אבל אצלנו סומנו כעזב/סיים/לא פעיל',
+        title: `ברישום ${label} אך אצלנו לא פעיל`,
+        description: 'המשרד מזכה עליהם אבל אצלנו הם סומנו כלא פעיל/סיים',
         rows,
       });
     }
 
-    // 3. Chizuk in yeshiva AND in ministry report
+    // 3. Chizuk in yeshiva + in ministry
     {
-      const rows: CompareSection['rows'] = [];
-      for (const r of ministryRows) {
+      const rows: CompareRow[] = [];
+      for (const r of data.rows) {
         const k = normalizeId(r.idNumber);
         if (!k) continue;
         const s = studentsById.get(k);
-        if (!s) continue;
-        if (s.status !== 'chizuk') continue;
+        if (!s || s.status !== 'chizuk') continue;
         rows.push({
           firstName: s.first_name || r.firstName,
           lastName: s.last_name || r.lastName,
           idNumber: r.idNumber,
-          extra: `שיעור: ${s.shiur || '-'}`,
+          extra: s.shiur || '',
         });
       }
       rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
       sections.push({
-        key: 'chizuk-in-ministry',
-        title: `מסומן "חיזוק" בישיבה ומופיע ב${ministryType === 'dat' ? 'משרד הדתות' : 'משרד החינוך'}`,
+        key: 'chizuk',
         tone: 'amber',
+        title: `מסומן "חיזוק" ומופיע ב${label}`,
         description: 'תלמידי חיזוק שעלולים לדרוש בדיקה מול המשרד',
         rows,
       });
     }
 
-    // 4. Active in yeshiva + in ministry BUT marked "אינו זכאי"
+    // 4. Active + in ministry BUT not entitled / shagui
     {
-      const rows: CompareSection['rows'] = [];
+      const rows: CompareRow[] = [];
       for (const s of students) {
         if (s.status !== 'active') continue;
-        if (!belongsToMinistry(s)) continue;
+        if (!belongsToMinistry(s, type)) continue;
         const k = normalizeId(s.id_number || s.passport_number);
         if (!k) continue;
         const m = ministryById.get(k);
         if (!m) continue;
-        if (m.entitlement === 'זכאי') continue;
+        let problem = '';
+        if (type === 'dat') {
+          if (m.entitlement === 'זכאי') continue;
+          problem = m.entitlement || '';
+        } else {
+          // chinuch: flag שגוי validity
+          if (!m.validity || m.validity === 'תקין') continue;
+          problem = m.validity;
+        }
         rows.push({
           firstName: s.first_name || m.firstName,
           lastName: s.last_name || m.lastName,
           idNumber: s.id_number || s.passport_number || '',
-          extra: `${m.entitlement} · ${s.shiur || ''}`,
+          extra: `${problem} · ${s.shiur || ''}`,
         });
       }
       rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
       sections.push({
-        key: 'registered-not-entitled',
-        title: `פעיל אצלנו ורשום ב${ministryType === 'dat' ? 'משרד הדתות' : 'משרד החינוך'} אך אינו זכאי`,
+        key: 'registered-but-problem',
         tone: 'amber',
-        description: 'תלמידים פעילים שהמשרד לא מזכה עליהם - כדאי לבדוק את הסיבה (גיל, נוכחות, ימי לימוד וכו׳)',
+        title: type === 'dat'
+          ? `פעיל אצלנו + ברישום ${label} אך "אינו זכאי"`
+          : `פעיל אצלנו + ברישום ${label} אך "שגוי"`,
+        description: type === 'dat'
+          ? 'תלמידים פעילים שהמשרד לא מזכה עליהם - כדאי לבדוק את הסיבה'
+          : 'תלמידים שמצבת החינוך לא תקינה - נדרש תיקון במערכת החינוך',
         rows,
       });
     }
 
-    // 5. In ministry but no student record at all
+    // 5. In ministry with no student record at all
     {
-      const rows: CompareSection['rows'] = [];
-      for (const r of ministryRows) {
+      const rows: CompareRow[] = [];
+      for (const r of data.rows) {
         const k = normalizeId(r.idNumber);
-        if (!k) continue;
-        if (studentsById.has(k)) continue;
+        if (!k || studentsById.has(k)) continue;
         rows.push({
           firstName: r.firstName,
           lastName: r.lastName,
           idNumber: r.idNumber,
-          extra: r.entitlement,
+          extra: r.entitlement || r.classroom || '',
         });
       }
       rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
       sections.push({
         key: 'ministry-only',
-        title: `מופיע ב${ministryType === 'dat' ? 'משרד הדתות' : 'משרד החינוך'} אבל לא קיים במערכת`,
         tone: 'red',
-        description: 'רישומים שלא נמצא עבורם תלמיד כלל - ייתכן ת"ז שגוי או חסר',
+        title: `ב${label} אך לא קיים במערכת`,
+        description: 'רישומים שאין להם תלמיד במערכת - אולי ת"ז שגוי או חסר',
         rows,
       });
     }
 
-    // Summary stats
-    const activeYeshiva = students.filter(
-      (s) => s.status === 'active' && belongsToMinistry(s)
-    ).length;
+    const entitledCount = type === 'dat'
+      ? data.rows.filter((r) => r.entitlement === 'זכאי').length
+      : data.rows.filter((r) => r.validity === 'תקין').length;
 
     return {
       sections,
       stats: {
-        ministryTotal: ministryRows.length,
-        ministryEntitled: ministryRows.filter((r) => r.entitlement === 'זכאי').length,
-        yeshivaActive: activeYeshiva,
+        ministryTotal: data.rows.length,
+        ministryEntitled: entitledCount,
+        yeshivaActive: students.filter((s) => s.status === 'active' && belongsToMinistry(s, type)).length,
       },
     };
-  }, [ministryRows, students, ministryType]);
-
-  const handlePrintPdf = () => {
-    window.print();
   };
 
-  const reset = () => {
-    setMinistryRows(null);
-    setFileName('');
-    setParseError(null);
+  const comparisonDat = useMemo(() => buildComparison('dat'), [datData, students]); // eslint-disable-line react-hooks/exhaustive-deps
+  const comparisonChinuch = useMemo(() => buildComparison('chinuch'), [chinuchData, students]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Combined comparison: students appearing in BOTH ministries (or conflicts)
+  const comparisonCombined = useMemo(() => {
+    if (!datData || !chinuchData || !students) return null;
+    const datIds = new Set(datData.rows.map((r) => normalizeId(r.idNumber)).filter(Boolean));
+    const chIds = new Set(chinuchData.rows.map((r) => normalizeId(r.idNumber)).filter(Boolean));
+
+    const sections: CompareSection[] = [];
+
+    // 1. Students marked is_chinuch but appear in Dat but not Chinuch
+    {
+      const rows: CompareRow[] = [];
+      for (const s of students) {
+        if (!s.is_chinuch) continue;
+        if (s.status !== 'active') continue;
+        const k = normalizeId(s.id_number || s.passport_number);
+        if (!k) continue;
+        if (chIds.has(k)) continue;
+        rows.push({
+          firstName: s.first_name,
+          lastName: s.last_name,
+          idNumber: s.id_number || s.passport_number || '',
+          extra: datIds.has(k) ? 'רשום במשרד הדתות' : 'חסר בשני המשרדים',
+        });
+      }
+      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      sections.push({
+        key: 'chinuch-missing-from-chinuch',
+        tone: 'red',
+        title: 'מסומן חינוך אצלנו אך אינו ברישום משרד החינוך',
+        description: 'תלמידי חינוך שחסרים בדוח החינוך - דורש טיפול דחוף',
+        rows,
+      });
+    }
+
+    // 2. Students in Chinuch but not marked is_chinuch in our system
+    {
+      const rows: CompareRow[] = [];
+      for (const r of chinuchData.rows) {
+        const k = normalizeId(r.idNumber);
+        if (!k) continue;
+        const s = students.find((st) => normalizeId(st.id_number || st.passport_number) === k);
+        if (!s) continue;
+        if (s.is_chinuch) continue;
+        rows.push({
+          firstName: s.first_name || r.firstName,
+          lastName: s.last_name || r.lastName,
+          idNumber: r.idNumber,
+          extra: `${r.classroom || ''} · סטטוס אצלנו: ${s.status}`,
+        });
+      }
+      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      sections.push({
+        key: 'in-chinuch-not-flagged',
+        tone: 'amber',
+        title: 'ברישום משרד החינוך אך לא מסומן "חינוך" אצלנו',
+        description: 'כנראה שצריך לסמן אותם כ"חינוך" בטאב חינוך',
+        rows,
+      });
+    }
+
+    // 3. Appears in BOTH ministries (double-registered - potentially fine, informational)
+    {
+      const rows: CompareRow[] = [];
+      for (const k of datIds) {
+        if (!chIds.has(k)) continue;
+        const s = students.find((st) => normalizeId(st.id_number || st.passport_number) === k);
+        if (!s) continue;
+        rows.push({
+          firstName: s.first_name || '',
+          lastName: s.last_name || '',
+          idNumber: s.id_number || s.passport_number || '',
+          extra: `סטטוס: ${s.status}${s.is_chinuch ? ' · חינוך ✓' : ''}`,
+        });
+      }
+      rows.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+      sections.push({
+        key: 'in-both',
+        tone: 'blue',
+        title: 'רשום בשני המשרדים (מידע)',
+        description: 'תלמידים שמופיעים גם במשרד הדתות וגם במשרד החינוך',
+        rows,
+      });
+    }
+
+    return {
+      sections,
+      stats: {
+        datTotal: datData.rows.length,
+        chinuchTotal: chinuchData.rows.length,
+        inBoth: [...datIds].filter((id) => chIds.has(id)).length,
+      },
+    };
+  }, [datData, chinuchData, students]);
+
+  const currentComparison =
+    activeView === 'dat' ? comparisonDat
+    : activeView === 'chinuch' ? comparisonChinuch
+    : null;
+
+  const formatDate = (iso: string) => {
+    try { return new Date(iso).toLocaleString('he-IL'); } catch { return iso; }
   };
 
-  const ministryLabel = ministryType === 'dat' ? 'משרד הדתות' : 'משרד החינוך';
+  const UploadBox = ({ type }: { type: MinistryType }) => {
+    const data = type === 'dat' ? datData : chinuchData;
+    const label = type === 'dat' ? 'משרד הדתות' : 'משרד החינוך';
+    const ext = type === 'dat' ? '.csv' : '.xlsx';
+    const icon = type === 'dat' ? '📜' : '📘';
+    return (
+      <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="font-semibold text-gray-800">{icon} {label}</h4>
+          {data && (
+            <span className="text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded">
+              ✓ טעון ({data.rows.length} רשומות)
+            </span>
+          )}
+        </div>
+        {data && (
+          <p className="text-xs text-gray-500 mb-2">
+            {data.fileName} · הועלה {formatDate(data.uploadedAt)}
+          </p>
+        )}
+        <div className="flex gap-2">
+          <label className="flex-1 cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded text-sm font-medium border border-blue-200 text-center">
+            {uploading === type ? 'מעלה...' : data ? 'החלף קובץ' : `העלה ${ext}`}
+            <input
+              type="file"
+              accept={type === 'dat' ? '.csv,text/csv' : '.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+              onChange={(e) => handleFile(type, e)}
+              disabled={uploading !== null}
+              className="hidden"
+            />
+          </label>
+          {data && (
+            <Button variant="secondary" onClick={() => handleClear(type)}>מחק</Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const activeLabel = activeView === 'dat' ? 'משרד הדתות' : activeView === 'chinuch' ? 'משרד החינוך' : 'השוואה כללית';
 
   return (
     <Card>
       <CardHeader>
-        <h2 className="text-xl font-bold text-gray-900">השוואת דוחות משרדיים</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-900">השוואת דוחות משרדיים</h2>
+          <Button variant="secondary" onClick={handleRecheck} disabled={loading}>
+            {loading ? 'טוען...' : '🔄 בדוק מחדש'}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="no-print">
           <p className="text-sm text-gray-600 mb-4">
-            העלה קובץ CSV של דוח התלמידים ממשרד הדתות או ממשרד החינוך.
-            המערכת תשווה אותו מול רשימת התלמידים אצלנו ותראה הבדלים.
+            העלה את קבצי הדוח של משרד הדתות (CSV) ומשרד החינוך (XLSX).
+            הנתונים יישמרו עד להעלאה חדשה. כשאתה משנה תלמידים בטאב אחר, לחץ &quot;בדוק מחדש&quot; כדי לרענן את ההשוואה.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">סוג דוח</label>
-              <select
-                value={ministryType}
-                onChange={(e) => { setMinistryType(e.target.value as MinistryType); reset(); }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="dat">משרד הדתות (כל תלמידי הישיבה)</option>
-                <option value="chinuch">משרד החינוך (רק תלמידי חינוך)</option>
-              </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">קובץ CSV</label>
-              <div className="flex items-center gap-2">
-                <label className="flex-1 cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium border border-blue-200 text-center">
-                  📁 {fileName || 'בחר קובץ CSV'}
-                  <input type="file" accept=".csv,text/csv" onChange={handleFile} className="hidden" />
-                </label>
-                {ministryRows && (
-                  <Button variant="secondary" onClick={reset}>נקה</Button>
-                )}
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <UploadBox type="dat" />
+            <UploadBox type="chinuch" />
           </div>
 
           {parseError && (
@@ -384,101 +621,66 @@ export function MinistryCompareTab() {
             </div>
           )}
 
-          {loading && <p className="text-sm text-gray-600 mb-3">טוען תלמידים...</p>}
+          {/* View selector */}
+          <div className="flex gap-2 border-b border-gray-200 mb-4">
+            {(['dat', 'chinuch', 'combined'] as const).map((v) => {
+              const enabled =
+                v === 'dat' ? !!datData
+                : v === 'chinuch' ? !!chinuchData
+                : !!(datData && chinuchData);
+              const label =
+                v === 'dat' ? '📜 משרד הדתות'
+                : v === 'chinuch' ? '📘 משרד החינוך'
+                : '🔀 השוואה כללית';
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  disabled={!enabled}
+                  onClick={() => setActiveView(v)}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                    activeView === v
+                      ? 'border-blue-600 text-blue-700'
+                      : enabled
+                      ? 'border-transparent text-gray-500 hover:text-gray-700'
+                      : 'border-transparent text-gray-300 cursor-not-allowed'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {comparison && (
-          <div className="print-area">
-            {/* Print header */}
-            <div className="hidden print:block mb-6">
-              <h1 className="text-2xl font-bold text-center">
-                השוואה: {ministryLabel} מול רשימת הישיבה
-              </h1>
-              <p className="text-center text-sm text-gray-600 mt-2">
-                הופק בתאריך: {new Date().toLocaleDateString('he-IL')}
-              </p>
-            </div>
+        {/* Active comparison content */}
+        {activeView !== 'combined' && currentComparison && (
+          <ComparisonView
+            title={activeLabel}
+            stats={currentComparison.stats}
+            sections={currentComparison.sections}
+          />
+        )}
 
-            {/* Summary stats */}
-            <div className="grid grid-cols-3 gap-3 mb-6 no-print-bg">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-xs text-gray-600">בדוח {ministryLabel}</p>
-                <p className="text-2xl font-bold text-blue-700">{comparison.stats.ministryTotal}</p>
-                <p className="text-xs text-gray-500">מתוכם זכאים: {comparison.stats.ministryEntitled}</p>
-              </div>
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                <p className="text-xs text-gray-600">פעילים אצלנו{ministryType === 'chinuch' ? ' (חינוך)' : ''}</p>
-                <p className="text-2xl font-bold text-green-700">{comparison.stats.yeshivaActive}</p>
-              </div>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                <p className="text-xs text-gray-600">סה״כ אי התאמות</p>
-                <p className="text-2xl font-bold text-gray-700">
-                  {comparison.sections.reduce((sum, s) => sum + s.rows.length, 0)}
-                </p>
-              </div>
-            </div>
+        {activeView === 'combined' && comparisonCombined && (
+          <ComparisonView
+            title="השוואה כללית - דתות + חינוך"
+            stats={comparisonCombined.stats}
+            sections={comparisonCombined.sections}
+            combined
+          />
+        )}
 
-            {/* Export button */}
-            <div className="flex justify-end mb-4 no-print">
-              <Button onClick={handlePrintPdf}>
-                🖨️ ייצוא ל-PDF / הדפסה
-              </Button>
-            </div>
+        {activeView !== 'combined' && !currentComparison && !loading && (
+          <p className="text-sm text-gray-500 py-6 text-center">
+            העלה קובץ של {activeLabel} כדי להתחיל השוואה
+          </p>
+        )}
 
-            {/* Comparison sections */}
-            <div className="space-y-6">
-              {comparison.sections.map((section) => {
-                const toneClasses = {
-                  red: 'border-red-300 bg-red-50',
-                  amber: 'border-amber-300 bg-amber-50',
-                  blue: 'border-blue-300 bg-blue-50',
-                }[section.tone];
-                const titleClass = {
-                  red: 'text-red-800',
-                  amber: 'text-amber-800',
-                  blue: 'text-blue-800',
-                }[section.tone];
-                return (
-                  <div key={section.key} className={`border rounded-lg ${toneClasses} print:break-inside-avoid`}>
-                    <div className="px-4 py-3 border-b border-inherit">
-                      <h3 className={`font-bold ${titleClass}`}>
-                        {section.title} ({section.rows.length})
-                      </h3>
-                      <p className="text-xs text-gray-700 mt-1">{section.description}</p>
-                    </div>
-                    {section.rows.length === 0 ? (
-                      <p className="px-4 py-3 text-sm text-gray-500">✓ אין אי-התאמות בקטגוריה זו</p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm bg-white">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-3 py-2 text-start font-semibold">#</th>
-                              <th className="px-3 py-2 text-start font-semibold">שם משפחה</th>
-                              <th className="px-3 py-2 text-start font-semibold">שם פרטי</th>
-                              <th className="px-3 py-2 text-start font-semibold">ת״ז / דרכון</th>
-                              <th className="px-3 py-2 text-start font-semibold">הערה</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {section.rows.map((row, i) => (
-                              <tr key={`${section.key}-${i}`} className="border-t border-gray-100">
-                                <td className="px-3 py-2 text-gray-500">{i + 1}</td>
-                                <td className="px-3 py-2 font-medium">{row.lastName}</td>
-                                <td className="px-3 py-2">{row.firstName}</td>
-                                <td className="px-3 py-2 font-mono text-xs">{row.idNumber}</td>
-                                <td className="px-3 py-2 text-gray-600">{row.extra || ''}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        {activeView === 'combined' && !comparisonCombined && !loading && (
+          <p className="text-sm text-gray-500 py-6 text-center">
+            להשוואה כללית דרושים שני הקבצים - דתות וחינוך
+          </p>
         )}
 
         <style jsx global>{`
@@ -491,5 +693,125 @@ export function MinistryCompareTab() {
         `}</style>
       </CardContent>
     </Card>
+  );
+}
+
+/* -------- Comparison display component -------- */
+function ComparisonView({
+  title,
+  stats,
+  sections,
+  combined,
+}: {
+  title: string;
+  stats: any;
+  sections: CompareSection[];
+  combined?: boolean;
+}) {
+  const handlePrintPdf = () => window.print();
+  return (
+    <div className="print-area">
+      <div className="hidden print:block mb-6">
+        <h1 className="text-2xl font-bold text-center">{title}</h1>
+        <p className="text-center text-sm text-gray-600 mt-2">
+          הופק ב-{new Date().toLocaleDateString('he-IL')}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {combined ? (
+          <>
+            <StatCard label="דוח משרד הדתות" value={stats.datTotal} tone="blue" />
+            <StatCard label="דוח משרד החינוך" value={stats.chinuchTotal} tone="purple" />
+            <StatCard label="בשני המשרדים" value={stats.inBoth} tone="green" />
+          </>
+        ) : (
+          <>
+            <StatCard label={`בדוח ${title}`} value={stats.ministryTotal} tone="blue" sub={`${stats.ministryEntitled} זכאים/תקינים`} />
+            <StatCard label="פעילים אצלנו" value={stats.yeshivaActive} tone="green" />
+            <StatCard label="אי התאמות" value={sections.reduce((s, sec) => s + sec.rows.length, 0)} tone="gray" />
+          </>
+        )}
+      </div>
+
+      <div className="flex justify-end mb-3 no-print">
+        <Button onClick={handlePrintPdf}>🖨️ ייצוא ל-PDF</Button>
+      </div>
+
+      <div className="space-y-5">
+        {sections.map((section) => (
+          <SectionBlock key={section.key} section={section} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, tone, sub }: { label: string; value: number; tone: string; sub?: string }) {
+  const toneMap: Record<string, string> = {
+    blue: 'bg-blue-50 border-blue-200 text-blue-700',
+    green: 'bg-green-50 border-green-200 text-green-700',
+    purple: 'bg-purple-50 border-purple-200 text-purple-700',
+    gray: 'bg-gray-50 border-gray-200 text-gray-700',
+  };
+  return (
+    <div className={`border rounded-lg p-3 ${toneMap[tone] || toneMap.gray}`}>
+      <p className="text-xs text-gray-600">{label}</p>
+      <p className="text-2xl font-bold">{value}</p>
+      {sub && <p className="text-xs text-gray-500">{sub}</p>}
+    </div>
+  );
+}
+
+function SectionBlock({ section }: { section: CompareSection }) {
+  const toneClasses: Record<string, string> = {
+    red: 'border-red-300 bg-red-50',
+    amber: 'border-amber-300 bg-amber-50',
+    blue: 'border-blue-300 bg-blue-50',
+    purple: 'border-purple-300 bg-purple-50',
+  };
+  const titleClass: Record<string, string> = {
+    red: 'text-red-800',
+    amber: 'text-amber-800',
+    blue: 'text-blue-800',
+    purple: 'text-purple-800',
+  };
+  return (
+    <div className={`border rounded-lg ${toneClasses[section.tone]} print:break-inside-avoid`}>
+      <div className="px-4 py-3 border-b border-inherit">
+        <h3 className={`font-bold ${titleClass[section.tone]}`}>
+          {section.title} ({section.rows.length})
+        </h3>
+        <p className="text-xs text-gray-700 mt-1">{section.description}</p>
+      </div>
+      {section.rows.length === 0 ? (
+        <p className="px-4 py-3 text-sm text-gray-500">✓ אין אי-התאמות בקטגוריה זו</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm bg-white">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2 text-start font-semibold">#</th>
+                <th className="px-3 py-2 text-start font-semibold">שם משפחה</th>
+                <th className="px-3 py-2 text-start font-semibold">שם פרטי</th>
+                <th className="px-3 py-2 text-start font-semibold">ת״ז</th>
+                <th className="px-3 py-2 text-start font-semibold">הערה</th>
+              </tr>
+            </thead>
+            <tbody>
+              {section.rows.map((row, i) => (
+                <tr key={i} className="border-t border-gray-100">
+                  <td className="px-3 py-2 text-gray-500">{i + 1}</td>
+                  <td className="px-3 py-2 font-medium">{row.lastName}</td>
+                  <td className="px-3 py-2">{row.firstName}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{row.idNumber}</td>
+                  <td className="px-3 py-2 text-gray-600">{row.extra || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
