@@ -245,10 +245,14 @@ export function MinistryCompareTab() {
         fileName: file.name,
       };
       const key = type === 'dat' ? 'ministry_dat_data' : 'ministry_chinuch_data';
-      await setSetting(key, stored);
+      // Update UI immediately; save to Supabase in background so the
+      // second file picker isn't blocked waiting for the network round-trip
       if (type === 'dat') setDatData(stored);
       else setChinuchData(stored);
       setActiveView(type);
+      setSetting(key, stored).catch((err) => {
+        console.error('Failed to persist ministry data', err);
+      });
     } catch (err: any) {
       setParseError('שגיאה בקריאת הקובץ: ' + (err?.message || err));
     } finally {
@@ -587,7 +591,7 @@ export function MinistryCompareTab() {
               type="file"
               accept={type === 'dat' ? '.csv,text/csv' : '.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
               onChange={(e) => handleFile(type, e)}
-              disabled={uploading !== null}
+              disabled={uploading === type}
               className="hidden"
             />
           </label>
