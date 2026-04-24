@@ -51,9 +51,9 @@ function formatDate(d: string | null | undefined): string {
 /** Map StudyTypeID -> column J (סדר נלמד) */
 function studyOrder(studyType: string): string {
   const t = String(studyType || '').trim();
-  if (t === '300' || t === '600' || t === '605') return 'יום שלם';
-  if (t === '700' || t === '705') return 'סדר א';
-  if (t === '720' || t === '725') return 'סדר ב';
+  if (t === '300' || t === '600') return 'יום שלם';
+  if (t === '700') return 'סדר א';
+  if (t === '720') return 'סדר ב';
   return '';
 }
 
