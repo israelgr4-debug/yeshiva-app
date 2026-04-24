@@ -647,9 +647,9 @@ export function MinistryCompareTab() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">השוואת דוחות משרדיים</h2>
-          <Button variant="secondary" onClick={handleRecheck} disabled={loading}>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h2 className="text-lg md:text-xl font-bold text-gray-900">השוואת דוחות משרדיים</h2>
+          <Button variant="secondary" onClick={handleRecheck} disabled={loading} size="sm">
             {loading ? 'טוען...' : '🔄 בדוק מחדש'}
           </Button>
         </div>
@@ -673,7 +673,7 @@ export function MinistryCompareTab() {
           )}
 
           {/* View selector */}
-          <div className="flex gap-2 border-b border-gray-200 mb-4">
+          <div className="flex gap-1 md:gap-2 border-b border-gray-200 mb-4 overflow-x-auto whitespace-nowrap">
             {(['dat', 'chinuch', 'combined'] as const).map((v) => {
               const enabled =
                 v === 'dat' ? !!datData
@@ -689,7 +689,7 @@ export function MinistryCompareTab() {
                   type="button"
                   disabled={!enabled}
                   onClick={() => setActiveView(v)}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  className={`px-3 md:px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex-shrink-0 ${
                     activeView === v
                       ? 'border-blue-600 text-blue-700'
                       : enabled
@@ -779,7 +779,7 @@ function ComparisonView({
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 mb-4">
         {combined ? (
           <>
             <StatCard label="דוח משרד הדתות" value={stats.datTotal} tone="blue" />
@@ -829,10 +829,10 @@ function StatCard({ label, value, tone, sub }: { label: string; value: number; t
     gray: 'bg-gray-50 border-gray-200 text-gray-700',
   };
   return (
-    <div className={`border rounded-lg p-3 ${toneMap[tone] || toneMap.gray}`}>
-      <p className="text-xs text-gray-600">{label}</p>
-      <p className="text-2xl font-bold">{value}</p>
-      {sub && <p className="text-xs text-gray-500">{sub}</p>}
+    <div className={`border rounded-lg p-2 md:p-3 ${toneMap[tone] || toneMap.gray}`}>
+      <p className="text-xs text-gray-600 leading-tight">{label}</p>
+      <p className="text-xl md:text-2xl font-bold">{value}</p>
+      {sub && <p className="text-xs text-gray-500 leading-tight">{sub}</p>}
     </div>
   );
 }
@@ -863,13 +863,13 @@ function SectionBlock({
       <button
         type="button"
         onClick={onToggle}
-        className="w-full px-4 py-3 border-b border-inherit text-start hover:bg-black/5 transition-colors flex items-start justify-between gap-3 print:cursor-default"
+        className="w-full px-3 md:px-4 py-2 md:py-3 border-b border-inherit text-start hover:bg-black/5 transition-colors flex items-start justify-between gap-2 md:gap-3 print:cursor-default"
       >
         <div className="flex-1 min-w-0">
-          <h3 className={`font-bold ${titleClass[section.tone]}`}>
+          <h3 className={`font-bold text-sm md:text-base leading-tight ${titleClass[section.tone]}`}>
             {section.title} ({section.rows.length})
           </h3>
-          <p className="text-xs text-gray-700 mt-1">{section.description}</p>
+          <p className="text-xs text-gray-700 mt-1 leading-tight">{section.description}</p>
         </div>
         <span className={`text-xl ${titleClass[section.tone]} select-none no-print`}>
           {collapsed ? '▸' : '▾'}
