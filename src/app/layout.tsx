@@ -35,6 +35,13 @@ export default function RootLayout({
   return (
     <html dir="rtl" lang="he">
       <head>
+        {/* Hebrew typography: Heebo for body, Frank Ruhl Libre for headlines */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Frank+Ruhl+Libre:wght@500;700;900&display=swap"
+          rel="stylesheet"
+        />
         <link rel="icon" type="image/png" sizes="32x32" href="/logo.png?v=2" />
         <link rel="icon" type="image/png" sizes="16x16" href="/logo.png?v=2" />
         <link rel="shortcut icon" href="/logo.png?v=2" />
