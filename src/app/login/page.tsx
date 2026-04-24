@@ -64,7 +64,7 @@ export default function LoginPage() {
       <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="ישיבת מיר מודיעין עילית" className="mx-auto mb-4 w-32 h-32 object-contain" />
+          <img src="/logo.png?v=2" alt="ישיבת מיר מודיעין עילית" className="mx-auto mb-4 w-32 h-32 object-contain" />
           <h1 className="text-2xl font-bold text-gray-900">ישיבת מיר מודיעין עילית</h1>
           <p className="text-gray-600 mt-2">כניסה למערכת הניהול</p>
         </div>

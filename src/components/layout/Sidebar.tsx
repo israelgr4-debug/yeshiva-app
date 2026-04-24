@@ -84,7 +84,7 @@ export function Sidebar() {
         <div className="p-3 border-b border-slate-700 flex flex-col items-center text-center gap-1 relative">
           {/* Zoom in visually to cut the transparent padding around the logo */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="לוגו" className="w-32 h-32 object-contain" />
+          <img src="/logo.png?v=2" alt="לוגו" className="w-32 h-32 object-contain" />
           <div>
             <h1 className="text-lg font-bold leading-tight">ישיבת מיר</h1>
             <p className="text-xs text-slate-400 mt-0.5 leading-tight">מודיעין עילית</p>

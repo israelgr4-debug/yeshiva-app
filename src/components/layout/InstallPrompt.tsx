@@ -85,7 +85,7 @@ export function InstallPrompt() {
     >
       <div className="max-w-lg mx-auto flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="אפליקציה" className="w-14 h-14 flex-shrink-0 object-contain" />
+        <img src="/logo.png?v=2" alt="אפליקציה" className="w-14 h-14 flex-shrink-0 object-contain" />
         <div className="flex-1 min-w-0">
           <p className="font-bold text-gray-900 text-sm">ישיבת מיר מודיעין עילית</p>
           {isIOS ? (

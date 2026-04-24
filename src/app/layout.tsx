@@ -9,9 +9,9 @@ export const metadata: Metadata = {
   description: 'מערכת ניהול ישיבת מיר מודיעין עילית',
   manifest: '/manifest.json',
   icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
-    shortcut: '/logo.png',
+    icon: '/logo.png?v=2',
+    apple: '/logo.png?v=2',
+    shortcut: '/logo.png?v=2',
   },
   appleWebApp: {
     capable: true,
@@ -35,11 +35,11 @@ export default function RootLayout({
   return (
     <html dir="rtl" lang="he">
       <head>
-        <link rel="icon" type="image/png" sizes="32x32" href="/logo.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/logo.png" />
-        <link rel="shortcut icon" href="/logo.png" />
-        <link rel="apple-touch-icon" href="/logo.png" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/logo.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/logo.png?v=2" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/logo.png?v=2" />
+        <link rel="shortcut icon" href="/logo.png?v=2" />
+        <link rel="apple-touch-icon" href="/logo.png?v=2" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/logo.png?v=2" />
         <meta name="apple-mobile-web-app-title" content="ישיבת מיר מודיעין עילית" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
