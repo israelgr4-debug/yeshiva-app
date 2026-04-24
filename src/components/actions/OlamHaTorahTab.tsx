@@ -128,8 +128,8 @@ export function OlamHaTorahTab() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   // Build preview rows
-  const { rows, missing } = useMemo(() => {
-    if (!datData) return { rows: [], missing: [] as MinistryRow[] };
+  const { rows, missing, incomplete } = useMemo(() => {
+    if (!datData) return { rows: [], missing: [] as MinistryRow[], incomplete: [] as any[] };
     const studentByMinistryId = new Map<string, Student>();
     for (const s of students) {
       const k = normalizeId(s.id_number || s.passport_number);
@@ -138,6 +138,13 @@ export function OlamHaTorahTab() {
 
     const rows: any[][] = [];
     const missing: MinistryRow[] = [];
+    const incomplete: Array<{
+      idNumber: string;
+      lastName: string;
+      firstName: string;
+      studentId: string;
+      missingFields: string[];
+    }> = [];
 
     for (const m of datData.rows) {
       const k = normalizeId(m.idNumber);
@@ -159,6 +166,25 @@ export function OlamHaTorahTab() {
       const phone = fam?.father_phone || fam?.home_phone || s.phone || '';
       const entitled = (m.entitlement || '').trim() === 'זכאי';
 
+      // Track incomplete critical fields so user can fix before sending
+      const missingFields: string[] = [];
+      if (!birth) missingFields.push('תאריך לידה');
+      if (!explicitStreet) missingFields.push('רחוב');
+      if (!explicitHouse) missingFields.push('מס׳ בית');
+      if (!fam?.city) missingFields.push('עיר');
+      if (!phone) missingFields.push('טלפון');
+      if (!studyOrder(m.studyTypeId || '')) missingFields.push('סדר נלמד (J)');
+      if (!studyPlace(s.institution_name)) missingFields.push('מקום לימוד (K)');
+      if (missingFields.length > 0) {
+        incomplete.push({
+          idNumber: m.idNumber,
+          lastName: s.last_name || m.lastName || '',
+          firstName: s.first_name || m.firstName || '',
+          studentId: s.id,
+          missingFields,
+        });
+      }
+
       rows.push([
         m.idNumber.replace(/\D/g, ''),            // A - 9 digits only
         s.last_name || m.lastName || '',          // B
@@ -177,10 +203,25 @@ export function OlamHaTorahTab() {
       ]);
     }
 
-    return { rows, missing };
+    return { rows, missing, incomplete };
   }, [datData, students, families, scholarship, includeScholarship]);
 
   const handleDownload = () => {
+    // Pre-export confirmation summarizing what will and won't be included
+    const lines: string[] = [];
+    lines.push(`ייוצא דוח עם ${rows.length} תלמידים.`);
+    if (missing.length > 0) {
+      lines.push('');
+      lines.push(`⚠️ ${missing.length} רשומות בדוח הדתות לא נמצאו במערכת - ידולגו.`);
+    }
+    if (incomplete.length > 0) {
+      lines.push('');
+      lines.push(`⚠️ ${incomplete.length} תלמידים עם שדות חסרים (יופיעו בדוח עם שדות ריקים).`);
+    }
+    lines.push('');
+    lines.push('להמשיך בייצוא?');
+    if (!confirm(lines.join('\n'))) return;
+
     setGenerating(true);
     try {
       const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...rows]);
@@ -256,7 +297,7 @@ export function OlamHaTorahTab() {
               <Stat label="בדוח הדתות" value={datData.rows.length} />
               <Stat label="יהיו בדוח" value={rows.length} tone="green" />
               <Stat label="חסרים במערכת" value={missing.length} tone={missing.length > 0 ? 'red' : 'gray'} />
-              <Stat label="בוגרי חינוך דולגו" value={datData.rows.length - rows.length - missing.length} tone="gray" />
+              <Stat label="פרטים חסרים" value={incomplete.length} tone={incomplete.length > 0 ? 'amber' : 'gray'} />
             </div>
 
             <div className="flex justify-end mb-4">
@@ -264,6 +305,50 @@ export function OlamHaTorahTab() {
                 {generating ? 'מפיק...' : `📥 הורד דוח Excel (${rows.length} שורות)`}
               </Button>
             </div>
+
+            {incomplete.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <h4 className="font-semibold text-amber-800 mb-2">
+                  ⚠️ {incomplete.length} תלמידים עם שדות חסרים - הדוח יצא איתם עם שדות ריקים
+                </h4>
+                <p className="text-xs text-amber-700 mb-2">
+                  לחץ על שם תלמיד כדי לפתוח את הכרטיס שלו בטאב חדש ולהשלים נתונים. אחר כך לחץ &quot;רענן&quot;.
+                </p>
+                <div className="max-h-48 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-amber-100">
+                      <tr>
+                        <th className="px-2 py-1 text-start">ת״ז</th>
+                        <th className="px-2 py-1 text-start">שם משפחה</th>
+                        <th className="px-2 py-1 text-start">שם פרטי</th>
+                        <th className="px-2 py-1 text-start">שדות חסרים</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {incomplete.map((r, i) => (
+                        <tr key={i} className="border-t border-amber-200">
+                          <td className="px-2 py-1 font-mono">{r.idNumber}</td>
+                          <td className="px-2 py-1">
+                            <a
+                              href={`/students/${r.studentId}`}
+                              target="_blank"
+                              rel="noopener"
+                              className="text-blue-700 hover:underline"
+                            >
+                              {r.lastName}
+                            </a>
+                          </td>
+                          <td className="px-2 py-1">{r.firstName}</td>
+                          <td className="px-2 py-1 text-amber-800">
+                            {r.missingFields.join(', ')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {missing.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
@@ -331,11 +416,12 @@ export function OlamHaTorahTab() {
   );
 }
 
-function Stat({ label, value, tone = 'blue' }: { label: string; value: number; tone?: 'blue' | 'green' | 'red' | 'gray' }) {
+function Stat({ label, value, tone = 'blue' }: { label: string; value: number; tone?: 'blue' | 'green' | 'red' | 'amber' | 'gray' }) {
   const cls: Record<string, string> = {
     blue: 'bg-blue-50 border-blue-200 text-blue-700',
     green: 'bg-green-50 border-green-200 text-green-700',
     red: 'bg-red-50 border-red-200 text-red-700',
+    amber: 'bg-amber-50 border-amber-200 text-amber-700',
     gray: 'bg-gray-50 border-gray-200 text-gray-700',
   };
   return (
