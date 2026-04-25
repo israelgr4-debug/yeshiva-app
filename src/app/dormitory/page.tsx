@@ -56,10 +56,28 @@ export default function DormitoryPage() {
 
   // Use saved layout if exists, else fall back to defaults
   const sections = useMemo(() => {
-    if (customLayout) {
-      return customLayout.filter((s) => s.category === activeTab);
+    const base = customLayout
+      ? customLayout.filter((s) => s.category === activeTab)
+      : activeTab === 'shiurim'
+      ? SHIURIM_SECTIONS
+      : KIBBUTZ_SECTIONS;
+
+    // For 'shiurim': move the מזרח section right after קומה 2 - דרום so it
+    // fills the leftover space under floor 2 in the right print column instead
+    // of overflowing at the bottom of the left column.
+    if (activeTab === 'shiurim') {
+      const reordered = [...base];
+      const eastIdx = reordered.findIndex((s) =>
+        s.id === 'east-floor-1' || /מזרח/.test(s.title)
+      );
+      const floor2SouthIdx = reordered.findIndex((s) => s.id === 'floor-2-south');
+      if (eastIdx > -1 && floor2SouthIdx > -1 && eastIdx > floor2SouthIdx + 1) {
+        const [east] = reordered.splice(eastIdx, 1);
+        reordered.splice(floor2SouthIdx + 1, 0, east);
+      }
+      return reordered;
     }
-    return activeTab === 'shiurim' ? SHIURIM_SECTIONS : KIBBUTZ_SECTIONS;
+    return base;
   }, [customLayout, activeTab]);
 
   return (
@@ -193,29 +211,29 @@ export default function DormitoryPage() {
             gap: 1mm !important;
           }
           .room-cell {
-            width: 13mm !important;
-            height: 12mm !important;
+            width: 16mm !important;
+            height: 14mm !important;
             border: 1px solid #000 !important;
             border-radius: 2px !important;
-            padding: 0.2mm !important;
+            padding: 0.3mm !important;
           }
           .room-cell .room-num {
-            font-size: 5.5pt !important;
+            font-size: 6.5pt !important;
             line-height: 1 !important;
             padding-bottom: 0 !important;
-            margin-bottom: 0.2mm !important;
+            margin-bottom: 0.3mm !important;
           }
           .room-cell .room-occupants {
             gap: 0 !important;
           }
           .room-cell .room-occupants a,
           .room-cell .room-occupants span {
-            font-size: 5.5pt !important;
-            line-height: 1 !important;
+            font-size: 6.5pt !important;
+            line-height: 1.05 !important;
           }
           .room-cell.empty-placeholder {
-            width: 13mm !important;
-            height: 12mm !important;
+            width: 16mm !important;
+            height: 14mm !important;
           }
           .dorm-section .room-row {
             margin-bottom: 0.5mm !important;
