@@ -1,7 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { Graduate } from '@/lib/types';
+import { Button } from '@/components/ui/Button';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { Select } from '@/components/ui/Select';
 
@@ -102,8 +104,13 @@ export function GraduatesListTab({ graduates, onEdit }: Props) {
         </div>
       </div>
 
-      <div className="text-sm text-slate-600">
-        <span className="font-bold text-slate-900 text-base">{filtered.length.toLocaleString('he-IL')}</span> בוגרים
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="text-sm text-slate-600">
+          <span className="font-bold text-slate-900 text-base">{filtered.length.toLocaleString('he-IL')}</span> בוגרים
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => exportToExcel(filtered)} disabled={filtered.length === 0}>
+          📥 ייצא לאקסל
+        </Button>
       </div>
 
       {filtered.length === 0 ? (
@@ -159,6 +166,55 @@ export function GraduatesListTab({ graduates, onEdit }: Props) {
       )}
     </div>
   );
+}
+
+function exportToExcel(graduates: Graduate[]) {
+  const headers = [
+    'שם משפחה', 'שם פרטי', 'מחזור', 'סטטוס',
+    'עיר', 'שכונה', 'רחוב', 'מס׳ בניין', 'כניסה', 'דירה', 'כתובת זמנית',
+    'נייד', 'טלפון בית', 'דוא״ל',
+    'נשוי ל-', 'זמן חתונה', 'תאריך עזיבה',
+    'שם האב', 'שם האם',
+    'שם אבי האשה', 'טלפון אבי האשה', 'עיר אבי האשה',
+    'שם אם האשה', 'טלפון אם האשה',
+    'הערות',
+  ];
+  const rows: any[][] = [headers];
+  for (const g of graduates) {
+    rows.push([
+      g.last_name || '',
+      g.first_name || '',
+      g.machzor_name || '',
+      g.marital_status || '',
+      g.city || '',
+      g.neighborhood || '',
+      g.street || '',
+      g.building_number || '',
+      g.entrance || '',
+      g.apartment || '',
+      g.temp_address || '',
+      g.mobile || '',
+      g.phone || '',
+      g.email || '',
+      g.spouse_name || '',
+      g.marriage_date_text || '',
+      g.left_date || '',
+      g.father_name || '',
+      g.mother_name || '',
+      g.spouse_father_name || '',
+      g.spouse_father_phone || '',
+      g.spouse_father_city || '',
+      g.spouse_mother_name || '',
+      g.spouse_mother_phone || '',
+      g.notes || '',
+    ]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = headers.map(() => ({ wch: 15 }));
+  if (!(ws as any)['!sheetView']) (ws as any)['!sheetView'] = [{ rightToLeft: true }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'בוגרים');
+  XLSX.writeFile(wb, `בוגרים_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

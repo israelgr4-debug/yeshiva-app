@@ -18,7 +18,7 @@ interface Props {
   onSaved: () => void;
 }
 
-type SectionKey = 'identity' | 'address' | 'contact' | 'marital' | 'parents';
+type SectionKey = 'identity' | 'address' | 'contact' | 'marital' | 'parents' | 'spouse_parents';
 
 const MARITAL_OPTIONS = [
   { value: '', label: '—' },
@@ -131,6 +131,7 @@ export function GraduateFormDialog({
     { id: 'contact', label: 'צור קשר', icon: '📞' },
     { id: 'marital', label: 'מצב משפחתי', icon: '💍' },
     { id: 'parents', label: 'הורים', icon: '👨‍👩‍👦' },
+    { id: 'spouse_parents', label: 'הורי האשה', icon: '👩‍👧' },
   ];
 
   return (
@@ -207,27 +208,27 @@ export function GraduateFormDialog({
         )}
 
         {section === 'marital' && (
-          <>
-            <Grid cols={2}>
-              <Select
-                label="סטטוס"
-                options={MARITAL_OPTIONS}
-                value={form.marital_status || ''}
-                onChange={(e) => set('marital_status', e.target.value as any)}
-              />
-              <Input label="זמן חתונה" value={form.marriage_date_text || ''} onChange={(e) => set('marriage_date_text', e.target.value)} placeholder="לדוגמא: סיון ס&quot;ב" />
-              <Input label="נשוי ל-" value={form.spouse_name || ''} onChange={(e) => set('spouse_name', e.target.value)} />
-              <Input label="תאריך עזיבה" type="date" value={form.left_date || ''} onChange={(e) => set('left_date', e.target.value)} />
-            </Grid>
-            <h4 className="text-sm font-semibold text-slate-700 pt-2">הורי האשה</h4>
-            <Grid cols={2}>
-              <Input label="שם אבי האשה" value={form.spouse_father_name || ''} onChange={(e) => set('spouse_father_name', e.target.value)} />
-              <Input label="טלפון אבי האשה" type="tel" value={form.spouse_father_phone || ''} onChange={(e) => set('spouse_father_phone', e.target.value)} />
-              <Input label="שם אם האשה" value={form.spouse_mother_name || ''} onChange={(e) => set('spouse_mother_name', e.target.value)} />
-              <Input label="טלפון אם האשה" type="tel" value={form.spouse_mother_phone || ''} onChange={(e) => set('spouse_mother_phone', e.target.value)} />
-              <Input label="עיר אבי האשה" value={form.spouse_father_city || ''} onChange={(e) => set('spouse_father_city', e.target.value)} />
-            </Grid>
-          </>
+          <Grid cols={2}>
+            <Select
+              label="סטטוס"
+              options={MARITAL_OPTIONS}
+              value={form.marital_status || ''}
+              onChange={(e) => set('marital_status', e.target.value as any)}
+            />
+            <Input label="זמן חתונה" value={form.marriage_date_text || ''} onChange={(e) => set('marriage_date_text', e.target.value)} placeholder="לדוגמא: סיון ס&quot;ב" />
+            <Input label="נשוי ל-" value={form.spouse_name || ''} onChange={(e) => set('spouse_name', e.target.value)} />
+            <Input label="תאריך עזיבה" type="date" value={form.left_date || ''} onChange={(e) => set('left_date', e.target.value)} />
+          </Grid>
+        )}
+
+        {section === 'spouse_parents' && (
+          <Grid cols={2}>
+            <Input label="שם אבי האשה" value={form.spouse_father_name || ''} onChange={(e) => set('spouse_father_name', e.target.value)} />
+            <Input label="טלפון אבי האשה" type="tel" value={form.spouse_father_phone || ''} onChange={(e) => set('spouse_father_phone', e.target.value)} />
+            <Input label="שם אם האשה" value={form.spouse_mother_name || ''} onChange={(e) => set('spouse_mother_name', e.target.value)} />
+            <Input label="טלפון אם האשה" type="tel" value={form.spouse_mother_phone || ''} onChange={(e) => set('spouse_mother_phone', e.target.value)} />
+            <Input label="עיר אבי האשה" value={form.spouse_father_city || ''} onChange={(e) => set('spouse_father_city', e.target.value)} />
+          </Grid>
         )}
 
         {section === 'parents' && (

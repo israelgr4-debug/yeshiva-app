@@ -30,22 +30,37 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       <div className="fixed inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
       <div
         className={cn(
-          'relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto',
+          'relative bg-white rounded-2xl shadow-xl max-w-md w-full mx-2 sm:mx-4 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto elevation-4 animate-scaleIn',
           className
         )}
       >
         {title && (
-          <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <div className="sticky top-0 bg-white border-b border-slate-100 px-4 sm:px-6 py-3 sm:py-4 z-10 flex items-center justify-between gap-2">
+            <h2
+              className="text-base sm:text-lg font-bold text-slate-900"
+              style={{ fontFamily: "'Frank Ruhl Libre', serif" }}
+            >
+              {title}
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 w-8 h-8 rounded-lg flex items-center justify-center text-xl transition-colors"
+              aria-label="סגור"
+            >
+              ×
+            </button>
           </div>
         )}
-        <div className="p-6">{children}</div>
-        <button
-          onClick={onClose}
-          className="absolute top-4 start-4 text-gray-400 hover:text-gray-600 text-xl"
-        >
-          ×
-        </button>
+        <div className="p-4 sm:p-6">{children}</div>
+        {!title && (
+          <button
+            onClick={onClose}
+            className="absolute top-3 start-3 text-slate-400 hover:text-slate-700 hover:bg-slate-100 w-8 h-8 rounded-lg flex items-center justify-center text-xl transition-colors"
+            aria-label="סגור"
+          >
+            ×
+          </button>
+        )}
       </div>
     </div>
   );
