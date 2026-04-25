@@ -9,14 +9,14 @@ import { useAuth } from '@/hooks/useAuth';
 const menuItems = [
   { href: '/', label: 'לוח בקרה', sub: 'סקירה כללית', icon: '▦', tint: 'from-blue-500 to-indigo-600' },
   { href: '/students', label: 'תלמידים', sub: 'ניהול רשומות', icon: '👤', tint: 'from-sky-500 to-cyan-600' },
-  { href: '/registration', label: 'רישום', sub: 'מועמדים ומבחנים', icon: '📝', tint: 'from-cyan-500 to-blue-600' },
-  { href: '/families', label: 'משפחות', sub: 'הורים ופרטי קשר', icon: '👨‍👩‍👦', tint: 'from-violet-500 to-purple-600' },
+  { href: '/reports', label: 'אישורים', sub: 'הפקת מסמכים', icon: '📄', tint: 'from-amber-500 to-orange-600' },
+  { href: '/lists', label: 'דוחות', sub: 'דוחות מותאמים', icon: '📊', tint: 'from-fuchsia-500 to-pink-600' },
   { href: '/finances', label: 'כספים', sub: 'מס"ב, צ\'קים וגביה', icon: '₪', tint: 'from-emerald-500 to-teal-600' },
   { href: '/dormitory', label: 'פנימיה', sub: 'חדרים ושיבוץ', icon: '🏢', tint: 'from-rose-500 to-pink-600' },
-  { href: '/reports', label: 'אישורים', sub: 'הפקת מסמכים', icon: '📄', tint: 'from-amber-500 to-orange-600' },
-  { href: '/tasks', label: 'משימות', sub: 'מעקב פעולות', icon: '✅', tint: 'from-lime-500 to-emerald-600' },
-  { href: '/lists', label: 'דוחות', sub: 'דוחות מותאמים', icon: '📊', tint: 'from-fuchsia-500 to-pink-600' },
   { href: '/actions', label: 'פעולות', sub: 'כלי ניהול', icon: '⚡', tint: 'from-yellow-500 to-amber-600' },
+  { href: '/tasks', label: 'משימות', sub: 'מעקב פעולות', icon: '✅', tint: 'from-lime-500 to-emerald-600' },
+  { href: '/registration', label: 'רישום', sub: 'מועמדים ומבחנים', icon: '📝', tint: 'from-cyan-500 to-blue-600' },
+  { href: '/families', label: 'משפחות', sub: 'הורים ופרטי קשר', icon: '👨‍👩‍👦', tint: 'from-violet-500 to-purple-600' },
   { href: '/settings', label: 'הגדרות', sub: 'הגדרות מערכת', icon: '⚙', tint: 'from-slate-500 to-slate-700' },
 ];
 

@@ -11,6 +11,7 @@ import { TestSchedulingTab } from '@/components/registration/TestSchedulingTab';
 import { TestDayReportTab } from '@/components/registration/TestDayReportTab';
 import { AcceptanceTab } from '@/components/registration/AcceptanceTab';
 import { RegistrationFormDialog } from '@/components/registration/RegistrationFormDialog';
+import { RegistrationImportButtons } from '@/components/registration/RegistrationImportButtons';
 
 type TabId = 'list' | 'tests' | 'testday' | 'acceptance';
 
@@ -68,7 +69,10 @@ export default function RegistrationPage() {
         subtitle="ניהול תהליך הרישום, המבחנים והקבלות"
         action={
           permissions.canWrite ? (
-            <Button size="sm" onClick={handleAdd}>＋ רישום חדש</Button>
+            <div className="flex gap-2 flex-wrap">
+              <RegistrationImportButtons onImported={reload} />
+              <Button size="sm" onClick={handleAdd}>＋ רישום חדש</Button>
+            </div>
           ) : undefined
         }
       />

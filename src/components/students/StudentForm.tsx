@@ -755,29 +755,20 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
 }
 
 function NeighborhoodSelect({
-  city,
   value,
   onChange,
 }: {
-  city: string;
+  city?: string;
   value: number | null;
   onChange: (code: number | null) => void;
 }) {
-  const { forCity, create } = useNeighborhoods();
-  const options = forCity(city);
+  const { neighborhoods, create } = useNeighborhoods();
+  const options = React.useMemo(
+    () => neighborhoods.slice().sort((a, b) => a.name.localeCompare(b.name, 'he')),
+    [neighborhoods]
+  );
   const [adding, setAdding] = React.useState(false);
   const [newName, setNewName] = React.useState('');
-
-  if (!city) {
-    return (
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">שכונה</label>
-        <p className="text-xs text-slate-400 italic px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-          בחר עיר תחילה
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -797,7 +788,7 @@ function NeighborhoodSelect({
             onClick={async () => {
               if (!newName.trim()) return setAdding(false);
               try {
-                const n = await create(city, newName);
+                const n = await create('-', newName);
                 onChange(n.code);
                 setNewName('');
                 setAdding(false);
