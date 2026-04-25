@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { getStatusLabel, toHebrewDate } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/hooks/useSupabase';
+import { useNeighborhoods } from '@/hooks/useNeighborhoods';
 import Link from 'next/link';
 
 interface StudentCardProps {
@@ -17,6 +18,7 @@ export function StudentCard({ student }: StudentCardProps) {
   const [family, setFamily] = useState<Family | null>(null);
   const [siblings, setSiblings] = useState<Student[]>([]);
   const { fetchData } = useSupabase();
+  const { nameByCode } = useNeighborhoods();
 
   useEffect(() => {
     async function loadRelations() {
@@ -150,6 +152,7 @@ export function StudentCard({ student }: StudentCardProps) {
                 <DetailRow label="טלפון אם" value={family.mother_phone} />
                 <DetailRow label="כתובת" value={family.address} />
                 <DetailRow label="עיר" value={family.city} />
+                <DetailRow label="שכונה" value={nameByCode(family.neighborhood_code) || '-'} />
               </div>
             </div>
           )}

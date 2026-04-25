@@ -4,12 +4,14 @@ import { Student, Machzor, Family } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { supabase } from '@/lib/supabase';
 import { SHIURIM, getMachzorForNewStudent, DEFAULT_BASE_MACHZOR } from '@/lib/shiurim';
 import { ISRAELI_BANKS } from '@/lib/israeli-banks';
+import { useNeighborhoods } from '@/hooks/useNeighborhoods';
 import { isValidIsraeliId, isValidBranch, validateBankAccountFull } from '@/lib/israeli-validators';
 
 interface StudentFormProps {
@@ -94,6 +96,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     mother_occupation: initialFamily?.mother_occupation || '',
     address: initialFamily?.address || '',
     city: initialFamily?.city || '',
+    neighborhood_code: (initialFamily as any)?.neighborhood_code ?? null,
     home_phone: initialFamily?.home_phone || '',
     bank_name: initialFamily?.bank_name || '',
     bank_branch: initialFamily?.bank_branch || '',
@@ -259,6 +262,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
       mother_occupation: matchedFamily.mother_occupation || '',
       address: matchedFamily.address || '',
       city: matchedFamily.city || '',
+      neighborhood_code: (matchedFamily as any).neighborhood_code ?? null,
       home_phone: matchedFamily.home_phone || '',
       bank_name: matchedFamily.bank_name || '',
       bank_branch: matchedFamily.bank_branch || '',
@@ -294,6 +298,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
           mother_occupation: selected.mother_occupation || '',
           address: selected.address || '',
           city: selected.city || '',
+          neighborhood_code: (selected as any).neighborhood_code ?? null,
           home_phone: selected.home_phone || '',
           bank_name: selected.bank_name || '',
           bank_branch: selected.bank_branch || '',
@@ -637,6 +642,14 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             value={familyData.city}
             onChange={handleFamilyChange}
           />
+          <NeighborhoodSelect
+            city={familyData.city}
+            value={familyData.neighborhood_code}
+            onChange={(code) => {
+              setFamilyData((p) => ({ ...p, neighborhood_code: code }));
+              setFamilyTouched(true);
+            }}
+          />
           <Input
             label="טלפון בבית"
             name="home_phone"
@@ -740,3 +753,83 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     </form>
   );
 }
+
+function NeighborhoodSelect({
+  city,
+  value,
+  onChange,
+}: {
+  city: string;
+  value: number | null;
+  onChange: (code: number | null) => void;
+}) {
+  const { forCity, create } = useNeighborhoods();
+  const options = forCity(city);
+  const [adding, setAdding] = React.useState(false);
+  const [newName, setNewName] = React.useState('');
+
+  if (!city) {
+    return (
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">שכונה</label>
+        <p className="text-xs text-slate-400 italic px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+          בחר עיר תחילה
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">שכונה</label>
+      {adding ? (
+        <div className="flex gap-1">
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="שם שכונה חדשה"
+            className="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl"
+          />
+          <Button
+            type="button"
+            size="sm"
+            onClick={async () => {
+              if (!newName.trim()) return setAdding(false);
+              try {
+                const n = await create(city, newName);
+                onChange(n.code);
+                setNewName('');
+                setAdding(false);
+              } catch (e: any) {
+                alert('שגיאה: ' + (e?.message || e));
+              }
+            }}
+          >
+            הוסף
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => { setAdding(false); setNewName(''); }}>
+            ✕
+          </Button>
+        </div>
+      ) : (
+        <div className="flex gap-1">
+          <select
+            value={value ?? ''}
+            onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+            className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600"
+          >
+            <option value="">— ללא שכונה —</option>
+            {options.map((o) => (
+              <option key={o.code} value={o.code}>{o.name}</option>
+            ))}
+          </select>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(true)} title="הוסף שכונה חדשה">
+            ＋
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+

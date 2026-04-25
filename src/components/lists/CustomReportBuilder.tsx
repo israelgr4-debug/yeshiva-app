@@ -5,6 +5,7 @@ import { Student, Family, Machzor, EducationHistory } from '@/lib/types';
 import { sortStudentsByName, getShiurFilterOptions } from '@/lib/list-reports';
 import { toHebrewDate } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
+import { useNeighborhoods } from '@/hooks/useNeighborhoods';
 
 interface Props {
   students: Student[];
@@ -59,6 +60,7 @@ const ALL_FIELDS: FieldDef[] = [
   { key: 'street', label: 'רחוב', group: 'משפחה', get: (_, f: any) => f?.street || '' },
   { key: 'house_number', label: 'מס׳ בית', group: 'משפחה', get: (_, f: any) => f?.house_number || '' },
   { key: 'city', label: 'עיר', group: 'משפחה', get: (_, f: any) => f?.city_name || f?.city || '' },
+  { key: 'neighborhood', label: 'שכונה', group: 'משפחה', get: (_, f: any) => f?._neighborhood_name || '' },
   { key: 'postal_code', label: 'מיקוד', group: 'משפחה', get: (_, f) => f?.postal_code || '' },
 
   // ===== בנק =====
@@ -94,6 +96,7 @@ type StatusFilter = 'active' | 'inactive' | 'chizuk' | 'graduated' | 'all' | 'ac
 
 export function CustomReportBuilder({ students, families, machzorot, education }: Props) {
   const shiurOptions = getShiurFilterOptions();
+  const { nameByCode } = useNeighborhoods();
 
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(DEFAULT_FIELDS));
   const [shiurFilter, setShiurFilter] = useState('');
@@ -159,7 +162,11 @@ export function CustomReportBuilder({ students, families, machzorot, education }
 
     const header = fields.map((f) => f.label).join(',');
     const lines = filteredStudents.map((s) => {
-      const fam = s.family_id ? families[s.family_id] : undefined;
+      const famRaw = s.family_id ? families[s.family_id] : undefined;
+      // Inject resolved neighborhood name for the report-builder field accessor
+      const fam = famRaw
+        ? ({ ...famRaw, _neighborhood_name: nameByCode((famRaw as any).neighborhood_code) } as any)
+        : undefined;
       const mach = s.machzor_id ? machzorot[s.machzor_id] : undefined;
       const edu = education[s.id] || [];
       return fields

@@ -60,6 +60,7 @@ export interface Family {
   billing_notes: string;
   yichus_code?: number | null;
   yichus_name?: string | null;
+  neighborhood_code?: number | null;
   created_at: string;
   updated_at: string;
 }

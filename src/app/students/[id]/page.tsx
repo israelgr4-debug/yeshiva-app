@@ -94,6 +94,14 @@ export default function StudentDetailPage() {
             (updates as any)[k] = formVal;
           }
         }
+        // neighborhood_code: number or null - allow clearing to null,
+        // and write whenever it changed from existing
+        if (
+          (familyFormData as any).neighborhood_code !== undefined &&
+          (familyFormData as any).neighborhood_code !== (existing as any).neighborhood_code
+        ) {
+          (updates as any).neighborhood_code = (familyFormData as any).neighborhood_code;
+        }
         if (Object.keys(updates).length > 0) {
           await updateData<Family>('families', familyId, updates);
         }
@@ -147,6 +155,7 @@ export default function StudentDetailPage() {
               mother_occupation: familyFormData.mother_occupation,
               address: familyFormData.address,
               city: familyFormData.city,
+              neighborhood_code: (familyFormData as any).neighborhood_code ?? null,
               home_phone: familyFormData.home_phone,
               bank_name: familyFormData.bank_name,
               bank_branch: familyFormData.bank_branch,
