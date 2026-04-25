@@ -1,6 +1,7 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { MainLayout } from './MainLayout';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -11,8 +12,17 @@ interface Props {
 // Wraps pages: shows raw content on /login, else wraps with MainLayout (sidebar + header).
 // Also blocks rendering until auth state is known.
 export function AppShell({ children }: Props) {
-  const { user, loading } = useAuth();
+  const { user, loading, permissions } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
+
+  // Lock graduates_only role to /graduates (and /login)
+  useEffect(() => {
+    if (loading || !user) return;
+    if (permissions.isGraduatesOnly && pathname !== '/login' && !pathname.startsWith('/graduates')) {
+      router.replace('/graduates');
+    }
+  }, [loading, user, permissions.isGraduatesOnly, pathname, router]);
 
   // Public routes - render as-is
   if (pathname === '/login') {

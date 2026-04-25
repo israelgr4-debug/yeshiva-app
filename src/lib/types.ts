@@ -65,6 +65,45 @@ export interface Family {
   updated_at: string;
 }
 
+export type GraduateMaritalStatus = 'נשוי' | 'מאורס' | 'רווק' | 'עזב' | 'נפטר' | '';
+
+export interface Graduate {
+  id: string;
+  student_id: string | null;
+  family_id: string | null;
+  first_name: string;
+  last_name: string;
+  machzor_name: string | null;
+  machzor_id: string | null;
+  street: string | null;
+  building_number: string | null;
+  apartment: string | null;
+  entrance: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  temp_address: string | null;
+  mobile: string | null;
+  phone: string | null;
+  email: string | null;
+  marital_status: GraduateMaritalStatus | null;
+  spouse_name: string | null;
+  marriage_date_text: string | null;
+  father_name: string | null;
+  mother_name: string | null;
+  spouse_father_name: string | null;
+  spouse_father_phone: string | null;
+  spouse_mother_name: string | null;
+  spouse_mother_phone: string | null;
+  spouse_father_city: string | null;
+  is_pending: boolean;
+  pending_reason: string | null;
+  left_date: string | null;
+  notes: string | null;
+  legacy_marker: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type RegistrationStatus = 'registered' | 'tested' | 'accepted' | 'rejected' | 'converted';
 
 export interface Registration {

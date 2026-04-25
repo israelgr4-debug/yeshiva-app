@@ -1,7 +1,7 @@
 // Authentication + authorization helpers
 import { supabase } from './supabase';
 
-export type UserRole = 'admin' | 'manager' | 'secretary' | 'viewer';
+export type UserRole = 'admin' | 'manager' | 'secretary' | 'viewer' | 'graduates_only';
 
 export interface AppUser {
   id: string;
@@ -25,6 +25,8 @@ export interface PermissionSet {
   isManager: boolean;
   isSecretary: boolean;
   isViewer: boolean;
+  isGraduatesOnly: boolean;
+  canManageGraduates: boolean; // admin + manager + graduates_only
 }
 
 export function permissionsForRole(role: UserRole | null): PermissionSet {
@@ -41,6 +43,8 @@ export function permissionsForRole(role: UserRole | null): PermissionSet {
     isManager: r === 'manager',
     isSecretary: r === 'secretary',
     isViewer: r === 'viewer',
+    isGraduatesOnly: r === 'graduates_only',
+    canManageGraduates: r === 'admin' || r === 'manager' || r === 'graduates_only' || r === 'secretary',
   };
 }
 

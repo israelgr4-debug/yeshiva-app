@@ -17,6 +17,7 @@ const menuItems = [
   { href: '/tasks', label: 'משימות', sub: 'מעקב פעולות', icon: '✅', tint: 'from-lime-500 to-emerald-600' },
   { href: '/registration', label: 'רישום', sub: 'מועמדים ומבחנים', icon: '📝', tint: 'from-cyan-500 to-blue-600' },
   { href: '/families', label: 'משפחות', sub: 'הורים ופרטי קשר', icon: '👨‍👩‍👦', tint: 'from-violet-500 to-purple-600' },
+  { href: '/graduates', label: 'בוגרים', sub: 'בוגרי הישיבה', icon: '🎓', tint: 'from-indigo-500 to-blue-700' },
   { href: '/settings', label: 'הגדרות', sub: 'הגדרות מערכת', icon: '⚙', tint: 'from-slate-500 to-slate-700' },
 ];
 
@@ -110,7 +111,11 @@ export function Sidebar() {
 
         <nav className="flex-1 px-2.5 py-3 overflow-y-auto">
           <ul className="space-y-0.5">
-            {menuItems.map((item) => {
+            {menuItems.filter((item) => {
+              // Graduates-only role: only see /graduates and signs out from anywhere else
+              if (permissions.isGraduatesOnly) return item.href === '/graduates';
+              return true;
+            }).map((item) => {
               const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
               return (
                 <li key={item.href}>
