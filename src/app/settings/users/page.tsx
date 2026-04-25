@@ -14,6 +14,7 @@ const ROLES: { value: UserRole; label: string; description: string }[] = [
   { value: 'secretary', label: 'מזכירה', description: 'עריכה והוספה (ללא מחיקה), הפקת מס״ב' },
   { value: 'manager', label: 'מנהל', description: 'צפייה + הפקת דוחות ואישורים' },
   { value: 'viewer', label: 'צפיה בלבד', description: 'רק קריאה' },
+  { value: 'graduates_only', label: 'בוגרים בלבד', description: 'גישה רק לאזור הבוגרים, ללא שאר המערכת' },
 ];
 
 async function apiCall(path: string, options: RequestInit = {}) {
@@ -118,6 +119,7 @@ export default function UsersManagementPage() {
                             u.role === 'admin' ? 'bg-red-50 text-red-700' :
                             u.role === 'secretary' ? 'bg-blue-50 text-blue-700' :
                             u.role === 'manager' ? 'bg-purple-50 text-purple-700' :
+                            u.role === 'graduates_only' ? 'bg-indigo-50 text-indigo-700' :
                             'bg-gray-100 text-gray-600'
                           }`}>
                             {roleLabel(u.role)}
