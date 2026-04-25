@@ -120,11 +120,6 @@ export default function DormitoryPage() {
           </span>
         </div>
 
-        {/* Print-only title */}
-        <h1 className="hidden print:block text-center text-base font-bold mb-2 underline">
-          מפת חדרים - {activeTab === 'shiurim' ? 'שיעורים' : 'קיבוץ'}
-        </h1>
-
         {/* Sections - 2-column flow in print so all fit on one A4 landscape page */}
         <div className="space-y-6 dorm-sections">
           {sections.map((section) => (
@@ -139,7 +134,9 @@ export default function DormitoryPage() {
             size: A4 landscape;
             margin: 5mm;
           }
-          aside, nav, button, .no-print {
+          aside, nav, button, .no-print,
+          /* Hide the page Header (title 'פנימייה' + subtitle) in print */
+          .sticky.top-0 {
             display: none !important;
           }
           html, body {
@@ -185,7 +182,7 @@ export default function DormitoryPage() {
             gap: 1mm !important;
           }
           .room-cell {
-            width: 17mm !important;
+            width: 14mm !important;
             height: 13mm !important;
             border: 1px solid #000 !important;
             border-radius: 2px !important;
@@ -206,7 +203,7 @@ export default function DormitoryPage() {
             line-height: 1 !important;
           }
           .room-cell.empty-placeholder {
-            width: 17mm !important;
+            width: 14mm !important;
             height: 13mm !important;
           }
           .dorm-section .room-row {
