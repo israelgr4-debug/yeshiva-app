@@ -20,6 +20,31 @@ SELECT setval(
 ALTER TABLE lookup_neighborhoods
   ALTER COLUMN code SET DEFAULT nextval('lookup_neighborhoods_code_seq');
 
+-- Dedupe before creating the unique index. For each (city_name, name) keep
+-- the row with the smallest code, repoint any families using the duplicates,
+-- then delete the duplicates.
+DO $$
+DECLARE
+  dup RECORD;
+  keep_code SMALLINT;
+BEGIN
+  FOR dup IN
+    SELECT city_name, name, MIN(code) AS keep_code, ARRAY_AGG(code) AS all_codes
+    FROM lookup_neighborhoods
+    GROUP BY city_name, name
+    HAVING COUNT(*) > 1
+  LOOP
+    keep_code := dup.keep_code;
+    UPDATE families
+       SET neighborhood_code = keep_code
+     WHERE neighborhood_code = ANY(dup.all_codes)
+       AND neighborhood_code <> keep_code;
+    DELETE FROM lookup_neighborhoods
+     WHERE code = ANY(dup.all_codes)
+       AND code <> keep_code;
+  END LOOP;
+END $$;
+
 -- Friendly unique constraint - same name shouldn't be duplicated within a city
 CREATE UNIQUE INDEX IF NOT EXISTS uq_lookup_neighborhoods_city_name
   ON lookup_neighborhoods(city_name, name);
