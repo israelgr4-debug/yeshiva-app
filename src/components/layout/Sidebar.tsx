@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 
 const menuItems = [
   { href: '/', label: 'לוח בקרה', sub: 'סקירה כללית', icon: '▦', tint: 'from-blue-500 to-indigo-600' },
+  { href: '/directory', label: 'אלפון', sub: 'חיפוש מהיר', icon: '📒', tint: 'from-teal-500 to-emerald-600' },
   { href: '/students', label: 'תלמידים', sub: 'ניהול רשומות', icon: '👤', tint: 'from-sky-500 to-cyan-600' },
   { href: '/reports', label: 'אישורים', sub: 'הפקת מסמכים', icon: '📄', tint: 'from-amber-500 to-orange-600' },
   { href: '/lists', label: 'דוחות', sub: 'דוחות מותאמים', icon: '📊', tint: 'from-fuchsia-500 to-pink-600' },
