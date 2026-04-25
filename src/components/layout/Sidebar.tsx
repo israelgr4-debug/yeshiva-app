@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 const menuItems = [
   { href: '/', label: 'לוח בקרה', sub: 'סקירה כללית', icon: '▦', tint: 'from-blue-500 to-indigo-600' },
   { href: '/students', label: 'תלמידים', sub: 'ניהול רשומות', icon: '👤', tint: 'from-sky-500 to-cyan-600' },
+  { href: '/registration', label: 'רישום', sub: 'מועמדים ומבחנים', icon: '📝', tint: 'from-cyan-500 to-blue-600' },
   { href: '/families', label: 'משפחות', sub: 'הורים ופרטי קשר', icon: '👨‍👩‍👦', tint: 'from-violet-500 to-purple-600' },
   { href: '/finances', label: 'כספים', sub: 'מס"ב, צ\'קים וגביה', icon: '₪', tint: 'from-emerald-500 to-teal-600' },
   { href: '/dormitory', label: 'פנימיה', sub: 'חדרים ושיבוץ', icon: '🏢', tint: 'from-rose-500 to-pink-600' },

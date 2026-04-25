@@ -9,7 +9,10 @@ export interface ShiurDef {
 }
 
 // Ordered list of shiurim. Order determines advancement direction.
+// 'שיעור 0' is the holding bucket for accepted registrants from final-acceptance
+// until the start of the next school year (year-up promotes them to שיעור א).
 export const SHIURIM: ShiurDef[] = [
+  { index: -1, name: 'שיעור 0', shortName: '0' },
   { index: 0, name: 'שיעור א', shortName: 'א' },
   { index: 1, name: 'שיעור ב', shortName: 'ב' },
   { index: 2, name: 'שיעור ג', shortName: 'ג' },
@@ -45,12 +48,15 @@ export function getNextShiur(currentShiurName: string): ShiurDef | null {
   // Kibutz stays in kibutz (students don't advance from there in our system)
   if (current.isKibutz) return current;
 
+  // שיעור 0 (registrants) → שיעור א
+  if (current.index === -1) return getShiurByName('שיעור א') || null;
+
   // שיעור יא → קיבוץ
   if (current.index === LAST_REGULAR_SHIUR_INDEX) {
-    return SHIURIM[KIBUTZ_INDEX];
+    return SHIURIM.find((s) => s.isKibutz) || null;
   }
 
-  return SHIURIM[current.index + 1] || null;
+  return SHIURIM.find((s) => s.index === current.index + 1) || null;
 }
 
 // ===== MACHZOR MAPPING =====
@@ -81,6 +87,7 @@ export function getMachzorForNewStudent(
   const shiur = getShiurByName(shiurName);
   if (!shiur) return null;
   if (shiur.isKibutz) return null; // Kibutz needs manual machzor assignment
+  if (shiur.index === -1) return null; // שיעור 0 - assigned on year-up to א
   return baseMachzor - shiur.index;
 }
 

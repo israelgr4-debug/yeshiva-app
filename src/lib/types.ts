@@ -64,6 +64,57 @@ export interface Family {
   updated_at: string;
 }
 
+export type RegistrationStatus = 'registered' | 'tested' | 'accepted' | 'rejected' | 'converted';
+
+export interface Registration {
+  id: string;
+  // Student
+  first_name: string;
+  last_name: string;
+  id_number: string | null;
+  passport_number: string | null;
+  date_of_birth: string | null;
+  phone: string | null;
+  email: string | null;
+  // Family
+  father_name: string | null;
+  father_phone: string | null;
+  father_id_number: string | null;
+  father_email: string | null;
+  mother_name: string | null;
+  mother_phone: string | null;
+  mother_id_number: string | null;
+  address: string | null;
+  city: string | null;
+  postal_code: string | null;
+  home_phone: string | null;
+  // Previous education
+  prev_yeshiva_name: string | null;
+  prev_yeshiva_city: string | null;
+  prev_talmud_torah: string | null;
+  prev_class_completed: string | null;
+  // Test
+  test_date: string | null;
+  test_time: string | null;
+  test_mesechta: string | null;
+  test_perek: string | null;
+  test_daf_from: string | null;
+  test_daf_to: string | null;
+  test_sugya: string | null;
+  test_notes: string | null;
+  test_grade: string | null;
+  // Photo
+  photo_url: string | null;
+  // Decision
+  status: RegistrationStatus;
+  decided_at: string | null;
+  decided_by: string | null;
+  converted_to_student_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EducationHistory {
   id: string;
   student_id: string;
