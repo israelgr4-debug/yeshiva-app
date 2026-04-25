@@ -185,26 +185,32 @@ export default function DormitoryPage() {
             gap: 1mm !important;
           }
           .room-cell {
-            width: 18mm !important;
-            height: 18mm !important;
+            width: 17mm !important;
+            height: 13mm !important;
             border: 1px solid #000 !important;
             border-radius: 2px !important;
-            padding: 0.3mm !important;
+            padding: 0.2mm !important;
           }
           .room-cell .room-num {
-            font-size: 6.5pt !important;
+            font-size: 5.5pt !important;
             line-height: 1 !important;
-            padding-bottom: 0.2mm !important;
-            margin-bottom: 0.4mm !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0.2mm !important;
+          }
+          .room-cell .room-occupants {
+            gap: 0 !important;
           }
           .room-cell .room-occupants a,
           .room-cell .room-occupants span {
-            font-size: 6pt !important;
-            line-height: 1.05 !important;
+            font-size: 5.5pt !important;
+            line-height: 1 !important;
           }
           .room-cell.empty-placeholder {
-            width: 18mm !important;
-            height: 18mm !important;
+            width: 17mm !important;
+            height: 13mm !important;
+          }
+          .dorm-section .room-row {
+            margin-bottom: 0.5mm !important;
           }
 
           /* Avoid rounded clipping that hides borders on print */
