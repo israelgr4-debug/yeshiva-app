@@ -139,7 +139,7 @@ export function GraduateFormDialog({
       isOpen
       onClose={onClose}
       title={isEdit ? 'עריכת בוגר' : (form.is_pending ? 'בוגר ממתין' : 'בוגר חדש')}
-      className="max-w-3xl"
+      className="max-w-5xl"
     >
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1 mb-4 border-b border-slate-100">
