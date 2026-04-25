@@ -177,14 +177,12 @@ export default function DormitoryPage() {
             font-size: 11pt !important;
             margin: 0 0 1mm 0 !important;
           }
-          /* Two-column flow: keep each section together, fill column 1 first
-             then column 2 so leftover space ends up at the bottom of column 2 */
+          /* Two-column flow, balanced */
           .dorm-sections {
             column-count: 2;
             column-gap: 4mm;
-            column-fill: auto;
+            column-fill: balance;
             margin: 0 !important;
-            height: calc(100vh - 8mm);
           }
           .dorm-sections > .dorm-section {
             break-inside: avoid;
