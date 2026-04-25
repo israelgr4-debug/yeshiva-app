@@ -20,10 +20,27 @@ export function useRegistrations() {
     return all;
   }, []);
 
+  // Postgres rejects empty strings for date/time/uuid columns. Coerce blanks to null.
+  const NULLABLE_FIELDS = new Set([
+    'date_of_birth', 'test_date', 'test_time', 'decided_at',
+    'converted_to_student_id', 'decided_by',
+  ]);
+  const sanitize = (input: Partial<Registration>): Partial<Registration> => {
+    const out: any = {};
+    for (const [k, v] of Object.entries(input)) {
+      if (NULLABLE_FIELDS.has(k) && (v === '' || v === undefined)) {
+        out[k] = null;
+      } else {
+        out[k] = v;
+      }
+    }
+    return out;
+  };
+
   const create = useCallback(async (input: Partial<Registration>): Promise<Registration> => {
     const { data, error } = await supabase
       .from('registrations')
-      .insert({ status: 'registered', ...input })
+      .insert({ status: 'registered', ...sanitize(input) })
       .select()
       .single();
     if (error) throw error;
@@ -31,7 +48,7 @@ export function useRegistrations() {
   }, []);
 
   const update = useCallback(async (id: string, patch: Partial<Registration>): Promise<void> => {
-    const { error } = await supabase.from('registrations').update(patch).eq('id', id);
+    const { error } = await supabase.from('registrations').update(sanitize(patch)).eq('id', id);
     if (error) throw error;
   }, []);
 
