@@ -120,6 +120,11 @@ export default function DormitoryPage() {
           </span>
         </div>
 
+        {/* Print-only single concise title */}
+        <h1 className="hidden print:block dorm-print-title text-center font-bold mb-1">
+          {activeTab === 'shiurim' ? 'פנימיות שיעורים' : 'פנימיות קיבוץ'}
+        </h1>
+
         {/* Sections - 2-column flow in print so all fit on one A4 landscape page */}
         <div className="space-y-6 dorm-sections">
           {sections.map((section) => (
@@ -150,17 +155,23 @@ export default function DormitoryPage() {
             overflow: visible !important;
           }
 
-          /* Two-column flow: keep each section together, fill columns balanced */
+          .dorm-print-title {
+            font-size: 11pt !important;
+            margin: 0 0 1mm 0 !important;
+          }
+          /* Two-column flow: keep each section together, fill column 1 first
+             then column 2 so leftover space ends up at the bottom of column 2 */
           .dorm-sections {
             column-count: 2;
-            column-gap: 5mm;
-            column-fill: balance;
+            column-gap: 4mm;
+            column-fill: auto;
             margin: 0 !important;
+            height: calc(100vh - 8mm);
           }
           .dorm-sections > .dorm-section {
             break-inside: avoid;
             page-break-inside: avoid;
-            margin-bottom: 3mm;
+            margin-bottom: 2mm;
             border: 1.2px solid #000 !important;
             border-radius: 4px !important;
             box-shadow: none !important;
@@ -182,8 +193,8 @@ export default function DormitoryPage() {
             gap: 1mm !important;
           }
           .room-cell {
-            width: 14mm !important;
-            height: 13mm !important;
+            width: 13mm !important;
+            height: 12mm !important;
             border: 1px solid #000 !important;
             border-radius: 2px !important;
             padding: 0.2mm !important;
@@ -203,8 +214,8 @@ export default function DormitoryPage() {
             line-height: 1 !important;
           }
           .room-cell.empty-placeholder {
-            width: 14mm !important;
-            height: 13mm !important;
+            width: 13mm !important;
+            height: 12mm !important;
           }
           .dorm-section .room-row {
             margin-bottom: 0.5mm !important;
