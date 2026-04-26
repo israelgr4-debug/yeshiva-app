@@ -43,6 +43,8 @@ interface CompareRow {
   idNumber: string;
   shiur?: string;
   extra?: string;
+  /** Optional dismissal key - when set, the row gets a ✓ button to approve it */
+  dismissKey?: string;
 }
 
 const SHIUR_ORDER = new Map<string, number>(SHIURIM.map((s, i) => [s.name, i]));
@@ -207,17 +209,20 @@ export function MinistryCompareTab() {
   const [parseError, setParseError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<MinistryType | null>(null);
   const [activeView, setActiveView] = useState<'dat' | 'chinuch' | 'combined'>('dat');
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   // Initial load: persisted uploads + students
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [dat, ch] = await Promise.all([
+      const [dat, ch, approved] = await Promise.all([
         getSetting<StoredData | null>('ministry_dat_data', null),
         getSetting<StoredData | null>('ministry_chinuch_data', null),
+        getSetting<string[]>('ministry_name_mismatch_approved', []),
       ]);
       setDatData(dat);
       setChinuchData(ch);
+      setDismissed(new Set(approved || []));
       await loadStudents();
       setLoading(false);
     })();
@@ -308,6 +313,21 @@ export function MinistryCompareTab() {
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
     await processFile(type, file);
+  };
+
+  const dismissRow = (key: string) => {
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      setSetting('ministry_name_mismatch_approved', Array.from(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  const undismissAll = async () => {
+    if (!confirm(`לבטל את אישור כל ${dismissed.size} ההבדלי שמות?`)) return;
+    setDismissed(new Set());
+    await setSetting('ministry_name_mismatch_approved', []);
   };
 
   const handleClear = async (type: MinistryType) => {
@@ -554,12 +574,17 @@ export function MinistryCompareTab() {
         const theirName = normName(mById.firstName, mById.lastName);
         const swappedTheirName = normName(mById.lastName, mById.firstName);
         if (ourName === theirName || ourName === swappedTheirName) continue;
+        // Build a dismissKey unique to (type, student, ministry-name) -
+        // if the ministry name later changes, the row will reappear
+        const dismissKey = `${type}|${s.id}|${theirName}`;
+        if (dismissed.has(dismissKey)) continue;
         rows.push({
           firstName: s.first_name || '',
           lastName: s.last_name || '',
           idNumber: s.id_number || s.passport_number || '',
           shiur: s.shiur || undefined,
           extra: `אצלנו: ${s.last_name} ${s.first_name} · במשרד: ${mById.lastName} ${mById.firstName}`,
+          dismissKey,
         });
       }
       rows.sort(compareRows);
@@ -567,7 +592,7 @@ export function MinistryCompareTab() {
         key: 'name-mismatch',
         tone: 'amber',
         title: `התאמה במספר ת״ז אך הבדל בשם`,
-        description: 'התלמיד מזוהה במשרד לפי המספר אבל השם שונה - בדוק אם זה תוספת לא מהותית או טעות',
+        description: 'התלמיד מזוהה במשרד לפי המספר אבל השם שונה - לחץ ✓ אם זה לא מהותי, ולא יקפוץ שוב',
         rows,
       });
     }
@@ -608,8 +633,8 @@ export function MinistryCompareTab() {
     };
   };
 
-  const comparisonDat = useMemo(() => buildComparison('dat'), [datData, students]); // eslint-disable-line react-hooks/exhaustive-deps
-  const comparisonChinuch = useMemo(() => buildComparison('chinuch'), [chinuchData, students]); // eslint-disable-line react-hooks/exhaustive-deps
+  const comparisonDat = useMemo(() => buildComparison('dat'), [datData, students, dismissed]); // eslint-disable-line react-hooks/exhaustive-deps
+  const comparisonChinuch = useMemo(() => buildComparison('chinuch'), [chinuchData, students, dismissed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Combined comparison: students appearing in BOTH ministries (or conflicts)
   const comparisonCombined = useMemo(() => {
@@ -838,6 +863,9 @@ export function MinistryCompareTab() {
             title={activeLabel}
             stats={currentComparison.stats}
             sections={currentComparison.sections}
+            onDismiss={dismissRow}
+            dismissedCount={dismissed.size}
+            onUndismissAll={undismissAll}
           />
         )}
 
@@ -847,6 +875,9 @@ export function MinistryCompareTab() {
             stats={comparisonCombined.stats}
             sections={comparisonCombined.sections}
             combined
+            onDismiss={dismissRow}
+            dismissedCount={dismissed.size}
+            onUndismissAll={undismissAll}
           />
         )}
 
@@ -881,11 +912,17 @@ function ComparisonView({
   stats,
   sections,
   combined,
+  onDismiss,
+  dismissedCount = 0,
+  onUndismissAll,
 }: {
   title: string;
   stats: any;
   sections: CompareSection[];
   combined?: boolean;
+  onDismiss?: (key: string) => void;
+  dismissedCount?: number;
+  onUndismissAll?: () => void;
 }) {
   const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
   const toggleKey = (key: string) =>
@@ -924,13 +961,23 @@ function ComparisonView({
       </div>
 
       <div className="flex justify-between items-center mb-3 no-print gap-2 flex-wrap">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <Button size="sm" variant="secondary" onClick={collapseAll}>
             🗜️ קפל הכל
           </Button>
           <Button size="sm" variant="secondary" onClick={expandAll}>
             📂 פתח הכל
           </Button>
+          {dismissedCount > 0 && onUndismissAll && (
+            <button
+              type="button"
+              onClick={onUndismissAll}
+              className="text-xs text-slate-500 hover:text-blue-700 hover:underline"
+              title="בטל אישור של כל הבדלי השמות"
+            >
+              ↶ {dismissedCount} מאושרים
+            </button>
+          )}
         </div>
         <Button onClick={handlePrintPdf}>🖨️ ייצוא ל-PDF</Button>
       </div>
@@ -942,6 +989,7 @@ function ComparisonView({
             section={section}
             collapsed={collapsedKeys.has(section.key)}
             onToggle={() => toggleKey(section.key)}
+            onDismiss={onDismiss}
           />
         ))}
       </div>
@@ -969,11 +1017,14 @@ function SectionBlock({
   section,
   collapsed,
   onToggle,
+  onDismiss,
 }: {
   section: CompareSection;
   collapsed: boolean;
   onToggle: () => void;
+  onDismiss?: (key: string) => void;
 }) {
+  const hasDismissable = section.rows.some((r) => r.dismissKey);
   const toneClasses: Record<string, string> = {
     red: 'border-red-300 bg-red-50',
     amber: 'border-amber-300 bg-amber-50',
@@ -1016,6 +1067,7 @@ function SectionBlock({
                 <th className="px-3 py-2 text-start font-semibold">שם פרטי</th>
                 <th className="px-3 py-2 text-start font-semibold">ת״ז</th>
                 <th className="px-3 py-2 text-start font-semibold">הערה</th>
+                {hasDismissable && <th className="px-3 py-2 no-print"></th>}
               </tr>
             </thead>
             <tbody>
@@ -1027,6 +1079,20 @@ function SectionBlock({
                   <td className="px-3 py-2">{row.firstName}</td>
                   <td className="px-3 py-2 font-mono text-xs">{row.idNumber}</td>
                   <td className="px-3 py-2 text-gray-600">{row.extra || ''}</td>
+                  {hasDismissable && (
+                    <td className="px-3 py-2 text-end no-print">
+                      {row.dismissKey && onDismiss && (
+                        <button
+                          type="button"
+                          onClick={() => onDismiss(row.dismissKey!)}
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 ring-1 ring-emerald-200 transition-colors"
+                          title="אשר ולא להציג שוב"
+                        >
+                          ✓
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
