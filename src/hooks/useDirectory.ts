@@ -224,21 +224,24 @@ async function buildDirectory(): Promise<Person[]> {
     if (g.phone) phones.push({ label: 'בית', value: g.phone });
     const machzor = g.machzor_id ? machzorById.get(g.machzor_id) : null;
     const machzorLabel = machzor?.name || (g.machzor_name ? `מחזור ${g.machzor_name}` : '');
+    // If linked to a student, inherit their id_number so dedup merges them
+    const linkedStudent = g.student_id ? studentById.get(g.student_id) : undefined;
+    const inheritedIdNumber = linkedStudent?.id_number || linkedStudent?.passport_number || null;
     raw.push({
       firstName: g.first_name || '',
       lastName: g.last_name || '',
-      idNumber: null, // graduates don't have id_number in our schema
+      idNumber: inheritedIdNumber,
       phones,
       email: g.email || null,
       address: [g.street, g.building_number].filter(Boolean).join(' '),
       city: g.city || null,
       neighborhood: g.neighborhood || null,
-      photoUrl: g.student_id ? studentById.get(g.student_id)?.photo_url || null : null,
+      photoUrl: linkedStudent?.photo_url || null,
       role: {
         type: 'graduate',
         label: `בוגר${g.marital_status ? ` · ${g.marital_status}` : ''}${machzorLabel ? ` · ${machzorLabel}` : ''}`,
         tone: 'bg-indigo-50 text-indigo-800 ring-indigo-200',
-        href: `/graduates`,
+        href: `/graduates?id=${g.id}`,
         detail: g.marital_status || undefined,
       },
       graduateRef: { id: g.id, marital: g.marital_status || null, city: g.city, spouseName: g.spouse_name },

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { useGraduates } from '@/hooks/useGraduates';
@@ -22,6 +23,9 @@ export default function GraduatesPage() {
   const { permissions, loading: authLoading } = useAuth();
   const { list } = useGraduates();
   const { fetchData } = useSupabase();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const idParam = searchParams.get('id');
 
   const [graduates, setGraduates] = useState<Graduate[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -61,6 +65,18 @@ export default function GraduatesPage() {
   useEffect(() => {
     reload();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Open dialog when ?id=X arrives (deep link from directory)
+  useEffect(() => {
+    if (!idParam || graduates.length === 0) return;
+    const found = graduates.find((g) => g.id === idParam);
+    if (found) {
+      setEditing(found);
+      setSeedFromStudent(null);
+      setShowForm(true);
+      setTab(found.is_pending ? 'pending' : 'list');
+    }
+  }, [idParam, graduates]);
 
   const counts = useMemo(
     () => ({
@@ -159,8 +175,15 @@ export default function GraduatesPage() {
           students={students}
           families={families}
           educationByStudent={educationByStudent}
-          onClose={() => { setShowForm(false); setEditing(null); setSeedFromStudent(null); }}
-          onSaved={async () => { setShowForm(false); setEditing(null); setSeedFromStudent(null); await reload(); }}
+          onClose={() => {
+            setShowForm(false); setEditing(null); setSeedFromStudent(null);
+            if (idParam) router.replace('/graduates');
+          }}
+          onSaved={async () => {
+            setShowForm(false); setEditing(null); setSeedFromStudent(null);
+            if (idParam) router.replace('/graduates');
+            await reload();
+          }}
         />
       )}
     </>

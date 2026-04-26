@@ -151,7 +151,7 @@ export function PersonProfileDrawer({ person, onClose }: Props) {
               {person.graduateRefs.map((g) => (
                 <Link
                   key={g.id}
-                  href={`/graduates`}
+                  href={`/graduates?id=${g.id}`}
                   className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-colors"
                 >
                   <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center">🎓</span>
@@ -188,7 +188,7 @@ export function PersonProfileDrawer({ person, onClose }: Props) {
               {person.inLawRefs.map((l, i) => (
                 <Link
                   key={i + l.graduateId}
-                  href={`/graduates`}
+                  href={`/graduates?id=${l.graduateId}`}
                   className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-colors"
                 >
                   <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center">💍</span>
