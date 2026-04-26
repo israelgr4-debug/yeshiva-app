@@ -184,6 +184,10 @@ export default function StudentDetailPage() {
         machzor_id: studentFormData.machzor_id || null,
         family_id: familyId || null,
         photo_url: studentFormData.photo_url || null,
+        institution_name: studentFormData.institution_name || null,
+        id_type: studentFormData.id_type ?? null,
+        passport_number: studentFormData.passport_number || null,
+        govt_id_number: studentFormData.govt_id_number || null,
       };
 
       if (id === 'new') {
