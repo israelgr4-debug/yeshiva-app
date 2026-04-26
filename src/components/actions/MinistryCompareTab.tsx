@@ -230,7 +230,7 @@ export function MinistryCompareTab() {
       const to = from + 999;
       const { data } = await supabase
         .from('students')
-        .select('id,first_name,last_name,id_number,passport_number,status,shiur,institution_name,is_chinuch')
+        .select('id,first_name,last_name,id_number,passport_number,govt_id_number,status,shiur,institution_name,is_chinuch')
         .range(from, to);
       if (!data || data.length === 0) break;
       all.push(...(data as Student[]));
