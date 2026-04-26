@@ -338,11 +338,28 @@ export function MinistryCompareTab() {
       const k = normalizeId(r.idNumber);
       if (k) ministryById.set(k, r);
     }
+    // Students may match by ANY of: id_number / passport_number / govt_id_number
+    // (passport students sometimes get an extra id from the ministry)
+    const studentIds = (s: Student): string[] => {
+      const out: string[] = [];
+      for (const v of [s.id_number, s.passport_number, (s as any).govt_id_number]) {
+        const k = normalizeId(v);
+        if (k) out.push(k);
+      }
+      return out;
+    };
     const studentsById = new Map<string, Student>();
     for (const s of students) {
-      const k = normalizeId(s.id_number || s.passport_number);
-      if (k) studentsById.set(k, s);
+      for (const k of studentIds(s)) studentsById.set(k, s);
     }
+    // Check if a student appears in the ministry report under ANY of their ids
+    const studentInMinistry = (s: Student): MinistryRow | undefined => {
+      for (const k of studentIds(s)) {
+        const m = ministryById.get(k);
+        if (m) return m;
+      }
+      return undefined;
+    };
 
     const label = type === 'dat' ? 'משרד הדתות' : 'משרד החינוך';
     const sections: CompareSection[] = [];
@@ -353,8 +370,7 @@ export function MinistryCompareTab() {
       for (const s of students) {
         if (s.status !== 'active') continue;
         if (!belongsToMinistry(s, type)) continue;
-        const k = normalizeId(s.id_number || s.passport_number);
-        if (!k || ministryById.has(k)) continue;
+        if (studentInMinistry(s)) continue;
         rows.push({
           firstName: s.first_name || '',
           lastName: s.last_name || '',
@@ -438,9 +454,7 @@ export function MinistryCompareTab() {
       for (const s of students) {
         if (s.status !== 'active') continue;
         if (!belongsToMinistry(s, type)) continue;
-        const k = normalizeId(s.id_number || s.passport_number);
-        if (!k) continue;
-        const m = ministryById.get(k);
+        const m = studentInMinistry(s);
         if (!m) continue;
         let problem = '';
         if (type === 'dat') {

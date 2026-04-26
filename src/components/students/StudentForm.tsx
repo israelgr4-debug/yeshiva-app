@@ -51,6 +51,9 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     family_id: student?.family_id || '',
     photo_url: student?.photo_url || '',
     id_type: student?.id_type || '0',  // '0' = ID, '1' = passport
+    institution_name: student?.institution_name || 'ישיבה',
+    passport_number: student?.passport_number || '',
+    govt_id_number: (student as any)?.govt_id_number || '',
   });
 
   // Photo upload state
@@ -425,6 +428,16 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
               />
               זה דרכון (לא ת.ז)
             </label>
+            {Number(studentData.id_type) === 1 && (
+              <Input
+                label="מספר מזהה במשרדי ממשלה"
+                name="govt_id_number"
+                value={(studentData as any).govt_id_number}
+                onChange={handleStudentChange}
+                placeholder="המספר שמשרד הדתות / החינוך הקצו"
+                className="mt-3"
+              />
+            )}
           </div>
           <Input
             label="טלפון"
@@ -476,8 +489,19 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
           />
         </div>
 
-        {/* סטטוס */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
+        {/* סטטוס + מוסד */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-100">
+          <Select
+            label="מוסד"
+            name="institution_name"
+            options={[
+              { value: 'ישיבה', label: 'ישיבה' },
+              { value: 'כולל', label: 'כולל' },
+              { value: "כולל של ר' יצחק פינקל", label: "כולל של ר' יצחק פינקל" },
+            ]}
+            value={(studentData as any).institution_name}
+            onChange={handleStudentChange}
+          />
           <Select
             label="סטטוס"
             name="status"
