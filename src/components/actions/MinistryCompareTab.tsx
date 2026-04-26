@@ -335,13 +335,38 @@ export function MinistryCompareTab() {
 
     const ministryById = new Map<string, MinistryRow>();
     const ministryByName = new Map<string, MinistryRow>();
-    const normName = (first: string | null | undefined, last: string | null | undefined) =>
-      `${(first || '').trim()}|${(last || '').trim()}`;
+    /** Aggressive normalization: trim, collapse whitespace incl. NBSP and zero-width
+     *  chars, unify gershayim/geresh, lowercase Latin. */
+    const normStr = (s: string | null | undefined): string => {
+      if (!s) return '';
+      let v = String(s);
+      // Strip BOM, zero-width, control chars; replace NBSP with space
+      v = v.replace(/[​-‏‪-‮﻿]/g, '');
+      v = v.replace(/[   ]/g, ' ');
+      // Unify gershayim variants (״ ' ` ’ ‚ ‛ “ ”)
+      v = v.replace(/[״”“‟"]/g, '"').replace(/[׳’‘ʼ`'ˈ]/g, "'");
+      // Collapse runs of whitespace
+      v = v.replace(/\s+/g, ' ').trim();
+      return v.toLowerCase();
+    };
+    const normName = (first: string | null | undefined, last: string | null | undefined) => {
+      const f = normStr(first);
+      const l = normStr(last);
+      return f || l ? `${f}|${l}` : '';
+    };
+    /** Build all permutations to handle swapped first/last in source data */
+    const namePerms = (first: string | null | undefined, last: string | null | undefined): string[] => {
+      const a = normName(first, last);
+      const b = normName(last, first);
+      return a === b ? [a] : [a, b];
+    };
     for (const r of data.rows) {
       const k = normalizeId(r.idNumber);
       if (k) ministryById.set(k, r);
-      const nk = normName(r.firstName, r.lastName);
-      if (nk !== '|') ministryByName.set(nk, r);
+      // Index by both orderings to forgive swapped first/last in source data
+      for (const nk of namePerms(r.firstName, r.lastName)) {
+        if (nk) ministryByName.set(nk, r);
+      }
     }
     // Students may match by ANY of: id_number / passport_number / govt_id_number
     // (passport students sometimes get an extra id from the ministry)
@@ -365,20 +390,30 @@ export function MinistryCompareTab() {
         const m = ministryById.get(k);
         if (m) return m;
       }
-      const m = ministryByName.get(normName(s.first_name, s.last_name));
-      return m;
+      for (const nk of namePerms(s.first_name, s.last_name)) {
+        if (!nk) continue;
+        const m = ministryByName.get(nk);
+        if (m) return m;
+      }
+      return undefined;
     };
-    // Reverse: lookup a student for a ministry row, by id then by name
+    // Pre-index students by name for O(1) reverse lookup
+    const studentsByName = new Map<string, Student>();
+    for (const s of students) {
+      for (const nk of namePerms(s.first_name, s.last_name)) {
+        if (nk) studentsByName.set(nk, s);
+      }
+    }
     const ministryRowToStudent = (r: MinistryRow): Student | undefined => {
       const k = normalizeId(r.idNumber);
       const byId = k ? studentsById.get(k) : undefined;
       if (byId) return byId;
-      // Name fallback
-      const target = normName(r.firstName, r.lastName);
-      if (target === '|') return undefined;
-      return students.find(
-        (st) => normName(st.first_name, st.last_name) === target
-      );
+      for (const nk of namePerms(r.firstName, r.lastName)) {
+        if (!nk) continue;
+        const s = studentsByName.get(nk);
+        if (s) return s;
+      }
+      return undefined;
     };
 
     const label = type === 'dat' ? 'משרד הדתות' : 'משרד החינוך';
