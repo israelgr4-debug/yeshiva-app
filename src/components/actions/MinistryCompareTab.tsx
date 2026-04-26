@@ -334,9 +334,14 @@ export function MinistryCompareTab() {
     if (!data || !students) return null;
 
     const ministryById = new Map<string, MinistryRow>();
+    const ministryByName = new Map<string, MinistryRow>();
+    const normName = (first: string | null | undefined, last: string | null | undefined) =>
+      `${(first || '').trim()}|${(last || '').trim()}`;
     for (const r of data.rows) {
       const k = normalizeId(r.idNumber);
       if (k) ministryById.set(k, r);
+      const nk = normName(r.firstName, r.lastName);
+      if (nk !== '|') ministryByName.set(nk, r);
     }
     // Students may match by ANY of: id_number / passport_number / govt_id_number
     // (passport students sometimes get an extra id from the ministry)
@@ -352,13 +357,28 @@ export function MinistryCompareTab() {
     for (const s of students) {
       for (const k of studentIds(s)) studentsById.set(k, s);
     }
-    // Check if a student appears in the ministry report under ANY of their ids
+    // Check if a student appears in the ministry report under ANY of their ids,
+    // and as a fallback by exact name. Name fallback handles passport students
+    // whose ids in the ministry report don't match either of ours.
     const studentInMinistry = (s: Student): MinistryRow | undefined => {
       for (const k of studentIds(s)) {
         const m = ministryById.get(k);
         if (m) return m;
       }
-      return undefined;
+      const m = ministryByName.get(normName(s.first_name, s.last_name));
+      return m;
+    };
+    // Reverse: lookup a student for a ministry row, by id then by name
+    const ministryRowToStudent = (r: MinistryRow): Student | undefined => {
+      const k = normalizeId(r.idNumber);
+      const byId = k ? studentsById.get(k) : undefined;
+      if (byId) return byId;
+      // Name fallback
+      const target = normName(r.firstName, r.lastName);
+      if (target === '|') return undefined;
+      return students.find(
+        (st) => normName(st.first_name, st.last_name) === target
+      );
     };
 
     const label = type === 'dat' ? 'משרד הדתות' : 'משרד החינוך';
@@ -393,9 +413,7 @@ export function MinistryCompareTab() {
     {
       const rows: CompareRow[] = [];
       for (const r of data.rows) {
-        const k = normalizeId(r.idNumber);
-        if (!k) continue;
-        const s = studentsById.get(k);
+        const s = ministryRowToStudent(r);
         if (!s || s.status === 'active') continue;
         // Dat: skip chinuch students (they belong to Ministry of Education)
         if (type === 'dat' && s.is_chinuch) continue;
@@ -424,9 +442,7 @@ export function MinistryCompareTab() {
     {
       const rows: CompareRow[] = [];
       for (const r of data.rows) {
-        const k = normalizeId(r.idNumber);
-        if (!k) continue;
-        const s = studentsById.get(k);
+        const s = ministryRowToStudent(r);
         if (!s || s.status !== 'chizuk') continue;
         if (type === 'dat' && s.is_chinuch) continue;
         if (type === 'chinuch' && !s.is_chinuch) continue;
@@ -487,12 +503,11 @@ export function MinistryCompareTab() {
       });
     }
 
-    // 5. In ministry with no student record at all
+    // 5. In ministry with no student record at all (id-match AND name-match both fail)
     {
       const rows: CompareRow[] = [];
       for (const r of data.rows) {
-        const k = normalizeId(r.idNumber);
-        if (!k || studentsById.has(k)) continue;
+        if (ministryRowToStudent(r)) continue;
         rows.push({
           firstName: r.firstName,
           lastName: r.lastName,
