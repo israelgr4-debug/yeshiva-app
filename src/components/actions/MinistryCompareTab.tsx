@@ -538,6 +538,40 @@ export function MinistryCompareTab() {
       });
     }
 
+    // 5b. ID matches but name differs - user reviews and decides
+    {
+      const rows: CompareRow[] = [];
+      for (const s of students) {
+        if (!belongsToMinistry(s, type)) continue;
+        // find ministry row by id only (ignore name fallback for this check)
+        let mById: MinistryRow | undefined;
+        for (const k of studentIds(s)) {
+          mById = ministryById.get(k);
+          if (mById) break;
+        }
+        if (!mById) continue;
+        const ourName = normName(s.first_name, s.last_name);
+        const theirName = normName(mById.firstName, mById.lastName);
+        const swappedTheirName = normName(mById.lastName, mById.firstName);
+        if (ourName === theirName || ourName === swappedTheirName) continue;
+        rows.push({
+          firstName: s.first_name || '',
+          lastName: s.last_name || '',
+          idNumber: s.id_number || s.passport_number || '',
+          shiur: s.shiur || undefined,
+          extra: `אצלנו: ${s.last_name} ${s.first_name} · במשרד: ${mById.lastName} ${mById.firstName}`,
+        });
+      }
+      rows.sort(compareRows);
+      sections.push({
+        key: 'name-mismatch',
+        tone: 'amber',
+        title: `התאמה במספר ת״ז אך הבדל בשם`,
+        description: 'התלמיד מזוהה במשרד לפי המספר אבל השם שונה - בדוק אם זה תוספת לא מהותית או טעות',
+        rows,
+      });
+    }
+
     // 5. In ministry with no student record at all (id-match AND name-match both fail)
     {
       const rows: CompareRow[] = [];
