@@ -101,6 +101,21 @@ export function StudentCard({ student }: StudentCardProps) {
                     📘 חינוך
                   </span>
                 )}
+                {(student as any).id_scan_path ? (
+                  <span
+                    className="bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 px-2 py-0.5 rounded text-xs font-medium"
+                    title="צילום ת״ז במערכת"
+                  >
+                    📎 ת״ז סרוק
+                  </span>
+                ) : (
+                  <span
+                    className="bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-2 py-0.5 rounded text-xs font-medium"
+                    title="חסר צילום ת״ז"
+                  >
+                    ⚠ חסר ת״ז
+                  </span>
+                )}
               </div>
             </div>
             <Badge

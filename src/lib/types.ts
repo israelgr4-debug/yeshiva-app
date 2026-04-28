@@ -22,6 +22,8 @@ export interface Student {
   id_type?: string | null;  // '0' or null = Israeli ID, '1' = passport
   passport_number?: string | null;
   govt_id_number?: string | null;  // Number assigned by ministry for passport-holders
+  id_scan_path?: string | null;
+  id_scan_uploaded_at?: string | null;
   is_chinuch?: boolean | null;
   created_at: string;
   updated_at: string;

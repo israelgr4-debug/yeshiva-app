@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { StudentForm } from '@/components/students/StudentForm';
 import { StudentCard } from '@/components/students/StudentCard';
 import { EducationHistory } from '@/components/students/EducationHistory';
+import { IdScanUploader } from '@/components/students/IdScanUploader';
 import { StudentTuitionTab } from '@/components/students/StudentTuitionTab';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
@@ -417,26 +418,35 @@ export default function StudentDetailPage() {
                 {/* Tab Content */}
                 <div className="bg-white rounded-lg p-6 border border-gray-200">
                   {activeTab === 'details' && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      <DetailRow label="שם משפחה" value={student.last_name} />
-                      <DetailRow label="שם פרטי" value={student.first_name} />
-                      <DetailRow label="תז או דרכון" value={student.id_number} />
-                      <DetailRow label="טלפון" value={student.phone} />
-                      <DetailRow label="דוא״ל" value={student.email} />
-                      <DetailRow label="שיעור" value={student.shiur} />
-                      <div>
-                        <p className="text-gray-500 text-sm">מחזור</p>
-                        <p className="font-semibold">
-                          {machzor ? (
-                            <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-sm">
-                              {machzor.name}
-                            </span>
-                          ) : '-'}
-                        </p>
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <DetailRow label="שם משפחה" value={student.last_name} />
+                        <DetailRow label="שם פרטי" value={student.first_name} />
+                        <DetailRow label="תז או דרכון" value={student.id_number} />
+                        <DetailRow label="טלפון" value={student.phone} />
+                        <DetailRow label="דוא״ל" value={student.email} />
+                        <DetailRow label="שיעור" value={student.shiur} />
+                        <div>
+                          <p className="text-gray-500 text-sm">מחזור</p>
+                          <p className="font-semibold">
+                            {machzor ? (
+                              <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-sm">
+                                {machzor.name}
+                              </span>
+                            ) : '-'}
+                          </p>
+                        </div>
+                        <DetailRow label="כתה מקבילה" value={student.equivalent_year} />
+                        <DetailRow label="קופת חולים" value={student.health_fund_name} />
+                        <DetailRow label="תאריך לידה" value={student.date_of_birth} />
                       </div>
-                      <DetailRow label="כתה מקבילה" value={student.equivalent_year} />
-                      <DetailRow label="קופת חולים" value={student.health_fund_name} />
-                      <DetailRow label="תאריך לידה" value={student.date_of_birth} />
+
+                      <IdScanUploader
+                        studentId={student.id}
+                        initialPath={(student as any).id_scan_path || null}
+                        initialUploadedAt={(student as any).id_scan_uploaded_at || null}
+                        onChange={(p, t) => setStudent((s) => s ? { ...s, id_scan_path: p, id_scan_uploaded_at: t } as any : s)}
+                      />
                     </div>
                   )}
 

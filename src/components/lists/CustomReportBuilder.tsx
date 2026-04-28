@@ -37,6 +37,7 @@ const ALL_FIELDS: FieldDef[] = [
   { key: 'status', label: 'סטטוס', group: 'תלמיד', get: (s) => ({ active: 'פעיל', chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים' } as Record<string,string>)[s.status] || s.status },
   { key: 'institution', label: 'מוסד', group: 'תלמיד', get: (s) => s.institution_name || '' },
   { key: 'is_chinuch', label: 'חינוך', group: 'תלמיד', get: (s: any) => s.is_chinuch ? 'כן' : 'לא' },
+  { key: 'id_scan', label: 'צילום ת״ז', group: 'תלמיד', get: (s: any) => s.id_scan_path ? 'יש' : 'אין' },
   { key: 'room', label: 'חדר בפנימייה', group: 'תלמיד', get: (s) => (s.room_number ? String(s.room_number) : '') },
   { key: 'entry_shiur', label: 'נכנס לישיבה בשיעור', group: 'תלמיד', get: (s: any) => s.entry_shiur || '' },
   { key: 'health_fund', label: 'קופת חולים', group: 'תלמיד', get: (s: any) => s.health_fund_name || '' },
