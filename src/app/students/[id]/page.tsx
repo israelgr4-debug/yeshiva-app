@@ -266,6 +266,8 @@ export default function StudentDetailPage() {
     // Create / update a student_periods row for this status change
     if (statusChangeData) {
       try {
+        // The status of the period being CLOSED is the previous status
+        const closingStatus = prevStatus || 'active';
         if (statusChangeData.exitDate) {
           // Close the most recent open period (end_date IS NULL)
           const { data: open } = await supabase
@@ -277,7 +279,11 @@ export default function StudentDetailPage() {
             .limit(1);
           if (open && open.length > 0) {
             await supabase.from('student_periods')
-              .update({ end_date: statusChangeData.exitDate, notes: statusChangeData.notes || null })
+              .update({
+                end_date: statusChangeData.exitDate,
+                notes: statusChangeData.notes || null,
+                status: closingStatus,
+              })
               .eq('id', open[0].id);
           } else {
             // Create a new closed period (best effort)
@@ -287,17 +293,19 @@ export default function StudentDetailPage() {
               start_date: (student as any)?.admission_date || null,
               end_date: statusChangeData.exitDate,
               notes: statusChangeData.notes || null,
+              status: closingStatus,
             });
           }
         }
         if (statusChangeData.entryDate) {
-          // Open a new period
+          // Open a new period with the new status
           await supabase.from('student_periods').insert({
             student_id: id,
             legacy_student_id: (updated as any).legacy_student_id || null,
             start_date: statusChangeData.entryDate,
             end_date: null,
             notes: statusChangeData.notes || null,
+            status: newStatus,
           });
         }
       } catch (e) {
