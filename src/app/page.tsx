@@ -112,12 +112,17 @@ export default function Dashboard() {
       ).length;
       setStudents({ active, chizuk, total: allStudents.length, left, bedsOccupied });
 
-      // Monthly collection
+      // Monthly collection - sum all three sources: bank Hu"k + credit (Nedarim) + office
       const now = new Date();
       const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const last = lastDay.toISOString().slice(0, 10);
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10);
+
       let collected = 0;
       let pending = 0;
+
+      // 1. Bank Hu"k via payment_history (status_code: 2=success, 1=pending)
       for (let p = 0; p < 20; p++) {
         const { data } = await supabase
           .from('payment_history')
@@ -133,6 +138,29 @@ export default function Dashboard() {
         }
         if (data.length < 1000) break;
       }
+
+      // 2. Credit (Nedarim) successful transactions
+      for (let p = 0; p < 10; p++) {
+        const { data } = await supabase
+          .from('nedarim_transactions')
+          .select('amount,result,transaction_date')
+          .eq('result', 'success')
+          .gte('transaction_date', first)
+          .lt('transaction_date', nextMonthStart)
+          .range(p * 1000, p * 1000 + 999);
+        if (!data || data.length === 0) break;
+        for (const r of data as any[]) collected += Number(r.amount) || 0;
+        if (data.length < 1000) break;
+      }
+
+      // 3. Office payments
+      const { data: office } = await supabase
+        .from('office_payments')
+        .select('amount')
+        .gte('payment_date', first)
+        .lt('payment_date', nextMonthStart);
+      for (const r of (office || []) as any[]) collected += Number(r.amount) || 0;
+
       setMonthCollected(collected);
       setMonthPending(pending);
 

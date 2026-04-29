@@ -99,12 +99,15 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
     if (!LEFT_STUDENT_REPORT_IDS.includes(selectedReport.id)) {
       setCheckingTuition(true);
       try {
+        // Per-student tuition table - check that the student has an active record
+        // with a real paying method (bank_ho / credit_nedarim / office). 'exempt'
+        // and 'none' are treated as not paying.
         const { data } = await supabase
-          .from('tuition_charges')
-          .select('id, status')
-          .eq('family_id', selectedStudent.family_id)
-          .eq('status', 'active')
-          .contains('student_ids', [selectedStudent.id])
+          .from('student_tuition')
+          .select('id, payment_method, active')
+          .eq('student_id', selectedStudent.id)
+          .eq('active', true)
+          .in('payment_method', ['bank_ho', 'credit_nedarim', 'office'])
           .limit(1);
 
         if (!data || data.length === 0) {
