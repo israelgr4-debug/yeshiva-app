@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -12,6 +12,7 @@ import {
   renderTemplateBody,
 } from '@/hooks/useCertificateTemplates';
 import { ExtraField } from '@/lib/certificates';
+import { RichTextEditor } from '@/components/settings/RichTextEditor';
 import Link from 'next/link';
 
 export default function CertificateEditorPage() {
@@ -21,7 +22,7 @@ export default function CertificateEditorPage() {
   const [draft, setDraft] = useState<CertificateTemplate | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [editorEl, setEditorEl] = useState<HTMLDivElement | null>(null);
 
   // Default-select first template
   useEffect(() => {
@@ -59,22 +60,16 @@ export default function CertificateEditorPage() {
   };
 
   const insertPlaceholder = (key: string) => {
-    if (!draft || !bodyRef.current) return;
-    const ta = bodyRef.current;
-    const start = ta.selectionStart ?? draft.body.length;
-    const end = ta.selectionEnd ?? draft.body.length;
-    const before = draft.body.slice(0, start);
-    const after = draft.body.slice(end);
-    const inserted = `{{${key}}}`;
-    const newBody = before + inserted + after;
-    setDraft({ ...draft, body: newBody });
-    setTimeout(() => {
-      if (bodyRef.current) {
-        const pos = start + inserted.length;
-        bodyRef.current.focus();
-        bodyRef.current.setSelectionRange(pos, pos);
-      }
-    }, 0);
+    if (!draft) return;
+    if (editorEl) {
+      // Send custom event to RichTextEditor to insert at current caret
+      editorEl.dispatchEvent(
+        new CustomEvent('certEditor:insert', { detail: { html: `{{${key}}}` } })
+      );
+    } else {
+      // Fallback: just append
+      setDraft({ ...draft, body: (draft.body || '') + `{{${key}}}` });
+    }
   };
 
   const updateExtraField = (idx: number, patch: Partial<ExtraField>) => {
@@ -207,14 +202,12 @@ export default function CertificateEditorPage() {
                         גוף האישור
                       </label>
                       <p className="text-xs text-slate-500 mb-2">
-                        טיפ: לחץ על שדה מצד ימין כדי להכניס אותו לטקסט. אפשר גם להקליד <code className="bg-slate-100 px-1 rounded">{`{{key}}`}</code> ידנית.
+                        השתמש ב-toolbar לעיצוב (מודגש / נטוי / ישור / גודל). לחץ על שדה מצד ימין כדי להכניס אותו לטקסט במיקום הסמן.
                       </p>
-                      <textarea
-                        ref={bodyRef}
+                      <RichTextEditor
                         value={draft.body}
-                        onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-                        rows={14}
-                        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600"
+                        onChange={(html) => setDraft({ ...draft, body: html })}
+                        onEditorReady={setEditorEl}
                       />
                     </div>
 
@@ -377,7 +370,15 @@ export default function CertificateEditorPage() {
                     {draft.recipient && (
                       <p className="font-semibold mb-2">{draft.recipient}</p>
                     )}
-                    <div className="whitespace-pre-line">{previewBody || <span className="text-slate-400 italic">אישור ריק</span>}</div>
+                    {previewBody ? (
+                      /<[a-z]/.test(previewBody) ? (
+                        <div dangerouslySetInnerHTML={{ __html: previewBody }} />
+                      ) : (
+                        <div className="whitespace-pre-line">{previewBody}</div>
+                      )
+                    ) : (
+                      <span className="text-slate-400 italic">אישור ריק</span>
+                    )}
                   </div>
                 )}
               </div>

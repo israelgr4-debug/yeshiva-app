@@ -208,13 +208,17 @@ export function CertificatePreview({
           <p className="certificate-recipient">{reportType.recipient}</p>
         )}
 
-        {/* Body */}
+        {/* Body - render HTML when present, else split into lines */}
         <div className="certificate-body">
-          {body.split('\n').map((line, i) => (
-            <p key={i} className={line.trim() === '' ? 'certificate-spacer' : ''}>
-              {line}
-            </p>
-          ))}
+          {/<[a-z]/i.test(body) ? (
+            <div dangerouslySetInnerHTML={{ __html: body }} />
+          ) : (
+            body.split('\n').map((line, i) => (
+              <p key={i} className={line.trim() === '' ? 'certificate-spacer' : ''}>
+                {line}
+              </p>
+            ))
+          )}
         </div>
 
         {/* Signature */}
