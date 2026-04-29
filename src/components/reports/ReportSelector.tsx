@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Student } from '@/lib/types';
-import { REPORT_TYPES, ReportTypeId, ReportType } from '@/lib/certificates';
+import { ReportTypeId, ReportType } from '@/lib/certificates';
+import { useCertificateTemplates } from '@/hooks/useCertificateTemplates';
 import { supabase } from '@/lib/supabase';
 
 interface ReportSelectorProps {
@@ -17,6 +18,7 @@ interface ReportSelectorProps {
 const LEFT_STUDENT_REPORT_IDS: ReportTypeId[] = ['left', 'left_with_masachtot'];
 
 export function ReportSelector({ students, loading, onGenerate }: ReportSelectorProps) {
+  const { reportTypes: REPORT_TYPES } = useCertificateTemplates();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -63,7 +65,7 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
 
   const selectedReport = useMemo(
     () => REPORT_TYPES.find((r) => r.id === selectedReportId) || null,
-    [selectedReportId]
+    [selectedReportId, REPORT_TYPES]
   );
 
   // Close dropdown on outside click

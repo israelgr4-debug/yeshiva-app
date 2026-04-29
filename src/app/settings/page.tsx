@@ -7,8 +7,11 @@ import { Input } from '@/components/ui/Input';
 import { useState } from 'react';
 import { NedarimPlusSettings } from '@/components/settings/NedarimPlusSettings';
 import { EmailSettings } from '@/components/settings/EmailSettings';
+import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function SettingsPage() {
+  const { permissions } = useAuth();
   const [settings, setSettings] = useState({
     institutionName: 'ישיבת מיר מודיעין עילית',
     institutionLocation: 'מודיעין עילית',
@@ -98,6 +101,24 @@ export default function SettingsPage() {
         <div className="mb-6">
           <NedarimPlusSettings />
         </div>
+
+        {/* Certificate templates editor (admin only) */}
+        {permissions.isAdmin && (
+          <Card className="mb-6">
+            <CardHeader>
+              <h2 className="text-xl font-bold">📄 עורך אישורים</h2>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-3">
+                ערוך את נוסח האישורים שהמערכת מפיקה (אישור תלמיד, ארנונה, ביטוח לאומי, ועוד).
+                אפשר לשנות נוסח, להוסיף שדות מותאמים, ולראות תצוגה מקדימה חיה.
+              </p>
+              <Link href="/settings/certificates">
+                <Button>פתח עורך</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
 
         {/* System Settings */}
         <Card className="mb-6">
