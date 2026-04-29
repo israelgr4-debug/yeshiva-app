@@ -90,6 +90,10 @@ export interface ReportType {
   buildBody: (student: Student, year: string, extras: Record<string, string>) => string;
   signer?: SignerInfo;
   isReceipt?: boolean;
+  /** Editable header HTML (with placeholders) - if null, fall back to legacy hardcoded header */
+  headerHtml?: string | null;
+  /** Editable signer HTML (with placeholders) - if null, fall back to legacy. Hidden for chinuch students. */
+  signerHtml?: string | null;
 }
 
 function studentLine(student: Student): string {

@@ -23,6 +23,9 @@ export default function CertificateEditorPage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [editorEl, setEditorEl] = useState<HTMLDivElement | null>(null);
+  const [activeSection, setActiveSection] = useState<'header' | 'body' | 'signer'>('body');
+  const [headerEl, setHeaderEl] = useState<HTMLDivElement | null>(null);
+  const [signerEl, setSignerEl] = useState<HTMLDivElement | null>(null);
 
   // Default-select first template
   useEffect(() => {
@@ -61,14 +64,14 @@ export default function CertificateEditorPage() {
 
   const insertPlaceholder = (key: string) => {
     if (!draft) return;
-    if (editorEl) {
-      // Send custom event to RichTextEditor to insert at current caret
-      editorEl.dispatchEvent(
+    const targetEl =
+      activeSection === 'header' ? headerEl :
+      activeSection === 'signer' ? signerEl :
+      editorEl;
+    if (targetEl) {
+      targetEl.dispatchEvent(
         new CustomEvent('certEditor:insert', { detail: { html: `{{${key}}}` } })
       );
-    } else {
-      // Fallback: just append
-      setDraft({ ...draft, body: (draft.body || '') + `{{${key}}}` });
     }
   };
 
@@ -98,23 +101,46 @@ export default function CertificateEditorPage() {
   };
 
   // Live preview - resolve with sample data
-  const previewBody = useMemo(() => {
-    if (!draft) return '';
-    const sampleStudent: any = {
-      first_name: 'יוסף',
-      last_name: 'כהן',
-      id_number: '123456789',
-      passport_number: 'A1234567',
-      shiur: 'שיעור ז',
-      admission_date: '01/09/2024',
-      date_of_birth: '15/03/2008',
-    };
-    const sampleExtras: Record<string, string> = {};
-    for (const f of draft.extra_fields || []) {
-      sampleExtras[f.key] = f.placeholder || `[${f.label}]`;
+  const sampleSigner = useMemo(() => ({
+    name: draft?.signer_name || 'יוסף לוי',
+    title: draft?.signer_title || 'מזכיר',
+    idNumber: draft?.signer_id_number || '56618556',
+  }), [draft]);
+
+  const sampleStudent: any = {
+    first_name: 'יוסף',
+    last_name: 'כהן',
+    id_number: '123456789',
+    passport_number: 'A1234567',
+    shiur: 'שיעור ז',
+    admission_date: '01/09/2024',
+    date_of_birth: '15/03/2008',
+  };
+
+  const sampleExtras = useMemo(() => {
+    const o: Record<string, string> = {};
+    for (const f of draft?.extra_fields || []) {
+      o[f.key] = f.placeholder || `[${f.label}]`;
     }
-    return renderTemplateBody(draft.body, sampleStudent, 'תשפ"ו', sampleExtras);
-  }, [draft]);
+    return o;
+  }, [draft?.extra_fields]);
+
+  const previewBody = useMemo(
+    () => draft ? renderTemplateBody(draft.body, sampleStudent, 'תשפ"ו', sampleExtras, sampleSigner) : '',
+    [draft, sampleExtras, sampleSigner]
+  );
+  const previewHeader = useMemo(
+    () => draft?.header_html
+      ? renderTemplateBody(draft.header_html, sampleStudent, 'תשפ"ו', sampleExtras, sampleSigner)
+      : '',
+    [draft?.header_html, sampleExtras, sampleSigner]
+  );
+  const previewSigner = useMemo(
+    () => draft?.signer_html
+      ? renderTemplateBody(draft.signer_html, sampleStudent, 'תשפ"ו', sampleExtras, sampleSigner)
+      : '',
+    [draft?.signer_html, sampleExtras, sampleSigner]
+  );
 
   if (authLoading) return null;
   if (!permissions.isAdmin) {
@@ -197,18 +223,59 @@ export default function CertificateEditorPage() {
                       onChange={(e) => setDraft({ ...draft, recipient: e.target.value })}
                     />
 
+                    {/* Section selector: header / body / signer */}
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                        גוף האישור
-                      </label>
+                      <div className="flex gap-1 mb-2 border-b border-slate-200">
+                        {[
+                          { id: 'header' as const, label: '🏷 כותרת (בס״ד + תאריך)' },
+                          { id: 'body' as const, label: '📝 גוף האישור' },
+                          { id: 'signer' as const, label: '✍ חתימה' },
+                        ].map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setActiveSection(s.id)}
+                            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                              activeSection === s.id
+                                ? 'border-blue-600 text-blue-700'
+                                : 'border-transparent text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+
                       <p className="text-xs text-slate-500 mb-2">
-                        השתמש ב-toolbar לעיצוב (מודגש / נטוי / ישור / גודל). לחץ על שדה מצד ימין כדי להכניס אותו לטקסט במיקום הסמן.
+                        {activeSection === 'header' &&
+                          'הכותרת בראש האישור (בס"ד, תאריכים, "אישור"). אם תשאיר ריק - יוצג כברירת מחדל.'}
+                        {activeSection === 'body' &&
+                          'גוף האישור - הטקסט המרכזי. השתמש ב-toolbar לעיצוב.'}
+                        {activeSection === 'signer' &&
+                          'בלוק החתימה בסוף האישור. בתלמידי חינוך הבלוק הזה לא יוצג (תוצג רק תמונת חתימת חינוך).'}
                       </p>
-                      <RichTextEditor
-                        value={draft.body}
-                        onChange={(html) => setDraft({ ...draft, body: html })}
-                        onEditorReady={setEditorEl}
-                      />
+
+                      {activeSection === 'header' && (
+                        <RichTextEditor
+                          value={draft.header_html || ''}
+                          onChange={(html) => setDraft({ ...draft, header_html: html })}
+                          onEditorReady={setHeaderEl}
+                        />
+                      )}
+                      {activeSection === 'body' && (
+                        <RichTextEditor
+                          value={draft.body}
+                          onChange={(html) => setDraft({ ...draft, body: html })}
+                          onEditorReady={setEditorEl}
+                        />
+                      )}
+                      {activeSection === 'signer' && (
+                        <RichTextEditor
+                          value={draft.signer_html || ''}
+                          onChange={(html) => setDraft({ ...draft, signer_html: html })}
+                          onEditorReady={setSignerEl}
+                        />
+                      )}
                     </div>
 
                     {/* Extra fields */}
@@ -366,9 +433,12 @@ export default function CertificateEditorPage() {
                   תצוגה מקדימה (נתוני דוגמה)
                 </h3>
                 {draft && (
-                  <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-800 border border-slate-200">
+                  <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-800 border border-slate-200 space-y-3">
+                    {previewHeader && (
+                      <div dangerouslySetInnerHTML={{ __html: previewHeader }} />
+                    )}
                     {draft.recipient && (
-                      <p className="font-semibold mb-2">{draft.recipient}</p>
+                      <p className="font-semibold">{draft.recipient}</p>
                     )}
                     {previewBody ? (
                       /<[a-z]/.test(previewBody) ? (
@@ -378,6 +448,9 @@ export default function CertificateEditorPage() {
                       )
                     ) : (
                       <span className="text-slate-400 italic">אישור ריק</span>
+                    )}
+                    {previewSigner && (
+                      <div className="pt-2 border-t border-slate-200" dangerouslySetInnerHTML={{ __html: previewSigner }} />
                     )}
                   </div>
                 )}

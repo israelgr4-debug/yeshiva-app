@@ -17,7 +17,12 @@ export interface CertificateTemplate {
   id: string;
   name: string;
   recipient: string | null;
+  /** Editable header HTML (בס"ד + dates + title). Null = use builtin. */
+  header_html: string | null;
+  /** Body with placeholders */
   body: string;
+  /** Editable signer block HTML. Null = use builtin. Hidden for chinuch students. */
+  signer_html: string | null;
   extra_fields: ExtraField[];
   signer_name: string | null;
   signer_title: string | null;
@@ -27,14 +32,16 @@ export interface CertificateTemplate {
   display_order: number;
 }
 
-/** Resolve {{placeholders}} in a template body */
+/** Resolve {{placeholders}} in a template body / header / signer */
 export function renderTemplateBody(
   body: string,
   student: Student | null,
   year: string,
-  extras: Record<string, string>
+  extras: Record<string, string>,
+  signer?: SignerInfo
 ): string {
   if (!body) return '';
+  const sg = signer || DEFAULT_SIGNER;
   const replacements: Record<string, string> = {
     first_name: student?.first_name || '',
     last_name: student?.last_name || '',
@@ -50,11 +57,14 @@ export function renderTemplateBody(
     date_of_birth: student?.date_of_birth || '',
     hebrew_date: toHebrewDate(new Date()),
     gregorian_date: getGregorianDate(),
+    signer_name: sg.name || '',
+    signer_title: sg.title || '',
+    signer_id_number: sg.idNumber || '',
     ...extras,
   };
   return body.replace(/\{\{\s*([a-zA-Z_]\w*)\s*\}\}/g, (_m, key) => {
     const v = replacements[key];
-    if (v === undefined || v === '') return '___';
+    if (v === undefined || v === '') return '';
     return String(v);
   });
 }
@@ -77,7 +87,9 @@ export function templateToReportType(t: CertificateTemplate): ReportType {
     isReceipt: t.is_receipt,
     signer,
     buildBody: (student, year, extras) =>
-      renderTemplateBody(t.body, student, year, extras),
+      renderTemplateBody(t.body, student, year, extras, signer),
+    headerHtml: t.header_html || null,
+    signerHtml: t.signer_html || null,
   };
 }
 
@@ -156,4 +168,7 @@ export const PLACEHOLDER_CATALOG: { key: string; label: string; group: string }[
   { key: 'year', label: 'שנת הלימודים', group: 'מערכת' },
   { key: 'hebrew_date', label: 'תאריך עברי (היום)', group: 'מערכת' },
   { key: 'gregorian_date', label: 'תאריך לועזי (היום)', group: 'מערכת' },
+  { key: 'signer_name', label: 'שם החותם', group: 'חתימה' },
+  { key: 'signer_id_number', label: 'ת"ז החותם', group: 'חתימה' },
+  { key: 'signer_title', label: 'תפקיד החותם', group: 'חתימה' },
 ];

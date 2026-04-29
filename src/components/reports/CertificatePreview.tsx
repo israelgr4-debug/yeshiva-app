@@ -173,6 +173,39 @@ export function CertificatePreview({
   // Standard certificate layout
   const body = reportType.buildBody(student, year, extras);
 
+  // Resolve header / signer placeholders if template provides them
+  const renderPlaceholders = (html: string): string => {
+    if (!html) return '';
+    const sg = activeSigner;
+    const replacements: Record<string, string> = {
+      first_name: student?.first_name || '',
+      last_name: student?.last_name || '',
+      full_name: student ? `${student.last_name} ${student.first_name}`.trim() : '',
+      full_name_with_id: student
+        ? `${student.last_name} ${student.first_name} ת.ז. ${student.id_number || ''}`.trim()
+        : '',
+      id_number: student?.id_number || '',
+      passport_number: student?.passport_number || '',
+      shiur: student?.shiur || '',
+      year: year || '',
+      admission_date: student?.admission_date || '',
+      date_of_birth: student?.date_of_birth || '',
+      hebrew_date: hebrewDate,
+      gregorian_date: gregorianDate,
+      signer_name: sg.name || '',
+      signer_title: sg.title || '',
+      signer_id_number: sg.idNumber || '',
+      ...extras,
+    };
+    return html.replace(/\{\{\s*([a-zA-Z_]\w*)\s*\}\}/g, (_m, key) => {
+      const v = replacements[key];
+      return v === undefined || v === '' ? '' : String(v);
+    });
+  };
+
+  const customHeaderHtml = reportType.headerHtml ? renderPlaceholders(reportType.headerHtml) : null;
+  const customSignerHtml = reportType.signerHtml ? renderPlaceholders(reportType.signerHtml) : null;
+
   return (
     <div id="certificate-preview" className="certificate-container">
       <div className="certificate-scale-wrapper">
@@ -191,17 +224,21 @@ export function CertificatePreview({
         {/* Top spacer - for pre-printed letterhead (print) OR when using full-page background (email) */}
         {(reserveLetterheadSpace || letterheadUrl) && <div className="letterhead-top-space" aria-hidden="true" />}
 
-        {/* Header - yeshiva name is on the letterhead, so we skip it here */}
-        <div className="certificate-header">
-          <div className="bsd">בס&quot;ד</div>
-          <div className="date-line">
-            <span>{hebrewDate}</span>
-            <span>{gregorianDate}</span>
-          </div>
-        </div>
-
-        {/* Title */}
-        <h1 className="certificate-title">אישור</h1>
+        {/* Header - editable HTML from template if provided, else legacy בס"ד+date+title */}
+        {customHeaderHtml ? (
+          <div className="certificate-header-custom" dangerouslySetInnerHTML={{ __html: customHeaderHtml }} />
+        ) : (
+          <>
+            <div className="certificate-header">
+              <div className="bsd">בס&quot;ד</div>
+              <div className="date-line">
+                <span>{hebrewDate}</span>
+                <span>{gregorianDate}</span>
+              </div>
+            </div>
+            <h1 className="certificate-title">אישור</h1>
+          </>
+        )}
 
         {/* Recipient */}
         {reportType.recipient && (
@@ -221,26 +258,51 @@ export function CertificatePreview({
           )}
         </div>
 
-        {/* Signature */}
-        <div className="certificate-signature">
-          <p>בכבוד רב,</p>
-          {signatureUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
+        {/* Signature - hidden entirely for chinuch students (they use the chinuch signature image) */}
+        {!isChinuch && (
+          customSignerHtml ? (
+            <div className="certificate-signature">
+              {signatureUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={signatureUrl}
+                  alt="חתימה"
+                  className="signature-image"
+                  style={{ height: '80px', margin: '8px auto', display: 'block' }}
+                />
+              )}
+              <div dangerouslySetInnerHTML={{ __html: customSignerHtml }} />
+            </div>
+          ) : (
+            <div className="certificate-signature">
+              <p>בכבוד רב,</p>
+              {signatureUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={signatureUrl}
+                  alt="חתימה"
+                  className="signature-image"
+                  style={{ height: '80px', margin: '8px auto', display: 'block' }}
+                />
+              )}
+              {activeSigner.name && <p className="signer-name">{activeSigner.name}</p>}
+              {activeSigner.idNumber && <p>{activeSigner.idNumber}</p>}
+              {activeSigner.title && <p>{activeSigner.title}</p>}
+            </div>
+          )
+        )}
+        {isChinuch && signatureUrl && (
+          <div className="certificate-signature">
+            <p>בכבוד רב,</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={signatureUrl}
               alt="חתימה"
               className="signature-image"
-              style={{
-                height: '80px',
-                margin: '8px auto',
-                display: 'block',
-              }}
+              style={{ height: '80px', margin: '8px auto', display: 'block' }}
             />
-          )}
-          {!isChinuch && activeSigner.name && <p className="signer-name">{activeSigner.name}</p>}
-          {!isChinuch && activeSigner.idNumber && <p>{activeSigner.idNumber}</p>}
-          {!isChinuch && activeSigner.title && <p>{activeSigner.title}</p>}
-        </div>
+          </div>
+        )}
 
         {/* Bottom spacer - for pre-printed letterhead footer */}
         {(reserveLetterheadSpace || letterheadUrl) && <div className="letterhead-bottom-space" aria-hidden="true" />}
