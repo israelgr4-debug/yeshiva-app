@@ -297,11 +297,15 @@ export default function Dashboard() {
             </p>
             <p className="text-xs text-slate-500 mt-1.5">
               {monthPending > 0 ? (
-                <>
-                  <span className="font-semibold text-amber-700">{formatCurrency(monthPending)}</span> ממתינים לאישור
-                </>
+                <Link
+                  href="/finances/collection/history"
+                  className="hover:underline"
+                  title="הוק&quot;ת שנשלחו ל-MASAV וטרם התקבלה עליהן תשובה מהבנק"
+                >
+                  <span className="font-semibold text-amber-700">{formatCurrency(monthPending)}</span> בהוק&quot;ת ממתין לתשובת הבנק
+                </Link>
               ) : (
-                'הכל גבוי או לא נותרו ממתינים'
+                'הכל נגבה או לא נותרו ממתינים'
               )}
             </p>
           </KpiCard>
