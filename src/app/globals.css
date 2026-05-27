@@ -95,7 +95,11 @@ table, .text-xs, .text-sm {
   background: #f1f5f9;
 }
 
-@media (max-width: 1023px) {
+/* Hide preview-frame at small viewports - but only on SCREEN, never in print.
+   When printing, the paper width (210mm ~ 794px) is < 1024, which would
+   accidentally trigger the mobile hide-rule. The `screen` qualifier prevents
+   that, so the certificate always renders for printing. */
+@media screen and (max-width: 1023px) {
   .preview-frame {
     display: none;
     border: 1px solid #e2e8f0;
@@ -103,6 +107,14 @@ table, .text-xs, .text-sm {
   }
   .preview-frame.preview-open {
     display: block;
+  }
+}
+
+/* Belt-and-suspenders: never hide the print area on print, regardless of width */
+@media print {
+  .preview-frame,
+  .preview-frame.preview-open {
+    display: block !important;
   }
 }
 
