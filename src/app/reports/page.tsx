@@ -61,11 +61,18 @@ export default function ReportsPage() {
   const handleDownloadWord = async () => {
     if (!certificate) return;
     try {
+      // For chinuch students - use the chinuch signer and suppress the default
+      // signer block (the printed chinuch letterhead carries that info)
+      const signerForExport = (isChinuch && certificate.reportType.signer)
+        ? certificate.reportType.signer
+        : undefined;
       await exportCertificateToWord(
         certificate.student,
         certificate.reportType,
         certificate.year,
-        certificate.extras
+        certificate.extras,
+        signerForExport,
+        isChinuch
       );
     } catch (err) {
       alert('שגיאה ביצירת קובץ Word: ' + (err instanceof Error ? err.message : err));

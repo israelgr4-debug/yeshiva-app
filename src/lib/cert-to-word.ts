@@ -23,7 +23,8 @@ export async function exportCertificateToWord(
   reportType: ReportType,
   year: string,
   extras: Record<string, string>,
-  signer: SignerInfo = reportType.signer || DEFAULT_SIGNER
+  signer: SignerInfo = reportType.signer || DEFAULT_SIGNER,
+  isChinuch: boolean = false
 ): Promise<void> {
   const hebrewDate = toHebrewDate(new Date());
   const gregorianDate = getGregorianDate();
@@ -125,34 +126,38 @@ export async function exportCertificateToWord(
       children: [new TextRun({ text: 'בכבוד רב,', size: 28 })],
     })
   );
-  if (signer.name) {
-    children.push(
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        bidirectional: true,
-        spacing: { after: 80 },
-        children: [new TextRun({ text: signer.name, bold: true, size: 28 })],
-      })
-    );
-  }
-  if (signer.idNumber) {
-    children.push(
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        bidirectional: true,
-        spacing: { after: 80 },
-        children: [new TextRun({ text: signer.idNumber, size: 28 })],
-      })
-    );
-  }
-  if (signer.title) {
-    children.push(
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        bidirectional: true,
-        children: [new TextRun({ text: signer.title, size: 28 })],
-      })
-    );
+  // For chinuch students: hide the signer name/id/title - the printed letterhead
+  // already has the chinuch identity. Only 'בכבוד רב,' is shown.
+  if (!isChinuch) {
+    if (signer.name) {
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          bidirectional: true,
+          spacing: { after: 80 },
+          children: [new TextRun({ text: signer.name, bold: true, size: 28 })],
+        })
+      );
+    }
+    if (signer.idNumber) {
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          bidirectional: true,
+          spacing: { after: 80 },
+          children: [new TextRun({ text: signer.idNumber, size: 28 })],
+        })
+      );
+    }
+    if (signer.title) {
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          bidirectional: true,
+          children: [new TextRun({ text: signer.title, size: 28 })],
+        })
+      );
+    }
   }
 
   const doc = new Document({
