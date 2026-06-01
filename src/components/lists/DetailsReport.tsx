@@ -1,7 +1,7 @@
 'use client';
 
 import { Student, Family, Machzor, EducationHistory } from '@/lib/types';
-import { sortStudentsByName } from '@/lib/list-reports';
+import { sortStudentsByName, groupStudentsByShiur } from '@/lib/list-reports';
 import { toHebrewDate } from '@/lib/utils';
 
 interface Props {
@@ -13,7 +13,8 @@ interface Props {
 }
 
 // Layout: 2 columns × 6 rows = 12 cards per A4 portrait page.
-// Each card is landscape-oriented (~95mm × 42mm) with a full-height photo on one side.
+// When shiurFilter is empty (multi-select / all), groups by shiur with a
+// page break before each shiur. Within each shiur, sorted א-ת by last name.
 export function DetailsReport({
   students,
   families,
@@ -21,17 +22,56 @@ export function DetailsReport({
   education,
   shiurFilter,
 }: Props) {
-  const sorted = sortStudentsByName(students);
-  const title = shiurFilter
-    ? `דוח פרטים - חתך \\ ${shiurFilter}`
-    : 'דוח פרטים';
-
+  if (shiurFilter) {
+    return (
+      <DetailsPage
+        title={`דוח פרטים - חתך \\ ${shiurFilter}`}
+        students={sortStudentsByName(students)}
+        families={families}
+        machzorot={machzorot}
+        education={education}
+      />
+    );
+  }
+  const groups = groupStudentsByShiur(students);
   return (
-    <div className="report-page">
+    <>
+      {groups.map((g, idx) => (
+        <DetailsPage
+          key={g.shiur}
+          title={`דוח פרטים - ${g.shiur}`}
+          students={g.students}
+          families={families}
+          machzorot={machzorot}
+          education={education}
+          isNotFirst={idx > 0}
+        />
+      ))}
+    </>
+  );
+}
+
+function DetailsPage({
+  title,
+  students,
+  families,
+  machzorot,
+  education,
+  isNotFirst,
+}: {
+  title: string;
+  students: Student[];
+  families: Record<string, Family>;
+  machzorot: Record<string, Machzor>;
+  education: Record<string, EducationHistory[]>;
+  isNotFirst?: boolean;
+}) {
+  return (
+    <div className={`report-page ${isNotFirst ? 'page-break' : ''}`}>
       <h1 className="report-title">{title}</h1>
 
       <div className="cards-grid">
-        {sorted.map((s) => {
+        {students.map((s) => {
           const family = s.family_id ? families[s.family_id] : undefined;
           const machzor = s.machzor_id ? machzorot[s.machzor_id] : undefined;
           const edu = education[s.id] || [];
@@ -100,6 +140,10 @@ export function DetailsReport({
           direction: rtl;
           font-family: 'David', 'Miriam', Arial, sans-serif;
           color: #000;
+        }
+        .report-page.page-break {
+          page-break-before: always;
+          break-before: page;
         }
         .report-title {
           text-align: center;

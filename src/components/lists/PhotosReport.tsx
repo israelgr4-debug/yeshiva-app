@@ -1,7 +1,7 @@
 'use client';
 
 import { Student } from '@/lib/types';
-import { sortStudentsByName } from '@/lib/list-reports';
+import { sortStudentsByName, groupStudentsByShiur } from '@/lib/list-reports';
 
 interface Props {
   students: Student[];
@@ -9,17 +9,44 @@ interface Props {
 }
 
 export function PhotosReport({ students, shiurFilter }: Props) {
-  const sorted = sortStudentsByName(students);
-  const title = shiurFilter
-    ? `דוח תמונות - ${shiurFilter}`
-    : 'דוח תמונות';
-
+  if (shiurFilter) {
+    return (
+      <PhotosPage
+        title={`דוח תמונות - ${shiurFilter}`}
+        students={sortStudentsByName(students)}
+      />
+    );
+  }
+  const groups = groupStudentsByShiur(students);
   return (
-    <div className="report-page">
+    <>
+      {groups.map((g, idx) => (
+        <PhotosPage
+          key={g.shiur}
+          title={`דוח תמונות - ${g.shiur}`}
+          students={g.students}
+          isNotFirst={idx > 0}
+        />
+      ))}
+    </>
+  );
+}
+
+function PhotosPage({
+  title,
+  students,
+  isNotFirst,
+}: {
+  title: string;
+  students: Student[];
+  isNotFirst?: boolean;
+}) {
+  return (
+    <div className={`report-page ${isNotFirst ? 'page-break' : ''}`}>
       <h1 className="report-title">{title}</h1>
 
       <div className="photos-grid">
-        {sorted.map((s) => (
+        {students.map((s) => (
           <div key={s.id} className="photo-card">
             <div className="photo-frame">
               {s.photo_url ? (
@@ -44,6 +71,10 @@ export function PhotosReport({ students, shiurFilter }: Props) {
           direction: rtl;
           font-family: 'David', 'Miriam', Arial, sans-serif;
           color: #000;
+        }
+        .report-page.page-break {
+          page-break-before: always;
+          break-before: page;
         }
         .report-title {
           text-align: center;

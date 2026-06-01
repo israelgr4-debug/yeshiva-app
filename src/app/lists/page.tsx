@@ -9,8 +9,8 @@ import { Student, Family, Machzor, EducationHistory } from '@/lib/types';
 import {
   LIST_REPORTS,
   ListReportId,
-  getShiurFilterOptions,
 } from '@/lib/list-reports';
+import { SHIURIM } from '@/lib/shiurim';
 import { GeneralListReport } from '@/components/lists/GeneralListReport';
 import { TestsReport } from '@/components/lists/TestsReport';
 import { MultiDetailsReport } from '@/components/lists/MultiDetailsReport';
@@ -29,7 +29,11 @@ export default function ListsPage() {
   const [loading, setLoading] = useState(true);
 
   const [selectedReport, setSelectedReport] = useState<ListReportId>('general');
-  const [shiurFilter, setShiurFilter] = useState<string>('שיעור א');
+  // Multi-select shiurim. Empty set = no shiur selected (yields no students).
+  // Default: שיעור א only.
+  const [selectedShiurim, setSelectedShiurim] = useState<Set<string>>(
+    () => new Set(['שיעור א'])
+  );
   const [statusFilter, setStatusFilter] = useState<string>('active');
 
   // Load data only when user picks a report (lazy). For now, preload on mount.
@@ -69,10 +73,17 @@ export default function ListsPage() {
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
       if (statusFilter && s.status !== statusFilter) return false;
-      if (shiurFilter && s.shiur !== shiurFilter) return false;
+      if (selectedShiurim.size > 0 && !selectedShiurim.has(s.shiur || '')) return false;
       return true;
     });
-  }, [students, statusFilter, shiurFilter]);
+  }, [students, statusFilter, selectedShiurim]);
+
+  // When multiple shiurim selected, force "group by shiur with page breaks"
+  // by passing an empty shiurFilter to children. When exactly one shiur is
+  // selected, pass that name → renders as a single flat page.
+  const effectiveShiurFilter = selectedShiurim.size === 1
+    ? Array.from(selectedShiurim)[0]
+    : '';
 
   const handlePrint = () => window.print();
 
@@ -103,15 +114,15 @@ export default function ListsPage() {
 
     switch (selectedReport) {
       case 'general':
-        return <GeneralListReport students={filteredStudents} shiurFilter={shiurFilter} />;
+        return <GeneralListReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
       case 'tests':
-        return <TestsReport students={filteredStudents} shiurFilter={shiurFilter} />;
+        return <TestsReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
       case 'multi_details':
         return (
           <MultiDetailsReport
             students={filteredStudents}
             families={families}
-            shiurFilter={shiurFilter}
+            shiurFilter={effectiveShiurFilter}
           />
         );
       case 'details':
@@ -121,17 +132,26 @@ export default function ListsPage() {
             families={families}
             machzorot={machzorot}
             education={education}
-            shiurFilter={shiurFilter}
+            shiurFilter={effectiveShiurFilter}
           />
         );
       case 'ram':
-        return <RamReport students={filteredStudents} shiurFilter={shiurFilter} />;
+        return <RamReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
       case 'photos':
-        return <PhotosReport students={filteredStudents} shiurFilter={shiurFilter} />;
+        return <PhotosReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
     }
   };
 
-  const shiurOptions = getShiurFilterOptions();
+  const toggleShiur = (name: string) => {
+    setSelectedShiurim((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+  const selectAllShiurim = () => setSelectedShiurim(new Set(SHIURIM.map((s) => s.name)));
+  const clearShiurim = () => setSelectedShiurim(new Set());
 
   return (
     <>
@@ -180,20 +200,49 @@ export default function ListsPage() {
               <CardContent>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      שיעור
-                    </label>
-                    <select
-                      value={shiurFilter}
-                      onChange={(e) => setShiurFilter(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {shiurOptions.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium text-gray-700">
+                        שיעורים ({selectedShiurim.size})
+                      </label>
+                      <div className="flex gap-1 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={selectAllShiurim}
+                          className="text-blue-600 hover:underline"
+                        >
+                          הכל
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={clearShiurim}
+                          className="text-red-600 hover:underline"
+                        >
+                          נקה
+                        </button>
+                      </div>
+                    </div>
+                    <div className="border border-gray-300 rounded-lg max-h-56 overflow-y-auto p-2 space-y-1 bg-white">
+                      {SHIURIM.map((s) => (
+                        <label
+                          key={s.name}
+                          className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50 rounded px-1.5 py-0.5"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedShiurim.has(s.name)}
+                            onChange={() => toggleShiur(s.name)}
+                            className="accent-blue-600"
+                          />
+                          <span>{s.name}</span>
+                        </label>
                       ))}
-                    </select>
+                    </div>
+                    {selectedShiurim.size > 1 && (
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        💡 בחרת {selectedShiurim.size} שיעורים - כל שיעור יודפס בעמוד נפרד, ממוין א-ת
+                      </p>
+                    )}
                   </div>
 
                   <div>

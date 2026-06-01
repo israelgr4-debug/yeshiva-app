@@ -5,6 +5,7 @@ import {
   sortStudentsByName,
   getShiurLetter,
   formatDateShort,
+  groupStudentsByShiur,
 } from '@/lib/list-reports';
 
 interface Props {
@@ -14,13 +15,44 @@ interface Props {
 }
 
 export function MultiDetailsReport({ students, families, shiurFilter }: Props) {
-  const sorted = sortStudentsByName(students);
-  const title = shiurFilter
-    ? `דוח פרטים מרובים בקטן - ${shiurFilter}`
-    : 'דוח פרטים מרובים בקטן';
-
+  if (shiurFilter) {
+    return (
+      <MultiPage
+        title={`דוח פרטים מרובים בקטן - ${shiurFilter}`}
+        students={sortStudentsByName(students)}
+        families={families}
+      />
+    );
+  }
+  const groups = groupStudentsByShiur(students);
   return (
-    <div className="report-page">
+    <>
+      {groups.map((g, idx) => (
+        <MultiPage
+          key={g.shiur}
+          title={`דוח פרטים מרובים בקטן - ${g.shiur}`}
+          students={g.students}
+          families={families}
+          isNotFirst={idx > 0}
+        />
+      ))}
+    </>
+  );
+}
+
+function MultiPage({
+  title,
+  students,
+  families,
+  isNotFirst,
+}: {
+  title: string;
+  students: Student[];
+  families: Record<string, Family>;
+  isNotFirst?: boolean;
+}) {
+  return (
+    <div className={`report-page ${isNotFirst ? 'page-break' : ''}`}>
       <h1 className="report-title">{title}</h1>
 
       <table className="details-table">
@@ -38,7 +70,7 @@ export function MultiDetailsReport({ students, families, shiurFilter }: Props) {
           </tr>
         </thead>
         <tbody>
-          {sorted.map((s) => {
+          {students.map((s) => {
             const family = s.family_id ? families[s.family_id] : undefined;
             return (
               <tr key={s.id}>
@@ -64,6 +96,10 @@ export function MultiDetailsReport({ students, families, shiurFilter }: Props) {
           direction: rtl;
           font-family: 'David', 'Miriam', Arial, sans-serif;
           color: #000;
+        }
+        .report-page.page-break {
+          page-break-before: always;
+          break-before: page;
         }
         .report-title {
           text-align: center;
