@@ -103,8 +103,40 @@ export interface Graduate {
   left_date: string | null;
   notes: string | null;
   legacy_marker: string | null;
+  last_self_update_at?: string | null;
+  email_unsubscribed?: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface GraduateUpdateToken {
+  id: string;
+  token: string;
+  graduate_id: string;
+  email: string;
+  created_at: string;
+  expires_at: string;
+  sent_at: string | null;
+  opened_at: string | null;
+  used_at: string | null;
+  reminder_count: number;
+  last_reminder_at: string | null;
+  send_error: string | null;
+}
+
+export interface GraduateUpdateLogEntry {
+  id: string;
+  graduate_id: string;
+  token_id: string | null;
+  submitted_at: string;
+  before_snapshot: any;
+  after_snapshot: any;
+  changed_fields: string[];
+  notes_to_admin: string | null;
+  ip_address: string | null;
+  admin_reviewed_at: string | null;
+  admin_reviewed_by: string | null;
+  admin_note: string | null;
 }
 
 export type RegistrationStatus = 'registered' | 'tested' | 'accepted' | 'rejected' | 'converted';
