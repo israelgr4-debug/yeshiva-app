@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Graduate } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
+import { supabase } from '@/lib/supabase';
 
 type Scope = 'all' | 'machzor' | 'father' | 'single';
 
@@ -122,9 +123,19 @@ export function SendUpdateRequestsDialog({ graduates, onClose }: Props) {
         body.graduateIds = recipients.map((g) => g.id);
         body.limit = recipients.length;
       }
+      const { data: sess } = await supabase.auth.getSession();
+      const accessToken = sess?.session?.access_token;
+      if (!accessToken) {
+        setError('פג תוקף ההתחברות, רענן את הדף');
+        setSending(false);
+        return;
+      }
       const res = await fetch('/api/graduates/send-update-requests', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
         body: JSON.stringify(body),
       });
       const data = await res.json();
