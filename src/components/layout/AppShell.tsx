@@ -24,8 +24,9 @@ export function AppShell({ children }: Props) {
     }
   }, [loading, user, permissions.isGraduatesOnly, pathname, router]);
 
-  // Public routes - render as-is
-  if (pathname === '/login') {
+  // Public routes - render as-is (no auth, no sidebar)
+  // /g/* are public token-gated pages (e.g. graduate self-update)
+  if (pathname === '/login' || pathname.startsWith('/g/')) {
     return <>{children}</>;
   }
 

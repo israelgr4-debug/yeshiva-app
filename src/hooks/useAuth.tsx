@@ -16,6 +16,11 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PREFIXES = ['/g/']; // token-gated public pages
+
+function isPublicPath(p: string) {
+  return PUBLIC_PATHS.includes(p) || PUBLIC_PREFIXES.some((pre) => p.startsWith(pre));
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
@@ -60,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (loading) return;
-    if (!user && !PUBLIC_PATHS.includes(pathname)) {
+    if (!user && !isPublicPath(pathname)) {
       router.push('/login');
     }
     if (user && pathname === '/login') {
