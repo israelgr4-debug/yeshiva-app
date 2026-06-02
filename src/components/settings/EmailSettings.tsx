@@ -7,6 +7,32 @@ import { Input } from '@/components/ui/Input';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { supabase } from '@/lib/supabase';
 
+const DEFAULT_GRAD_SUBJECT = 'עדכון פרטים - ישיבת מיר מודיעין עילית';
+const DEFAULT_GRAD_BODY = `שלום ר' {{first_name}},
+
+שלום מהנהלת ישיבת מיר מודיעין עילית.
+
+אנו מעדכנים את רשימת הבוגרים שלנו ונשמח אם תוכל להקדיש דקה לעדכן את הפרטים שלך אצלנו (כתובת, טלפון, סטטוס משפחתי).
+
+בלחיצה על הקישור תגיע לטופס פשוט עם הפרטים הקיימים שלך - עדכן רק את מה שהשתנה. ייקח דקה.
+
+{{link}}
+
+הקישור אישי ומיועד עבורך בלבד. תוקפו לחודשיים.
+
+בברכה,
+{{from_name}}`;
+
+const DEFAULT_REMINDER_SUBJECT = 'תזכורת - עדכון פרטים, ישיבת מיר מודיעין עילית';
+const DEFAULT_REMINDER_BODY = `שלום ר' {{first_name}},
+
+זוהי תזכורת על בקשה ששלחנו לעדכון פרטי הקשר שלך אצלנו. אם עדכנת כבר - תודה רבה, אפשר להתעלם.
+
+{{link}}
+
+בברכה,
+{{from_name}}`;
+
 export function EmailSettings() {
   const { getSetting, setSetting } = useSystemSettings();
 
@@ -19,6 +45,13 @@ export function EmailSettings() {
   const [signatureChinuchUrl, setSignatureChinuchUrl] = useState('');
   const [letterheadUrl, setLetterheadUrl] = useState('');
   const [letterheadChinuchUrl, setLetterheadChinuchUrl] = useState('');
+  // Graduate-update email templates
+  const [gradSubj, setGradSubj] = useState('');
+  const [gradBody, setGradBody] = useState('');
+  const [gradReminderSubj, setGradReminderSubj] = useState('');
+  const [gradReminderBody, setGradReminderBody] = useState('');
+  const [savingGrad, setSavingGrad] = useState(false);
+  const [gradStatus, setGradStatus] = useState<string | null>(null);
   const [uploadingSig, setUploadingSig] = useState(false);
   const [uploadingSigC, setUploadingSigC] = useState(false);
   const [uploadingLH, setUploadingLH] = useState(false);
@@ -35,7 +68,32 @@ export function EmailSettings() {
     setSignatureChinuchUrl(await getSetting<string>('signature_chinuch_url', ''));
     setLetterheadUrl(await getSetting<string>('letterhead_url', ''));
     setLetterheadChinuchUrl(await getSetting<string>('letterhead_chinuch_url', ''));
+    setGradSubj(await getSetting<string>('grad_update_email_subject', DEFAULT_GRAD_SUBJECT));
+    setGradBody(await getSetting<string>('grad_update_email_body', DEFAULT_GRAD_BODY));
+    setGradReminderSubj(await getSetting<string>('grad_update_reminder_subject', DEFAULT_REMINDER_SUBJECT));
+    setGradReminderBody(await getSetting<string>('grad_update_reminder_body', DEFAULT_REMINDER_BODY));
   }, [getSetting]);
+
+  const handleSaveGradTemplates = async () => {
+    setSavingGrad(true);
+    setGradStatus(null);
+    const ok = (await Promise.all([
+      setSetting('grad_update_email_subject', gradSubj.trim()),
+      setSetting('grad_update_email_body', gradBody),
+      setSetting('grad_update_reminder_subject', gradReminderSubj.trim()),
+      setSetting('grad_update_reminder_body', gradReminderBody),
+    ])).every(Boolean);
+    setGradStatus(ok ? '✅ תבניות נשמרו' : '❌ שגיאה בשמירה');
+    setSavingGrad(false);
+  };
+
+  const resetGradDefaults = () => {
+    if (!confirm('לאפס לטקסטים המקוריים?')) return;
+    setGradSubj(DEFAULT_GRAD_SUBJECT);
+    setGradBody(DEFAULT_GRAD_BODY);
+    setGradReminderSubj(DEFAULT_REMINDER_SUBJECT);
+    setGradReminderBody(DEFAULT_REMINDER_BODY);
+  };
 
   useEffect(() => {
     load();
@@ -420,6 +478,75 @@ export function EmailSettings() {
                   הסר חתימת חינוך
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+        {/* Graduate update email templates */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h4 className="text-md font-semibold mb-2">📨 תבניות מייל - בקשת עדכון מבוגרים</h4>
+          <p className="text-sm text-gray-600 mb-4">
+            הטקסט שיישלח לבוגרים בעת לחיצה על "📧 בקשת עדכון" בעמוד הבוגרים.
+            <br />
+            שדות שיוחלפו אוטומטית:
+            <code className="mx-1 bg-gray-100 px-1.5 py-0.5 rounded text-xs">{'{{first_name}}'}</code>
+            <code className="mx-1 bg-gray-100 px-1.5 py-0.5 rounded text-xs">{'{{last_name}}'}</code>
+            <code className="mx-1 bg-gray-100 px-1.5 py-0.5 rounded text-xs">{'{{link}}'}</code>
+            <code className="mx-1 bg-gray-100 px-1.5 py-0.5 rounded text-xs">{'{{from_name}}'}</code>
+            <br />
+            <code className="text-xs">{'{{link}}'}</code> יומר אוטומטית לכפתור עיצובי במייל.
+          </p>
+
+          <div className="space-y-5">
+            <div>
+              <h5 className="font-semibold text-sm mb-2 text-blue-700">פנייה ראשונה</h5>
+              <Input
+                label="כותרת המייל"
+                value={gradSubj}
+                onChange={(e) => setGradSubj(e.target.value)}
+              />
+              <label className="block text-sm font-medium text-gray-700 mt-3 mb-1">תוכן המייל</label>
+              <textarea
+                value={gradBody}
+                onChange={(e) => setGradBody(e.target.value)}
+                rows={12}
+                dir="rtl"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm leading-relaxed"
+                style={{ fontFamily: 'Heebo, system-ui, sans-serif' }}
+              />
+            </div>
+
+            <div>
+              <h5 className="font-semibold text-sm mb-2 text-amber-700">תזכורת</h5>
+              <Input
+                label="כותרת המייל"
+                value={gradReminderSubj}
+                onChange={(e) => setGradReminderSubj(e.target.value)}
+              />
+              <label className="block text-sm font-medium text-gray-700 mt-3 mb-1">תוכן המייל</label>
+              <textarea
+                value={gradReminderBody}
+                onChange={(e) => setGradReminderBody(e.target.value)}
+                rows={8}
+                dir="rtl"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm leading-relaxed"
+                style={{ fontFamily: 'Heebo, system-ui, sans-serif' }}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center mt-4">
+            <button
+              type="button"
+              onClick={resetGradDefaults}
+              className="text-sm text-slate-500 hover:text-slate-700 underline"
+            >
+              שחזר ברירת מחדל
+            </button>
+            <div className="flex items-center gap-3">
+              {gradStatus && <span className="text-sm">{gradStatus}</span>}
+              <Button onClick={handleSaveGradTemplates} disabled={savingGrad}>
+                {savingGrad ? 'שומר...' : 'שמור תבניות'}
+              </Button>
             </div>
           </div>
         </div>

@@ -42,11 +42,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Only admin/manager can send' }, { status: 403 });
   }
 
-  // Email settings
+  // Email settings (incl. editable templates)
   const { data: settings } = await admin
     .from('system_settings')
     .select('key, value')
-    .in('key', ['email_enabled', 'email_from', 'email_display_name', 'email_app_password']);
+    .in('key', [
+      'email_enabled', 'email_from', 'email_display_name', 'email_app_password',
+      'grad_update_email_subject', 'grad_update_email_body',
+      'grad_update_reminder_subject', 'grad_update_reminder_body',
+    ]);
   const cfg: Record<string, any> = {};
   for (const r of settings || []) cfg[r.key] = r.value;
 
@@ -156,25 +160,26 @@ export async function POST(req: NextRequest) {
       }
 
       const link = `${origin}/g/update/${token}`;
-      const subject = isReminder
-        ? `תזכורת - עדכון פרטים, ישיבת מיר מודיעין עילית`
-        : `עדכון פרטים - ישיבת מיר מודיעין עילית`;
 
-      const greeting = `שלום ר' ${g.first_name || ''}`;
-      const html = buildEmailHtml({
-        greeting,
-        firstName: g.first_name || '',
+      // Subject + body from settings (with placeholder substitution)
+      const subjectTemplate = isReminder
+        ? (cfg.grad_update_reminder_subject || DEFAULT_REMINDER_SUBJECT)
+        : (cfg.grad_update_email_subject || DEFAULT_SUBJECT);
+      const bodyTemplate = isReminder
+        ? (cfg.grad_update_reminder_body || DEFAULT_REMINDER_BODY)
+        : (cfg.grad_update_email_body || DEFAULT_BODY);
+
+      const vars = {
+        first_name: g.first_name || '',
+        last_name: g.last_name || '',
         link,
-        isReminder,
-        fromName,
-      });
-      const text = buildEmailText({
-        greeting,
-        firstName: g.first_name || '',
-        link,
-        isReminder,
-        fromName,
-      });
+        from_name: fromName,
+      };
+      const subject = substitute(subjectTemplate, vars);
+      const bodyText = substitute(bodyTemplate, vars);
+
+      const html = buildEmailHtml({ bodyText, link, fromName });
+      const text = buildEmailPlainText({ bodyText, link });
 
       const info = await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
@@ -241,45 +246,56 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function buildEmailHtml(p: {
-  greeting: string;
-  firstName: string;
-  link: string;
-  isReminder: boolean;
-  fromName: string;
-}): string {
-  const intro = p.isReminder
-    ? 'זוהי תזכורת על בקשה ששלחנו לעדכון פרטי הקשר שלך אצלנו. אם עדכנת כבר - תודה רבה, אפשר להתעלם.'
-    : 'אנו מעדכנים את רשימת הבוגרים שלנו ונשמח אם תוכל להקדיש דקה לעדכן את הפרטים שלך אצלנו (כתובת, טלפון, סטטוס משפחתי).';
+/** Render the editable body into the email HTML scaffold.
+ * - Splits on double-newline → paragraphs (single \n becomes <br>).
+ * - {{link}} token in the body is replaced by a styled CTA button.
+ * - If {{link}} is absent, a button is appended at the end as a fallback.
+ * - Whole body is wrapped dir="rtl" + text-align:right.
+ */
+function buildEmailHtml(p: { bodyText: string; link: string; fromName: string }): string {
+  const buttonHtml = `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:20px auto;"><tr><td style="border-radius:12px;background:#1e40af;"><a href="${p.link}" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;border-radius:12px;">לעדכון הפרטים</a></td></tr></table>`;
+
+  // Split body into paragraphs by blank line
+  const hasLinkToken = /\{\{\s*link\s*\}\}/.test(p.bodyText);
+  // Already substituted earlier? Then look for the literal link URL as marker.
+  // The substitute() call above replaces {{link}} with the URL. So we look for the URL on its own line.
+  const linkRe = new RegExp(`(^|\\n)\\s*${escapeRegex(p.link)}\\s*(\\n|$)`);
+
+  let processed = p.bodyText;
+  let injectedButton = false;
+  if (linkRe.test(processed)) {
+    processed = processed.replace(linkRe, '\n\n___LINK_BUTTON___\n\n');
+    injectedButton = true;
+  }
+
+  const paragraphs = processed.split(/\n{2,}/).map((para) => {
+    if (para.trim() === '___LINK_BUTTON___') return buttonHtml;
+    const lines = para.split('\n').map((l) => escapeHtml(l)).join('<br>');
+    return `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.75;text-align:right;">${lines}</p>`;
+  }).join('\n');
+
+  const trailingButton = injectedButton ? '' : buttonHtml;
+
+  void hasLinkToken; // (silence unused)
+
   return `<!DOCTYPE html>
 <html dir="rtl" lang="he">
 <head><meta charset="utf-8"><title>עדכון פרטים</title></head>
-<body style="margin:0;padding:0;background:#f5f7fa;font-family:'Heebo','Segoe UI',Arial,sans-serif;color:#1e293b;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f7fa;padding:32px 16px;">
+<body style="margin:0;padding:0;background:#f5f7fa;font-family:'Heebo','Segoe UI',Arial,sans-serif;color:#1e293b;direction:rtl;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f7fa;padding:32px 16px;direction:rtl;">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(15,23,42,0.06);">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(15,23,42,0.06);direction:rtl;">
         <tr><td style="padding:24px 32px 8px 32px;text-align:center;border-bottom:1px solid #eef2f6;">
-          <p style="margin:0;color:#1e40af;font-size:16px;font-weight:600;letter-spacing:0.5px;">ישיבת מיר מודיעין עילית</p>
+          <p style="margin:0;color:#1e40af;font-size:16px;font-weight:600;letter-spacing:0.5px;">${escapeHtml(p.fromName)}</p>
         </td></tr>
-        <tr><td style="padding:28px 32px;">
-          <p style="margin:0 0 12px 0;font-size:16px;">${escapeHtml(p.greeting)},</p>
-          <p style="margin:0 0 16px 0;font-size:15px;line-height:1.7;">שלום מהנהלת ישיבת מיר מודיעין עילית.</p>
-          <p style="margin:0 0 16px 0;font-size:15px;line-height:1.7;">${escapeHtml(intro)}</p>
-          <p style="margin:0 0 24px 0;font-size:15px;line-height:1.7;">בלחיצה על הקישור תגיע לטופס פשוט עם הפרטים הקיימים שלך - עדכן רק את מה שהשתנה. ייקח דקה.</p>
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px auto;">
-            <tr><td style="border-radius:12px;background:#1e40af;">
-              <a href="${p.link}" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;border-radius:12px;">לעדכון הפרטים</a>
-            </td></tr>
-          </table>
-          <p style="margin:0 0 8px 0;font-size:12px;color:#64748b;text-align:center;">הקישור אישי ומיועד עבורך בלבד. תוקפו לחודשיים.</p>
-          <p style="margin:0;font-size:12px;color:#64748b;text-align:center;direction:ltr;word-break:break-all;">
+        <tr><td style="padding:24px 32px;direction:rtl;text-align:right;">
+          ${paragraphs}
+          ${trailingButton}
+          <p style="margin:16px 0 0 0;font-size:12px;color:#94a3b8;text-align:center;direction:ltr;word-break:break-all;">
             <a href="${p.link}" style="color:#94a3b8;text-decoration:underline;">${p.link}</a>
           </p>
         </td></tr>
-        <tr><td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #eef2f6;text-align:center;">
-          <p style="margin:0 0 8px 0;font-size:14px;color:#475569;">בברכה,<br><strong>${escapeHtml(p.fromName)}</strong></p>
-        </td></tr>
-        <tr><td style="padding:12px 32px;text-align:center;font-size:11px;color:#94a3b8;">
+        <tr><td style="padding:12px 32px;text-align:center;font-size:11px;color:#94a3b8;background:#f8fafc;border-top:1px solid #eef2f6;">
           אם אינך מעוניין לקבל מיילים נוספים מהישיבה, השב למייל זה עם המילה <strong>"הסר"</strong>
         </td></tr>
       </table>
@@ -289,34 +305,16 @@ function buildEmailHtml(p: {
 </html>`;
 }
 
-function buildEmailText(p: {
-  greeting: string;
-  firstName: string;
-  link: string;
-  isReminder: boolean;
-  fromName: string;
-}): string {
-  const intro = p.isReminder
-    ? 'זוהי תזכורת על בקשה ששלחנו לעדכון פרטי הקשר שלך אצלנו. אם עדכנת כבר - תודה רבה, אפשר להתעלם.'
-    : 'אנו מעדכנים את רשימת הבוגרים שלנו ונשמח אם תוכל להקדיש דקה לעדכן את הפרטים שלך אצלנו (כתובת, טלפון, סטטוס משפחתי).';
-  return [
-    `${p.greeting},`,
-    '',
-    'שלום מהנהלת ישיבת מיר מודיעין עילית.',
-    '',
-    intro,
-    '',
-    'לעדכון הפרטים, בקר בקישור:',
-    p.link,
-    '',
-    'הקישור אישי ומיועד עבורך בלבד. תוקפו לחודשיים.',
-    '',
-    'בברכה,',
-    p.fromName,
-    '',
-    '---',
-    'אם אינך מעוניין לקבל מיילים נוספים מהישיבה, השב למייל זה עם המילה "הסר"',
-  ].join('\n');
+function buildEmailPlainText(p: { bodyText: string; link: string }): string {
+  // bodyText already has {{link}} replaced with the actual URL.
+  void p.link;
+  return p.bodyText + '\n\n---\nאם אינך מעוניין לקבל מיילים נוספים מהישיבה, השב למייל זה עם המילה "הסר"';
+}
+
+function substitute(template: string, vars: Record<string, string>): string {
+  return String(template || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+    return vars[key] != null ? String(vars[key]) : '';
+  });
 }
 
 function escapeHtml(s: string): string {
@@ -327,3 +325,34 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Defaults - kept in sync with src/components/settings/EmailSettings.tsx
+const DEFAULT_SUBJECT = 'עדכון פרטים - ישיבת מיר מודיעין עילית';
+const DEFAULT_REMINDER_SUBJECT = 'תזכורת - עדכון פרטים, ישיבת מיר מודיעין עילית';
+const DEFAULT_BODY = `שלום ר' {{first_name}},
+
+שלום מהנהלת ישיבת מיר מודיעין עילית.
+
+אנו מעדכנים את רשימת הבוגרים שלנו ונשמח אם תוכל להקדיש דקה לעדכן את הפרטים שלך אצלנו (כתובת, טלפון, סטטוס משפחתי).
+
+בלחיצה על הקישור תגיע לטופס פשוט עם הפרטים הקיימים שלך - עדכן רק את מה שהשתנה. ייקח דקה.
+
+{{link}}
+
+הקישור אישי ומיועד עבורך בלבד. תוקפו לחודשיים.
+
+בברכה,
+{{from_name}}`;
+
+const DEFAULT_REMINDER_BODY = `שלום ר' {{first_name}},
+
+זוהי תזכורת על בקשה ששלחנו לעדכון פרטי הקשר שלך אצלנו. אם עדכנת כבר - תודה רבה, אפשר להתעלם.
+
+{{link}}
+
+בברכה,
+{{from_name}}`;
