@@ -11,12 +11,15 @@ import { useSupabase } from '@/hooks/useSupabase';
 import { GraduatesListTab } from '@/components/graduates/GraduatesListTab';
 import { GraduatesPendingTab } from '@/components/graduates/GraduatesPendingTab';
 import { GraduateFormDialog } from '@/components/graduates/GraduateFormDialog';
+import { SendUpdateRequestsDialog } from '@/components/graduates/SendUpdateRequestsDialog';
+import { GraduateUpdatesLogTab } from '@/components/graduates/GraduateUpdatesLogTab';
 
-type TabId = 'list' | 'pending';
+type TabId = 'list' | 'pending' | 'updates';
 
 const TABS: { id: TabId; label: string; icon: string; tint: string }[] = [
   { id: 'list', label: 'בוגרים', icon: '🎓', tint: 'from-blue-500 to-indigo-600' },
   { id: 'pending', label: 'ממתינים', icon: '⏳', tint: 'from-amber-500 to-orange-600' },
+  { id: 'updates', label: 'עדכוני בוגרים', icon: '📨', tint: 'from-emerald-500 to-teal-600' },
 ];
 
 export default function GraduatesPage() {
@@ -36,6 +39,7 @@ export default function GraduatesPage() {
   const [editing, setEditing] = useState<Graduate | null>(null);
   const [seedFromStudent, setSeedFromStudent] = useState<Student | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showSendDialog, setShowSendDialog] = useState(false);
 
   const reload = async () => {
     setLoading(true);
@@ -82,9 +86,18 @@ export default function GraduatesPage() {
     () => ({
       list: graduates.filter((g) => !g.is_pending).length,
       pending: graduates.filter((g) => g.is_pending).length,
+      updates: 0,
     }),
     [graduates]
   );
+
+  const graduateNames = useMemo(() => {
+    const m: Record<string, { id: string; first_name: string; last_name: string; machzor_name: string | null }> = {};
+    for (const g of graduates) {
+      m[g.id] = { id: g.id, first_name: g.first_name, last_name: g.last_name, machzor_name: g.machzor_name };
+    }
+    return m;
+  }, [graduates]);
 
   if (authLoading) return null;
   if (!permissions.canManageGraduates) {
@@ -118,7 +131,14 @@ export default function GraduatesPage() {
       <Header
         title="בוגרים"
         subtitle="ניהול רשומות בוגרים ומידע עדכני"
-        action={<Button size="sm" onClick={handleAddBlank}>＋ בוגר חדש</Button>}
+        action={
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setShowSendDialog(true)}>
+              📧 בקשת עדכון
+            </Button>
+            <Button size="sm" onClick={handleAddBlank}>＋ בוגר חדש</Button>
+          </div>
+        }
       />
 
       <div className="p-4 md:p-8 space-y-4 animate-fadeIn">
@@ -157,7 +177,7 @@ export default function GraduatesPage() {
           </div>
         ) : tab === 'list' ? (
           <GraduatesListTab graduates={graduates.filter((g) => !g.is_pending)} onEdit={handleEdit} />
-        ) : (
+        ) : tab === 'pending' ? (
           <GraduatesPendingTab
             graduates={graduates.filter((g) => g.is_pending)}
             students={students}
@@ -165,8 +185,17 @@ export default function GraduatesPage() {
             onAddFromStudent={handleAddFromStudent}
             onChanged={reload}
           />
+        ) : (
+          <GraduateUpdatesLogTab graduateNames={graduateNames} />
         )}
       </div>
+
+      {showSendDialog && (
+        <SendUpdateRequestsDialog
+          graduates={graduates.filter((g) => !g.is_pending)}
+          onClose={() => setShowSendDialog(false)}
+        />
+      )}
 
       {showForm && (
         <GraduateFormDialog
