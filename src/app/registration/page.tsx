@@ -9,16 +9,18 @@ import { Registration } from '@/lib/types';
 import { RegistrationsListTab } from '@/components/registration/RegistrationsListTab';
 import { TestSchedulingTab } from '@/components/registration/TestSchedulingTab';
 import { TestDayReportTab } from '@/components/registration/TestDayReportTab';
+import { TestReportsTab } from '@/components/registration/TestReportsTab';
 import { AcceptanceTab } from '@/components/registration/AcceptanceTab';
 import { RegistrationFormDialog } from '@/components/registration/RegistrationFormDialog';
 import { RegistrationImportButtons } from '@/components/registration/RegistrationImportButtons';
 
-type TabId = 'list' | 'tests' | 'testday' | 'acceptance';
+type TabId = 'list' | 'tests' | 'testday' | 'reports' | 'acceptance';
 
 const TABS: { id: TabId; label: string; icon: string; tint: string }[] = [
   { id: 'list', label: 'רישום', icon: '📝', tint: 'from-sky-500 to-cyan-600' },
   { id: 'tests', label: 'מועדי מבחן', icon: '📅', tint: 'from-violet-500 to-purple-600' },
   { id: 'testday', label: 'יום המבחן', icon: '📸', tint: 'from-amber-500 to-orange-600' },
+  { id: 'reports', label: 'דוחות מבחן', icon: '📄', tint: 'from-rose-500 to-pink-600' },
   { id: 'acceptance', label: 'קבלות', icon: '✓', tint: 'from-emerald-500 to-teal-600' },
 ];
 
@@ -53,6 +55,7 @@ export default function RegistrationPage() {
         r.status === 'registered' || r.status === 'tested'
       ).length,
       testday: registrations.filter((r) => r.test_date).length,
+      reports: registrations.filter((r) => r.test_date).length,
       acceptance: registrations.filter((r) => r.status === 'tested' || r.status === 'accepted').length,
     };
   }, [registrations]);
@@ -127,6 +130,9 @@ export default function RegistrationPage() {
         )}
         {!loading && tab === 'testday' && (
           <TestDayReportTab registrations={registrations} onChanged={reload} />
+        )}
+        {!loading && tab === 'reports' && (
+          <TestReportsTab registrations={registrations} />
         )}
         {!loading && tab === 'acceptance' && (
           <AcceptanceTab
