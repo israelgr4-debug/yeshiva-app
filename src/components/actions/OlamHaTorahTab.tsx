@@ -128,11 +128,17 @@ export function OlamHaTorahTab() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   // Build preview rows
-  const { rows, missing, incomplete } = useMemo(() => {
-    if (!datData) return { rows: [], missing: [] as MinistryRow[], incomplete: [] as any[] };
+  const { rows, missing, incomplete, skippedPassport } = useMemo(() => {
+    if (!datData) return {
+      rows: [], missing: [] as MinistryRow[], incomplete: [] as any[], skippedPassport: [] as any[],
+    };
+    // Match ONLY by Israeli ID — passport-holders are NOT included in Olam HaTorah report.
     const studentByMinistryId = new Map<string, Student>();
     for (const s of students) {
-      const k = normalizeId(s.id_number || s.passport_number);
+      // id_type '1' = passport, '0'/null = Israeli ID
+      const isPassport = String(s.id_type || '') === '1';
+      if (isPassport) continue;
+      const k = normalizeId(s.id_number);
       if (k) studentByMinistryId.set(k, s);
     }
 
@@ -145,12 +151,41 @@ export function OlamHaTorahTab() {
       studentId: string;
       missingFields: string[];
     }> = [];
+    // Track passport-holders that DID appear in the ministry DAT but are filtered out here
+    const skippedPassport: Array<{
+      idNumber: string;
+      lastName: string;
+      firstName: string;
+      studentId: string;
+    }> = [];
+
+    // Secondary lookup just so we can report which DAT entries belong to passport-holders
+    const passportLookup = new Map<string, Student>();
+    for (const s of students) {
+      if (String(s.id_type || '') !== '1') continue;
+      const k = normalizeId(s.passport_number) || normalizeId((s as any).govt_id_number);
+      if (k) passportLookup.set(k, s);
+    }
 
     for (const m of datData.rows) {
       const k = normalizeId(m.idNumber);
       if (!k) continue;
       const s = studentByMinistryId.get(k);
-      if (!s) { missing.push(m); continue; }
+      if (!s) {
+        // Check if this DAT row corresponds to a passport-holder we're skipping on purpose
+        const ps = passportLookup.get(k);
+        if (ps) {
+          skippedPassport.push({
+            idNumber: m.idNumber,
+            lastName: ps.last_name || m.lastName || '',
+            firstName: ps.first_name || m.firstName || '',
+            studentId: ps.id,
+          });
+          continue;
+        }
+        missing.push(m);
+        continue;
+      }
       // Only include students we'd actually report on
       if (s.is_chinuch) continue; // chinuch goes to Education ministry, not here
 
@@ -203,7 +238,7 @@ export function OlamHaTorahTab() {
       ]);
     }
 
-    return { rows, missing, incomplete };
+    return { rows, missing, incomplete, skippedPassport };
   }, [datData, students, families, scholarship, includeScholarship]);
 
   const handleDownload = () => {
@@ -217,6 +252,10 @@ export function OlamHaTorahTab() {
     if (incomplete.length > 0) {
       lines.push('');
       lines.push(`⚠️ ${incomplete.length} תלמידים עם שדות חסרים (יופיעו בדוח עם שדות ריקים).`);
+    }
+    if (skippedPassport.length > 0) {
+      lines.push('');
+      lines.push(`ℹ️ ${skippedPassport.length} תלמידי דרכון מדולגים (לא נכללים בדוח עולם התורה).`);
     }
     lines.push('');
     lines.push('להמשיך בייצוא?');
@@ -293,11 +332,12 @@ export function OlamHaTorahTab() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
               <Stat label="בדוח הדתות" value={datData.rows.length} />
               <Stat label="יהיו בדוח" value={rows.length} tone="green" />
               <Stat label="חסרים במערכת" value={missing.length} tone={missing.length > 0 ? 'red' : 'gray'} />
               <Stat label="פרטים חסרים" value={incomplete.length} tone={incomplete.length > 0 ? 'amber' : 'gray'} />
+              <Stat label="דרכון (מדולגים)" value={skippedPassport.length} tone={skippedPassport.length > 0 ? 'amber' : 'gray'} />
             </div>
 
             <div className="flex justify-end mb-4">
@@ -342,6 +382,46 @@ export function OlamHaTorahTab() {
                           <td className="px-2 py-1 text-amber-800">
                             {r.missingFields.join(', ')}
                           </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {skippedPassport.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <h4 className="font-semibold text-amber-800 mb-2">
+                  ℹ️ {skippedPassport.length} תלמידי דרכון מדולגים מהדוח
+                </h4>
+                <p className="text-xs text-amber-700 mb-2">
+                  דוח עולם התורה כולל רק תלמידים עם ת״ז ישראלית. תלמידי דרכון מופיעים כאן לידיעה.
+                </p>
+                <div className="max-h-48 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-amber-100">
+                      <tr>
+                        <th className="px-2 py-1 text-start">דרכון</th>
+                        <th className="px-2 py-1 text-start">שם משפחה</th>
+                        <th className="px-2 py-1 text-start">שם פרטי</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {skippedPassport.map((p, i) => (
+                        <tr key={i} className="border-t border-amber-200">
+                          <td className="px-2 py-1 font-mono">{p.idNumber}</td>
+                          <td className="px-2 py-1">
+                            <a
+                              href={`/students/${p.studentId}`}
+                              target="_blank"
+                              rel="noopener"
+                              className="text-blue-700 hover:underline"
+                            >
+                              {p.lastName}
+                            </a>
+                          </td>
+                          <td className="px-2 py-1">{p.firstName}</td>
                         </tr>
                       ))}
                     </tbody>
