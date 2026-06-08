@@ -51,6 +51,7 @@ export default function CollectionHistoryPage() {
   const [refreshingForecast, setRefreshingForecast] = useState(false);
   const [bouncedRow, setBouncedRow] = useState<PaymentRow | null>(null);
   const [returningId, setReturningId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -81,24 +82,39 @@ export default function CollectionHistoryPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // Split: if run has a group_number → it was sent to Masav (history)
-  //        if no group_number → forecast (not yet sent)
+  // Split rule:
+  //   Forecast = future date AND no group_number (still pending in queue)
+  //   History  = ANY past date (regardless of group_number) OR future runs that
+  //              already have a group_number (sent but date hasn't arrived).
+  // This makes sure imported / manually-marked past payments still appear.
   const tabRuns = useMemo(() => {
+    let pool: CollectionRun[];
     if (activeTab === 'forecast') {
-      // Forecast: only future dates, no group, sorted by nearest first
-      return runs
+      pool = runs
         .filter(
           (r) =>
             (r.group_number === null || r.group_number === undefined) &&
             r.payment_date >= today
         )
         .sort((a, b) => a.payment_date.localeCompare(b.payment_date));
+    } else {
+      pool = runs
+        .filter(
+          (r) =>
+            r.payment_date < today ||
+            (r.group_number !== null && r.group_number !== undefined)
+        )
+        .sort((a, b) => b.payment_date.localeCompare(a.payment_date));
     }
-    // History: has group_number, most recent first
-    return runs
-      .filter((r) => r.group_number !== null && r.group_number !== undefined)
-      .sort((a, b) => b.payment_date.localeCompare(a.payment_date));
-  }, [runs, activeTab, today]);
+    const q = search.trim();
+    if (!q) return pool;
+    return pool.filter((r) => {
+      const dateMatch = r.payment_date.includes(q);
+      const monthMatch = r.payment_date.slice(0, 7).includes(q);
+      const groupMatch = r.group_number != null && String(r.group_number).includes(q);
+      return dateMatch || monthMatch || groupMatch;
+    });
+  }, [runs, activeTab, today, search]);
 
   // Reset page on tab change
   useEffect(() => {
@@ -136,9 +152,14 @@ export default function CollectionHistoryPage() {
       ).length,
     [runs, today]
   );
+  // Reset page when search changes
+  useEffect(() => { setPage(1); }, [search]);
+
   const historyCount = useMemo(
-    () => runs.filter((r) => r.group_number !== null && r.group_number !== undefined).length,
-    [runs]
+    () => runs.filter(
+      (r) => r.payment_date < today || (r.group_number !== null && r.group_number !== undefined)
+    ).length,
+    [runs, today]
   );
 
   const keyFor = (r: CollectionRun) => `${r.payment_date}|${r.group_number ?? 'null'}`;
@@ -304,6 +325,32 @@ export default function CollectionHistoryPage() {
           >
             📅 צפי ({forecastCount.toLocaleString('he-IL')})
           </button>
+        </div>
+
+        {/* Search */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 max-w-md">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="חיפוש לפי תאריך (2026-05) או מספר שידור..."
+              className="w-full px-3 py-2 pl-9 border border-gray-300 rounded-lg text-sm"
+            />
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+          </div>
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="text-sm text-slate-500 hover:text-slate-700 underline"
+            >
+              נקה
+            </button>
+          )}
+          <span className="text-xs text-gray-500">
+            {tabRuns.length.toLocaleString('he-IL')} הרצות
+          </span>
         </div>
 
         {/* Summary */}
