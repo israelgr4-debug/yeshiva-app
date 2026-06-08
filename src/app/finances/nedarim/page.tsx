@@ -145,7 +145,7 @@ export default function NedarimPage() {
         .from('nedarim_action_queue')
         .select(`
           id, action, nedarim_keva_id, subscription_id, params, triggered_by, created_at,
-          nedarim_subscriptions(client_name, client_zeout, amount, status, kind)
+          nedarim_subscriptions(client_name, client_zeout, amount_per_charge, status, kind)
         `)
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
@@ -559,14 +559,14 @@ function QueuePreviewDialog({
                       <tbody>
                         {list.map((it) => {
                           const s = it.nedarim_subscriptions;
-                          const newAmt = it.params?.amount || it.params?.new_amount;
+                          const newAmt = it.params?.amount_per_charge || it.params?.new_amount;
                           return (
                             <tr key={it.id} className="border-t border-gray-100">
                               <td className="px-3 py-2 font-medium">{s?.client_name || '—'}</td>
                               <td className="px-3 py-2 font-mono text-xs">{s?.client_zeout || '—'}</td>
                               <td className="px-3 py-2 text-xs">{s?.kind === 'credit' ? '💳 אשראי' : '🏦 בנק'}</td>
                               <td className="px-3 py-2 tabular-nums">
-                                {s?.amount ? `₪${Number(s.amount).toLocaleString('he-IL')}` : '—'}
+                                {s?.amount_per_charge ? `₪${Number(s.amount_per_charge).toLocaleString('he-IL')}` : '—'}
                               </td>
                               {action === 'update_amount' && (
                                 <td className="px-3 py-2 font-bold text-blue-700 tabular-nums">

@@ -22,7 +22,7 @@ interface QueueRow {
   nedarim_subscriptions?: {
     client_name: string | null;
     client_zeout: string | null;
-    amount: number | null;
+    amount_per_charge: number | null;
     status: string | null;
     kind: string | null;
   } | null;
@@ -57,7 +57,7 @@ export default function NedarimQueueHistoryPage() {
       .select(`
         id, action, nedarim_keva_id, subscription_id, params, status, attempts,
         last_error, triggered_by, created_at, processed_at,
-        nedarim_subscriptions(client_name, client_zeout, amount, status, kind)
+        nedarim_subscriptions(client_name, client_zeout, amount_per_charge, status, kind)
       `)
       .order('created_at', { ascending: false })
       .limit(500);
@@ -215,7 +215,7 @@ export default function NedarimQueueHistoryPage() {
                       const status = STATUS_META[r.status] || { label: r.status, color: 'bg-gray-50 text-gray-700 border-gray-200', emoji: '?' };
                       const action = ACTION_META[r.action] || { label: r.action, emoji: '⚙' };
                       const s = r.nedarim_subscriptions;
-                      const newAmt = r.params?.amount || r.params?.new_amount;
+                      const newAmt = r.params?.amount_per_charge || r.params?.new_amount;
                       return (
                         <tr key={r.id} className="border-t border-gray-100 hover:bg-blue-50/30">
                           <td className="px-3 py-2">
@@ -238,9 +238,9 @@ export default function NedarimQueueHistoryPage() {
                           </td>
                           <td className="px-3 py-2 text-xs">
                             <div>קוד: <span className="font-mono">{r.nedarim_keva_id}</span></div>
-                            {s?.amount && (
+                            {s?.amount_per_charge && (
                               <div className="text-gray-600">
-                                סכום: ₪{Number(s.amount).toLocaleString('he-IL')}
+                                סכום: ₪{Number(s.amount_per_charge).toLocaleString('he-IL')}
                                 {r.action === 'update_amount' && newAmt && (
                                   <span className="text-blue-700 font-semibold"> → ₪{Number(newAmt).toLocaleString('he-IL')}</span>
                                 )}
