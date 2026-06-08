@@ -52,6 +52,7 @@ export default function CollectionHistoryPage() {
   const [bouncedRow, setBouncedRow] = useState<PaymentRow | null>(null);
   const [returningId, setReturningId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [rowSearch, setRowSearch] = useState('');
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -169,10 +170,12 @@ export default function CollectionHistoryPage() {
     if (expandedKey === key) {
       setExpandedKey(null);
       setExpandedRows([]);
+      setRowSearch('');
       return;
     }
     setExpandedKey(key);
     setExpandedLoading(true);
+    setRowSearch('');
 
     let query = supabase
       .from('payment_history')
@@ -502,7 +505,44 @@ export default function CollectionHistoryPage() {
                               <div className="text-center py-6 text-gray-500">טוען פירוט...</div>
                             ) : expandedRows.length === 0 ? (
                               <div className="text-center py-6 text-gray-500">אין פירוט</div>
-                            ) : (
+                            ) : (() => {
+                              const q = rowSearch.trim();
+                              const visibleRows = q
+                                ? expandedRows.filter((p) => {
+                                    const s = students[p.student_id];
+                                    if (!s) return false;
+                                    const full = `${s.last_name || ''} ${s.first_name || ''}`;
+                                    return (
+                                      full.includes(q) ||
+                                      (s.last_name || '').includes(q) ||
+                                      (s.first_name || '').includes(q)
+                                    );
+                                  })
+                                : expandedRows;
+                              return (
+                              <>
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="relative flex-1 max-w-sm">
+                                  <input
+                                    type="text"
+                                    value={rowSearch}
+                                    onChange={(e) => setRowSearch(e.target.value)}
+                                    placeholder="חיפוש תלמיד בתוך הגביה..."
+                                    className="w-full px-3 py-1.5 pl-8 border border-gray-300 rounded-lg text-sm bg-white"
+                                  />
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                                </div>
+                                {rowSearch && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRowSearch('')}
+                                    className="text-xs text-slate-500 hover:text-slate-700 underline"
+                                  >נקה</button>
+                                )}
+                                <span className="text-xs text-gray-500">
+                                  מציג {visibleRows.length} מתוך {expandedRows.length}
+                                </span>
+                              </div>
                               <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                   <thead className="bg-white text-gray-700">
@@ -514,7 +554,7 @@ export default function CollectionHistoryPage() {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {expandedRows.map((p) => {
+                                    {visibleRows.map((p) => {
                                       const s = students[p.student_id];
                                       const color =
                                         p.status_code === 2
@@ -599,7 +639,9 @@ export default function CollectionHistoryPage() {
                                   </tbody>
                                 </table>
                               </div>
-                            )}
+                              </>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
