@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { BouncedPaymentDialog } from '@/components/finances/BouncedPaymentDialog';
 
 interface CollectionRun {
   payment_date: string;
@@ -48,6 +49,8 @@ export default function CollectionHistoryPage() {
   const [activeTab, setActiveTab] = useState<TabId>('history');
   const [markingRun, setMarkingRun] = useState<string | null>(null);
   const [refreshingForecast, setRefreshingForecast] = useState(false);
+  const [bouncedRow, setBouncedRow] = useState<PaymentRow | null>(null);
+  const [returningId, setReturningId] = useState<string | null>(null);
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -460,6 +463,7 @@ export default function CollectionHistoryPage() {
                                       <th className="px-3 py-2 text-start">תלמיד</th>
                                       <th className="px-3 py-2 text-start">סכום</th>
                                       <th className="px-3 py-2 text-start">סטטוס</th>
+                                      <th className="px-3 py-2 text-start">פעולות</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -473,6 +477,8 @@ export default function CollectionHistoryPage() {
                                           : p.status_code === 1
                                           ? 'text-orange-700'
                                           : 'text-gray-700';
+                                      const studentName = s ? `${s.last_name} ${s.first_name}` : '—';
+                                      const canMark = p.status_code === 1 || p.status_code === 2;
                                       return (
                                         <tr key={p.id} className="border-t border-gray-200 bg-white">
                                           <td className="px-3 py-2">
@@ -481,7 +487,7 @@ export default function CollectionHistoryPage() {
                                                 href={`/students/${s.id}`}
                                                 className="text-blue-600 hover:underline"
                                               >
-                                                {s.last_name} {s.first_name}
+                                                {studentName}
                                               </Link>
                                             ) : (
                                               <span className="text-gray-400">—</span>
@@ -492,6 +498,53 @@ export default function CollectionHistoryPage() {
                                           </td>
                                           <td className={`px-3 py-2 ${color}`}>
                                             {p.status_name || '-'}
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            {canMark && (
+                                              <div className="flex gap-1">
+                                                <button
+                                                  type="button"
+                                                  onClick={async () => {
+                                                    if (returningId) return;
+                                                    if (!confirm(`לסמן את התשלום של ${studentName} (₪${p.amount_ils}) כחזרה?`)) return;
+                                                    setReturningId(p.id);
+                                                    try {
+                                                      const { error } = await supabase
+                                                        .from('payment_history')
+                                                        .update({ status_code: 3, status_name: 'חזר' })
+                                                        .eq('id', p.id);
+                                                      if (error) throw error;
+                                                      // Refresh expanded list
+                                                      setExpandedRows((rows) =>
+                                                        rows.map((r) =>
+                                                          r.id === p.id
+                                                            ? { ...r, status_code: 3, status_name: 'חזר' }
+                                                            : r
+                                                        )
+                                                      );
+                                                      await loadRuns();
+                                                    } catch (e: any) {
+                                                      alert('שגיאה: ' + (e?.message || e));
+                                                    } finally {
+                                                      setReturningId(null);
+                                                    }
+                                                  }}
+                                                  disabled={returningId === p.id}
+                                                  className="text-xs px-2 py-1 rounded-md bg-red-50 text-red-700 hover:bg-red-100 ring-1 ring-red-200"
+                                                  title="סימון מהיר כחזרה (ללא טיפול נוסף)"
+                                                >
+                                                  {returningId === p.id ? '...' : '↩ סמן חזר'}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setBouncedRow(p)}
+                                                  className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-800 hover:bg-amber-100 ring-1 ring-amber-200"
+                                                  title="פתיחת חלון טיפול - פריסה לחודשים הבאים / שולם אחרת"
+                                                >
+                                                  ⚠ טיפול
+                                                </button>
+                                              </div>
+                                            )}
                                           </td>
                                         </tr>
                                       );
@@ -546,6 +599,35 @@ export default function CollectionHistoryPage() {
           </CardContent>
         </Card>
       </div>
+
+      {bouncedRow && (
+        <BouncedPaymentDialog
+          isOpen={true}
+          paymentId={bouncedRow.id}
+          studentName={
+            students[bouncedRow.student_id]
+              ? `${students[bouncedRow.student_id].last_name} ${students[bouncedRow.student_id].first_name}`
+              : ''
+          }
+          amount={Number(bouncedRow.amount_ils) || 0}
+          paymentDate={bouncedRow.payment_date}
+          onClose={() => setBouncedRow(null)}
+          onDone={async () => {
+            const id = bouncedRow.id;
+            setBouncedRow(null);
+            // Refetch the affected row to update display
+            const { data } = await supabase
+              .from('payment_history')
+              .select('id,student_id,payment_date,amount_ils,status_code,status_name')
+              .eq('id', id)
+              .single();
+            if (data) {
+              setExpandedRows((rows) => rows.map((r) => (r.id === id ? (data as PaymentRow) : r)));
+            }
+            await loadRuns();
+          }}
+        />
+      )}
     </>
   );
 }

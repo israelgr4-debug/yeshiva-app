@@ -37,6 +37,18 @@ export default function FinancesPage() {
             >
               ✂️ חלוקת הוקים משותפות
             </Link>
+            <Link
+              href="/finances/collection/onetime"
+              className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+            >
+              💵 גביה חד-פעמית
+            </Link>
+            <Link
+              href="/finances/collection/history"
+              className="bg-slate-600 hover:bg-slate-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+            >
+              📋 היסטוריית גביות
+            </Link>
           </div>
         </div>
 
