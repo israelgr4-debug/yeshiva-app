@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 interface Stats {
-  target: number;
+  target: number;            // bank target = pending+paid+returned, OR for current/future = roster-based
   creditCollected: number;
   officeCollected: number;
-  bankCollected: number;
+  bankCollected: number;     // status=2 (paid)
+  bankPending: number;       // status=1 (scheduled / not yet paid)
+  bankReturned: number;      // status=3 (returned)
 }
 
 /** Returns YYYY-MM for the current month. */
@@ -60,22 +62,22 @@ export function MonthlyCollectionGauge() {
       setLoading(true);
       const { start: monthStart, end: monthEnd } = monthBounds(monthKey);
 
-      // Target: sum of active students' tuition (paginated).
-      // NOTE: target is computed from the CURRENT roster of active students -
-      // we don't have per-month historical tuition snapshots, so for past
-      // months this is an approximation ("what would today's roster pay").
-      let target = 0;
-      for (let p = 0; p < 20; p++) {
-        const { data } = await supabase
-          .from('student_tuition')
-          .select('monthly_amount, payment_method, students!inner(status, institution_name)')
-          .eq('students.status', 'active')
-          .eq('students.institution_name', 'ישיבה')
-          .in('payment_method', ['bank_ho', 'credit_nedarim', 'office'])
-          .range(p * 1000, (p + 1) * 1000 - 1);
-        if (!data || data.length === 0) break;
-        target += data.reduce((sum, r) => sum + (Number(r.monthly_amount) || 0), 0);
-        if (data.length < 1000) break;
+      // For past months: skip the roster-based target altogether — we'll
+      // derive a real one from payment_history below.
+      let rosterTarget = 0;
+      if (monthKey >= currentMonthKey()) {
+        for (let p = 0; p < 20; p++) {
+          const { data } = await supabase
+            .from('student_tuition')
+            .select('monthly_amount, payment_method, students!inner(status, institution_name)')
+            .eq('students.status', 'active')
+            .eq('students.institution_name', 'ישיבה')
+            .in('payment_method', ['bank_ho', 'credit_nedarim', 'office'])
+            .range(p * 1000, (p + 1) * 1000 - 1);
+          if (!data || data.length === 0) break;
+          rosterTarget += data.reduce((sum, r) => sum + (Number(r.monthly_amount) || 0), 0);
+          if (data.length < 1000) break;
+        }
       }
 
       let creditCollected = 0;
@@ -99,22 +101,46 @@ export function MonthlyCollectionGauge() {
         .lt('payment_date', monthEnd);
       const officeCollected = (office || []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
+      // Pull ALL payment_history for the month (not just paid) so we can
+      // split paid / pending / returned and derive a real bank target.
       let bankCollected = 0;
+      let bankPending   = 0;
+      let bankReturned  = 0;
+      let bankRealTarget = 0;
       for (let p = 0; p < 10; p++) {
         const { data } = await supabase
           .from('payment_history')
-          .select('amount_ils,status_code,payment_date')
-          .eq('status_code', 2)
+          .select('amount_ils,status_code')
           .gte('payment_date', monthStart)
           .lt('payment_date', monthEnd)
           .range(p * 1000, (p + 1) * 1000 - 1);
         if (!data || data.length === 0) break;
-        bankCollected += data.reduce((sum, r) => sum + (Number(r.amount_ils) || 0), 0);
+        for (const r of data) {
+          const amt = Number(r.amount_ils) || 0;
+          const sc  = r.status_code;
+          if (sc === 2) {
+            bankCollected += amt;
+            bankRealTarget += amt;
+          } else if (sc === 1) {
+            bankPending += amt;
+            bankRealTarget += amt;
+          } else if (sc === 3) {
+            bankReturned += amt;
+            bankRealTarget += amt;
+          }
+          // sc 4 (לא לחייב), 9 (בוטל) and others are excluded from the target
+        }
         if (data.length < 1000) break;
       }
 
+      // Target: for past months use what was actually billed (bank) + actuals
+      // for credit/office. For current/future months use roster-based target.
+      const target = monthKey >= currentMonthKey()
+        ? rosterTarget
+        : bankRealTarget + creditCollected + officeCollected;
+
       if (!cancelled) {
-        setStats({ target, creditCollected, officeCollected, bankCollected });
+        setStats({ target, creditCollected, officeCollected, bankCollected, bankPending, bankReturned });
         setLoading(false);
       }
     })();
@@ -217,8 +243,7 @@ export function MonthlyCollectionGauge() {
           <div className="space-y-3">
             <div className="flex justify-between items-center text-sm pb-2 border-b border-gray-200">
               <span className="font-medium">
-                יעד חודשי
-                {!isCurrent && <span className="text-xs text-amber-600 mr-1">(נוכחי - לא היסטורי)</span>}:
+                {isCurrent ? 'יעד חודשי:' : 'חויב בפועל בחודש זה:'}
               </span>
               <span className="font-bold text-lg">{formatCurrency(stats.target)}</span>
             </div>
@@ -243,12 +268,34 @@ export function MonthlyCollectionGauge() {
               </span>
               <span className="font-semibold text-green-700">{formatCurrency(stats.officeCollected)}</span>
             </div>
+            {(stats.bankPending > 0 || stats.bankReturned > 0) && (
+              <>
+                {stats.bankPending > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="flex items-center gap-2 text-amber-700">
+                      <span className="inline-block w-3 h-3 rounded-full bg-amber-400"></span>
+                      ⏳ ממתינים בבנק (status=1)
+                    </span>
+                    <span className="font-semibold text-amber-700">{formatCurrency(stats.bankPending)}</span>
+                  </div>
+                )}
+                {stats.bankReturned > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="flex items-center gap-2 text-red-700">
+                      <span className="inline-block w-3 h-3 rounded-full bg-red-500"></span>
+                      ↩ חזרות בנק (status=3)
+                    </span>
+                    <span className="font-semibold text-red-700">{formatCurrency(stats.bankReturned)}</span>
+                  </div>
+                )}
+              </>
+            )}
             <div className="flex justify-between items-center pt-2 border-t border-gray-200">
               <span className="font-bold">נגבה סה&quot;כ:</span>
               <span className="font-bold text-lg" style={{ color }}>{formatCurrency(total)}</span>
             </div>
             <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-500">נותר:</span>
+              <span className="text-gray-500">{isCurrent ? 'נותר:' : 'לא נגבה:'}</span>
               <span className="text-gray-700 font-semibold">{formatCurrency(Math.max(0, stats.target - total))}</span>
             </div>
           </div>
