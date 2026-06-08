@@ -327,6 +327,12 @@ export default function NedarimPage() {
             <Button onClick={handleSync} disabled={syncing}>
               {syncing ? 'מסנכרן...' : '🔄 סנכרן מנדרים'}
             </Button>
+            <Link
+              href="/finances/nedarim/queue-history"
+              className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium inline-flex items-center"
+            >
+              📜 היסטוריית פעולות
+            </Link>
           </div>
         </div>
 
