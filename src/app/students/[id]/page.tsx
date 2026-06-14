@@ -103,6 +103,14 @@ export default function StudentDetailPage() {
         ) {
           (updates as any).neighborhood_code = (familyFormData as any).neighborhood_code;
         }
+        // yichus_code / yichus_name: code is nullable; sync both whenever code changed
+        if (
+          (familyFormData as any).yichus_code !== undefined &&
+          (familyFormData as any).yichus_code !== (existing as any).yichus_code
+        ) {
+          (updates as any).yichus_code = (familyFormData as any).yichus_code;
+          (updates as any).yichus_name = (familyFormData as any).yichus_name || null;
+        }
         if (Object.keys(updates).length > 0) {
           await updateData<Family>('families', familyId, updates);
         }

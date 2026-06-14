@@ -54,7 +54,15 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     institution_name: student?.institution_name || 'ישיבה',
     passport_number: student?.passport_number || '',
     govt_id_number: (student as any)?.govt_id_number || '',
+    health_fund_code: (student as any)?.health_fund_code ?? null,
+    health_fund_name: (student as any)?.health_fund_name || '',
+    admission_date: student?.admission_date || '',
+    room_number: (student as any)?.room_number ?? null,
   });
+
+  // Lookups
+  const [healthFunds, setHealthFunds] = useState<{ code: number; name: string }[]>([]);
+  const [yichusList, setYichusList] = useState<{ code: number; name: string }[]>([]);
 
   // Photo upload state
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -105,6 +113,8 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     bank_branch: initialFamily?.bank_branch || '',
     bank_account: initialFamily?.bank_account || '',
     billing_notes: initialFamily?.billing_notes || '',
+    yichus_code: (initialFamily as any)?.yichus_code ?? null,
+    yichus_name: (initialFamily as any)?.yichus_name || '',
   };
   const [familyData, setFamilyData] = useState(initialFamilyData);
   // Track whether the user actually edited any family field (guards against
@@ -134,6 +144,14 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
       // Load base machzor setting
       const base = await getSetting<number>('base_machzor_for_shiur_alef', DEFAULT_BASE_MACHZOR);
       setBaseMachzor(base);
+
+      // Load lookup tables (health funds + yichus)
+      const [hf, yi] = await Promise.all([
+        supabase.from('lookup_health_funds').select('code,name').order('code'),
+        supabase.from('lookup_yichus').select('code,name').order('code'),
+      ]);
+      setHealthFunds((hf.data || []) as any);
+      setYichusList((yi.data || []) as any);
     }
     loadOptions();
   }, [fetchData, getSetting]);
@@ -271,6 +289,8 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
       bank_branch: matchedFamily.bank_branch || '',
       bank_account: matchedFamily.bank_account || '',
       billing_notes: matchedFamily.billing_notes || '',
+      yichus_code: (matchedFamily as any).yichus_code ?? null,
+      yichus_name: (matchedFamily as any).yichus_name || '',
     });
     setMatchedFamily(null);
     setMatchedSiblingCount(0);
@@ -307,6 +327,8 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
           bank_branch: selected.bank_branch || '',
           bank_account: selected.bank_account || '',
           billing_notes: selected.billing_notes || '',
+          yichus_code: (selected as any).yichus_code ?? null,
+          yichus_name: (selected as any).yichus_name || '',
         });
       }
     } else {
@@ -513,10 +535,50 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             label="תאריך קבלה"
             name="admission_date"
             type="date"
-            value={student?.admission_date || ''}
-            disabled
+            value={studentData.admission_date}
+            onChange={handleStudentChange}
           />
         </div>
+
+        {/* קופת חולים + חדר */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-100">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">קופת חולים</label>
+            <select
+              value={studentData.health_fund_code ?? ''}
+              onChange={(e) => {
+                const code = e.target.value ? Number(e.target.value) : null;
+                const hf = healthFunds.find((h) => h.code === code);
+                setStudentData((p) => ({
+                  ...p,
+                  health_fund_code: code,
+                  health_fund_name: hf?.name || '',
+                }));
+              }}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">— ללא —</option>
+              {healthFunds.map((h) => (
+                <option key={h.code} value={h.code}>{h.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">מספר חדר בפנימייה</label>
+            <input
+              name="room_number"
+              type="number"
+              min={0}
+              value={studentData.room_number ?? ''}
+              onChange={(e) => {
+                const v = e.target.value === '' ? null : Number(e.target.value);
+                setStudentData((p) => ({ ...p, room_number: v }));
+              }}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
         <div className="mt-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">הערות</label>
           <textarea
@@ -681,6 +743,30 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             value={familyData.home_phone}
             onChange={handleFamilyChange}
           />
+        </div>
+
+        {/* ייחוס */}
+        <div className="mt-6">
+          <label className="block text-sm font-medium text-gray-700 mb-1">ייחוס</label>
+          <select
+            value={familyData.yichus_code ?? ''}
+            onChange={(e) => {
+              const code = e.target.value ? Number(e.target.value) : null;
+              const y = yichusList.find((y) => y.code === code);
+              setFamilyData((p) => ({
+                ...p,
+                yichus_code: code,
+                yichus_name: y?.name || '',
+              }));
+              setFamilyTouched(true);
+            }}
+            className="w-full sm:max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">— ללא —</option>
+            {yichusList.map((y) => (
+              <option key={y.code} value={y.code}>{y.name}</option>
+            ))}
+          </select>
         </div>
 
         {/* בנק */}
