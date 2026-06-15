@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { FamilyPicker } from '@/components/finances/FamilyPicker';
@@ -281,6 +282,8 @@ export default function NedarimMatchPage() {
   const formatCurrency = (n: number) => `₪${Number(n).toLocaleString('he-IL')}`;
 
   return (
+    <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary). למנהל ולצופה אין גישה לפעולות כתיבה.">
+
     <>
       <Header title="שיוך נדרים למשפחות" subtitle="עבור על כל הוראת קבע ושייך למשפחה" />
 
@@ -542,5 +545,6 @@ export default function NedarimMatchPage() {
         )}
       </div>
     </>
+    </PageGuard>
   );
 }

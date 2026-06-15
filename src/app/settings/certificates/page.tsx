@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/hooks/useAuth';
@@ -153,6 +154,8 @@ export default function CertificateEditorPage() {
   }
 
   return (
+    <PageGuard requires="admin" message="עמוד זה דורש הרשאת admin בלבד.">
+
     <>
       <Header
         title="עורך אישורים"
@@ -460,5 +463,6 @@ export default function CertificateEditorPage() {
         )}
       </div>
     </>
+    </PageGuard>
   );
 }

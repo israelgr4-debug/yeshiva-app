@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
@@ -122,6 +123,8 @@ export default function NedarimQueueHistoryPage() {
   };
 
   return (
+    <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary). למנהל ולצופה אין גישה לפעולות כתיבה.">
+
     <>
       <Header title="היסטוריית פעולות נדרים+" subtitle="כל הפעולות שעובדו או נכשלו מול נדרים פלוס" />
 
@@ -286,5 +289,6 @@ export default function NedarimQueueHistoryPage() {
         </Card>
       </div>
     </>
+    </PageGuard>
   );
 }

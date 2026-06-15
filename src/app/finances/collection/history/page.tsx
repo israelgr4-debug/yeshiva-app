@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { BouncedPaymentDialog } from '@/components/finances/BouncedPaymentDialog';
+import { useAuth } from '@/hooks/useAuth';
 
 interface CollectionRun {
   payment_date: string;
@@ -40,6 +41,8 @@ interface StudentLite {
 type TabId = 'forecast' | 'history';
 
 export default function CollectionHistoryPage() {
+  const { permissions } = useAuth();
+  const canWrite = permissions.canWrite;
   const [runs, setRuns] = useState<CollectionRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -292,7 +295,7 @@ export default function CollectionHistoryPage() {
           >
             כספים
           </Link>
-          {activeTab === 'forecast' && (
+          {activeTab === 'forecast' && canWrite && (
             <Button
               size="sm"
               onClick={handleRefreshForecast}
@@ -486,7 +489,7 @@ export default function CollectionHistoryPage() {
                         {isExpanded && (
                           <div className="border-t border-gray-200 bg-gray-50 p-3 space-y-3">
                             {/* Mark-as-paid button for past runs with pending payments */}
-                            {isHistory && hasPending && (
+                            {isHistory && hasPending && canWrite && (
                               <div className="bg-amber-50 border border-amber-200 rounded p-3 flex items-center justify-between">
                                 <span className="text-sm text-amber-800">
                                   ⚠️ יש {r.count_pending} תשלומים במצב "ממתין" (סטטוס 1). אם הם בוצעו - סמן אותם כנפרעו.
@@ -587,7 +590,7 @@ export default function CollectionHistoryPage() {
                                             {p.status_name || '-'}
                                           </td>
                                           <td className="px-3 py-2">
-                                            {canMark && (
+                                            {canMark && canWrite && (
                                               <div className="flex gap-1">
                                                 <button
                                                   type="button"

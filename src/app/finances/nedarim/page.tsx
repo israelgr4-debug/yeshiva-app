@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
@@ -520,6 +521,8 @@ function QueuePreviewDialog({
   }, {});
 
   return (
+    <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary). למנהל ולצופה אין גישה לפעולות כתיבה.">
+
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir="rtl">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="px-6 py-4 border-b bg-amber-50 flex justify-between items-start">
@@ -626,5 +629,6 @@ function QueuePreviewDialog({
         </div>
       </div>
     </div>
+    </PageGuard>
   );
 }

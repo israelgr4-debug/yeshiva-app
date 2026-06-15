@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { supabase } from '@/lib/supabase';
@@ -173,6 +174,8 @@ export default function DormitoryManagePage() {
   const shiurOptions = [{ value: '', label: 'כל השיעורים' }, ...SHIURIM.map((s) => ({ value: s.name, label: s.name }))];
 
   return (
+    <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary). למנהל ולצופה אין גישה לפעולות כתיבה.">
+
     <>
       <Header title="ניהול פנימייה" subtitle="שיבוץ חדרים המוני לתלמידים" />
 
@@ -271,5 +274,6 @@ export default function DormitoryManagePage() {
         </div>
       </div>
     </>
+    </PageGuard>
   );
 }

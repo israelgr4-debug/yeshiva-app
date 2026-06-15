@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { SHIURIM_SECTIONS, KIBBUTZ_SECTIONS } from '@/lib/dorm-map';
@@ -109,6 +110,8 @@ export default function DormitoryEditPage() {
   if (loading) return <div className="p-8">טוען...</div>;
 
   return (
+    <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary). למנהל ולצופה אין גישה לפעולות כתיבה.">
+
     <>
       <Header title="עריכת מפת הפנימייה" subtitle="בנה פעם אחת ושמור - יוצג במפה" />
 
@@ -215,5 +218,6 @@ export default function DormitoryEditPage() {
         </div>
       </div>
     </>
+    </PageGuard>
   );
 }

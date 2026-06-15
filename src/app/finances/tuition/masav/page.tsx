@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { fetchAll } from '@/lib/supabase-paginate';
@@ -291,6 +292,8 @@ export default function MasavExportPage() {
   };
 
   return (
+    <PageGuard requires="generateMasav" message="הפקת קובץ מס״ב דורשת הרשאת admin או secretary.">
+
     <>
       <Header title="ייצוא קובץ מס״ב" subtitle="הוראות קבע בנקאיות לבנק" />
 
@@ -526,5 +529,6 @@ export default function MasavExportPage() {
         </Card>
       </div>
     </>
+    </PageGuard>
   );
 }

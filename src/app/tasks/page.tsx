@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { useTasks, Task, TaskPriority, TaskStatus } from '@/hooks/useTasks';
 import { supabase } from '@/lib/supabase';
@@ -126,6 +127,8 @@ export default function TasksPage() {
   };
 
   return (
+    <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary). למנהל ולצופה אין גישה לפעולות כתיבה.">
+
     <>
       <Header
         title="משימות"
@@ -309,5 +312,6 @@ export default function TasksPage() {
         />
       )}
     </>
+    </PageGuard>
   );
 }

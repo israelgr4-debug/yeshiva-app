@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { useSupabase } from '@/hooks/useSupabase';
@@ -154,6 +155,8 @@ export default function ListsPage() {
   const clearShiurim = () => setSelectedShiurim(new Set());
 
   return (
+    <PageGuard requires="generateReports" message="הפקת דוחות דורשת הרשאת admin / manager / secretary.">
+
     <>
       <Header title="דוחות" subtitle="הפקת דוחות ורשימות" />
 
@@ -285,5 +288,6 @@ export default function ListsPage() {
         </div>
       </div>
     </>
+    </PageGuard>
   );
 }

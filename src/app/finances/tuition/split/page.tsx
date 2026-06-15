@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
@@ -177,6 +178,8 @@ export default function TuitionSplitPage() {
   const formatCurrency = (n: number) => `₪${Number(n).toLocaleString('he-IL')}`;
 
   return (
+    <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary). למנהל ולצופה אין גישה לפעולות כתיבה.">
+
     <>
       <Header title="חלוקת הוראות קבע רב-תלמידיות" subtitle="כמה משלם כל תלמיד בתוך הוק משפחתית" />
 
@@ -361,5 +364,6 @@ export default function TuitionSplitPage() {
         )}
       </div>
     </>
+    </PageGuard>
   );
 }

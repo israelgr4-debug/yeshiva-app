@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { ReportSelector } from '@/components/reports/ReportSelector';
 import { CertificatePreview } from '@/components/reports/CertificatePreview';
 import { SendEmailDialog } from '@/components/email/SendEmailDialog';
@@ -85,6 +86,7 @@ export default function ReportsPage() {
   };
 
   return (
+    <PageGuard requires="exportCertificates" message="ייצוא אישורים דורש הרשאת admin / manager / secretary.">
     <div className="space-y-6 animate-fadeIn p-4 md:p-8 max-w-full overflow-x-hidden">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">אישורים</h1>
@@ -214,5 +216,6 @@ export default function ReportsPage() {
         />
       )}
     </div>
+    </PageGuard>
   );
 }

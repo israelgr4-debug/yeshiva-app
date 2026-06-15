@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
 import { fetchAll } from '@/lib/supabase-paginate';
@@ -344,6 +345,8 @@ export default function TuitionSetupPage() {
   }, [students, tuition, statusFilter]);
 
   return (
+    <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary). למנהל ולצופה אין גישה לפעולות כתיבה.">
+
     <>
       <Header title="הגדרת שכר לימוד" subtitle="סדר את אופן התשלום של כל תלמיד" />
 
@@ -554,5 +557,6 @@ export default function TuitionSetupPage() {
         </Card>
       </div>
     </>
+    </PageGuard>
   );
 }

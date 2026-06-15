@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
 
@@ -107,6 +108,8 @@ export default function NedarimGroupsPage() {
   }
 
   return (
+    <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary). למנהל ולצופה אין גישה לפעולות כתיבה.">
+
     <>
       <Header title="קטגוריות נדרים" subtitle="סיווג קטגוריות ל-שכר לימוד / תרומה / אחר" />
 
@@ -191,5 +194,6 @@ export default function NedarimGroupsPage() {
         </Card>
       </div>
     </>
+    </PageGuard>
   );
 }

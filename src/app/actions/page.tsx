@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
+import { PageGuard } from '@/components/ui/PageGuard';
 import { MachzorTab } from '@/components/actions/MachzorTab';
 import { EquivalentClassTab } from '@/components/actions/EquivalentClassTab';
 import { BanksTab } from '@/components/actions/BanksTab';
@@ -32,6 +33,7 @@ export default function ActionsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('machzor');
 
   return (
+    <PageGuard requires="write" message="עמוד פעולות הניהול מיועד למשתמשים עם הרשאת כתיבה (admin / secretary).">
     <>
       <Header title="פעולות" subtitle="פעולות ניהול מערכתיות" />
 
@@ -67,5 +69,6 @@ export default function ActionsPage() {
         {activeTab === 'banks' && <BanksTab />}
       </div>
     </>
+    </PageGuard>
   );
 }
