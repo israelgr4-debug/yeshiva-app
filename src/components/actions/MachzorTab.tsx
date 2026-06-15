@@ -5,9 +5,12 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { useYearAdvance, AdvancePreview } from '@/hooks/useYearAdvance';
 import { useSystemSettings, SystemSettings, DEFAULT_SETTINGS } from '@/hooks/useSystemSettings';
+import { useAuth } from '@/hooks/useAuth';
 import { formatMachzorName } from '@/lib/shiurim';
 
 export function MachzorTab() {
+  const { permissions } = useAuth();
+  const canWrite = permissions.canWrite;
   const { previewAdvance, executeAdvance } = useYearAdvance();
   const { getAllSettings, setSetting } = useSystemSettings();
 
@@ -83,7 +86,8 @@ export function MachzorTab() {
                 value={editingYear}
                 onChange={(e) => setEditingYear(e.target.value)}
                 placeholder='תשפ"ו'
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={!canWrite}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
               />
             </div>
             <div>
@@ -95,7 +99,8 @@ export function MachzorTab() {
                   type="number"
                   value={editingBase}
                   onChange={(e) => setEditingBase(parseInt(e.target.value) || 0)}
-                  className="w-28 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!canWrite}
+                  className="w-28 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                 />
                 <span className="flex items-center text-sm text-gray-600 px-2">
                   ← {formatMachzorName(editingBase)}
@@ -103,9 +108,11 @@ export function MachzorTab() {
               </div>
             </div>
           </div>
-          <div className="mt-4 flex justify-end">
-            <Button onClick={handleSaveSettings}>שמור הגדרות</Button>
-          </div>
+          {canWrite && (
+            <div className="mt-4 flex justify-end">
+              <Button onClick={handleSaveSettings}>שמור הגדרות</Button>
+            </div>
+          )}
 
           {/* Mapping preview */}
           <div className="mt-6 pt-4 border-t border-gray-100">
@@ -175,7 +182,7 @@ export function MachzorTab() {
                 </p>
               </div>
 
-              {!showConfirm ? (
+              {!canWrite ? null : !showConfirm ? (
                 <Button
                   onClick={() => setShowConfirm(true)}
                   disabled={executing}

@@ -5,10 +5,13 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
 import { Student } from '@/lib/types';
 import { SHIURIM } from '@/lib/shiurim';
+import { useAuth } from '@/hooks/useAuth';
 
 type Row = Pick<Student, 'id' | 'first_name' | 'last_name' | 'shiur' | 'status' | 'is_chinuch'>;
 
 export function ChinuchTab() {
+  const { permissions } = useAuth();
+  const canWrite = permissions.canWrite;
   const [students, setStudents] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [shiurFilter, setShiurFilter] = useState<string>('all');
@@ -176,9 +179,9 @@ export function ChinuchTab() {
                         <input
                           type="checkbox"
                           checked={!!s.is_chinuch}
-                          disabled={isSaving}
+                          disabled={isSaving || !canWrite}
                           onChange={() => toggle(s)}
-                          className="w-5 h-5 cursor-pointer accent-purple-600"
+                          className="w-5 h-5 accent-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </td>
                       <td className="px-3 py-2 font-medium">{s.last_name}</td>

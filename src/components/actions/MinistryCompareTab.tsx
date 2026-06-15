@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase';
 import { Student } from '@/lib/types';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
+import { useAuth } from '@/hooks/useAuth';
 import { SHIURIM } from '@/lib/shiurim';
 
 type MinistryType = 'dat' | 'chinuch';
@@ -201,6 +202,8 @@ async function parseChinuchXlsx(file: File): Promise<MinistryRow[]> {
 export function MinistryCompareTab() {
   const { getSetting, setSetting } = useSystemSettings();
 
+  const { permissions } = useAuth();
+  const canWrite = permissions.canWrite;
   const [datData, setDatData] = useState<StoredData | null>(null);
   const [chinuchData, setChinuchData] = useState<StoredData | null>(null);
   const [students, setStudents] = useState<Student[] | null>(null);
@@ -300,6 +303,7 @@ export function MinistryCompareTab() {
   };
 
   const handleFile = async (type: MinistryType, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canWrite) return;
     const file = e.target.files?.[0];
     if (!file) return;
     await processFile(type, file);
@@ -331,6 +335,7 @@ export function MinistryCompareTab() {
   };
 
   const handleClear = async (type: MinistryType) => {
+    if (!canWrite) return;
     if (!confirm(`למחוק את הדוח של ${type === 'dat' ? 'משרד הדתות' : 'משרד החינוך'}?`)) return;
     const key = type === 'dat' ? 'ministry_dat_data' : 'ministry_chinuch_data';
     await setSetting(key, null);
@@ -776,21 +781,25 @@ export function MinistryCompareTab() {
         <p className="text-xs text-gray-500 mb-2">
           {isDragging ? '🎯 שחרר כאן...' : `גרור לכאן קובץ ${ext} או השתמש בכפתור`}
         </p>
-        <div className="flex gap-2">
-          <label className="flex-1 cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded text-sm font-medium border border-blue-200 text-center">
-            {uploading === type ? 'מעלה...' : data ? 'החלף קובץ' : `📁 בחר ${ext}`}
-            <input
-              type="file"
-              accept={type === 'dat' ? '.csv,text/csv' : '.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
-              onChange={(e) => handleFile(type, e)}
-              disabled={uploading === type}
-              className="hidden"
-            />
-          </label>
-          {data && (
-            <Button variant="secondary" onClick={() => handleClear(type)}>מחק</Button>
-          )}
-        </div>
+        {canWrite ? (
+          <div className="flex gap-2">
+            <label className="flex-1 cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded text-sm font-medium border border-blue-200 text-center">
+              {uploading === type ? 'מעלה...' : data ? 'החלף קובץ' : `📁 בחר ${ext}`}
+              <input
+                type="file"
+                accept={type === 'dat' ? '.csv,text/csv' : '.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+                onChange={(e) => handleFile(type, e)}
+                disabled={uploading === type}
+                className="hidden"
+              />
+            </label>
+            {data && (
+              <Button variant="secondary" onClick={() => handleClear(type)}>מחק</Button>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 italic">🔒 העלאה ומחיקה דורשת הרשאת כתיבה</p>
+        )}
       </div>
     );
   };

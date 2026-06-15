@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 
 export function BanksTab() {
+  const { permissions } = useAuth();
+  const canWrite = permissions.canWrite;
   const [importing, setImporting] = useState(false);
   const [count, setCount] = useState<number | null>(null);
   const [lastImported, setLastImported] = useState<string | null>(null);
@@ -79,9 +82,13 @@ export function BanksTab() {
             <p className="text-sm font-bold text-gray-700 mt-2">{formatDT(lastImported)}</p>
           </div>
         </div>
-        <Button onClick={handleImport} disabled={importing}>
-          {importing ? '⏳ מייבא... (1-2 דקות)' : '📥 ייבוא/עדכון סניפים'}
-        </Button>
+        {canWrite ? (
+          <Button onClick={handleImport} disabled={importing}>
+            {importing ? '⏳ מייבא... (1-2 דקות)' : '📥 ייבוא/עדכון סניפים'}
+          </Button>
+        ) : (
+          <p className="text-xs text-slate-400 italic">🔒 ייבוא דורש הרשאת כתיבה</p>
+        )}
         <p className="text-xs text-gray-500 mt-3">
           מומלץ לרענן פעם בחודש-חודשיים. הפעולה לא מוחקת סניפים ישנים, רק מעדכנת.
         </p>

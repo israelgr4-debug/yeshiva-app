@@ -6,8 +6,11 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
 import { Student } from '@/lib/types';
 import { SHIURIM } from '@/lib/shiurim';
+import { useAuth } from '@/hooks/useAuth';
 
 export function EquivalentClassTab() {
+  const { permissions } = useAuth();
+  const canWrite = permissions.canWrite;
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -119,14 +122,16 @@ export function EquivalentClassTab() {
           <div className="flex items-end text-sm text-gray-600">
             {loading ? 'טוען...' : `${students.length} תלמידים פעילים`}
           </div>
-          <div className="flex items-end gap-2">
-            <Button variant="secondary" onClick={handleClearAll} disabled={saving}>
-              איפוס
-            </Button>
-            <Button onClick={handleSave} disabled={saving || pendingChanges.length === 0}>
-              {saving ? 'מבצע...' : `✓ בצע ${pendingChanges.length > 0 ? `(${pendingChanges.length})` : ''}`}
-            </Button>
-          </div>
+          {canWrite && (
+            <div className="flex items-end gap-2">
+              <Button variant="secondary" onClick={handleClearAll} disabled={saving}>
+                איפוס
+              </Button>
+              <Button onClick={handleSave} disabled={saving || pendingChanges.length === 0}>
+                {saving ? 'מבצע...' : `✓ בצע ${pendingChanges.length > 0 ? `(${pendingChanges.length})` : ''}`}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Bulk paste helper */}
@@ -163,7 +168,8 @@ export function EquivalentClassTab() {
                           inputMode="numeric"
                           value={next}
                           onChange={(e) => setNewValues((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                          className={`w-20 px-2 py-1 border rounded text-center font-medium ${
+                          disabled={!canWrite}
+                          className={`w-20 px-2 py-1 border rounded text-center font-medium disabled:bg-gray-100 ${
                             changed ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
                           }`}
                           placeholder="—"

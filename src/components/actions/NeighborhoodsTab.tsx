@@ -5,8 +5,11 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useNeighborhoods } from '@/hooks/useNeighborhoods';
+import { useAuth } from '@/hooks/useAuth';
 
 export function NeighborhoodsTab() {
+  const { permissions } = useAuth();
+  const canWrite = permissions.canWrite;
   const { neighborhoods, loading, create, remove, rename } = useNeighborhoods();
   const [search, setSearch] = useState('');
   const [newName, setNewName] = useState('');
@@ -76,6 +79,7 @@ export function NeighborhoodsTab() {
         </p>
 
         {/* Add form */}
+        {canWrite && (
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-5">
           <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
             <span className="w-1 h-4 bg-gradient-to-b from-emerald-500 to-teal-600 rounded-full" />
@@ -97,6 +101,7 @@ export function NeighborhoodsTab() {
             </Button>
           </form>
         </div>
+        )}
 
         {/* List + search */}
         <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
@@ -141,24 +146,26 @@ export function NeighborhoodsTab() {
                 ) : (
                   <>
                     <span className="text-sm text-slate-800 flex-1 truncate">{n.name}</span>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => { setEditingCode(n.code); setEditValue(n.name); }}
-                        className="text-slate-400 hover:text-blue-600 text-xs px-1"
-                        title="ערוך"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(n.code, n.name)}
-                        className="text-slate-400 hover:text-red-600 text-xs px-1"
-                        title="מחק"
-                      >
-                        🗑️
-                      </button>
-                    </div>
+                    {canWrite && (
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => { setEditingCode(n.code); setEditValue(n.name); }}
+                          className="text-slate-400 hover:text-blue-600 text-xs px-1"
+                          title="ערוך"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(n.code, n.name)}
+                          className="text-slate-400 hover:text-red-600 text-xs px-1"
+                          title="מחק"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

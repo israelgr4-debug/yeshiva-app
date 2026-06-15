@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
-import { PageGuard } from '@/components/ui/PageGuard';
+import { useAuth } from '@/hooks/useAuth';
 import { MachzorTab } from '@/components/actions/MachzorTab';
 import { EquivalentClassTab } from '@/components/actions/EquivalentClassTab';
 import { BanksTab } from '@/components/actions/BanksTab';
@@ -31,13 +31,23 @@ const TABS: TabDef[] = [
 
 export default function ActionsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('machzor');
+  const { permissions } = useAuth();
+  const readOnly = !permissions.canWrite;
 
   return (
-    <PageGuard requires="write" message="עמוד פעולות הניהול מיועד למשתמשים עם הרשאת כתיבה (admin / secretary).">
     <>
       <Header title="פעולות" subtitle="פעולות ניהול מערכתיות" />
 
       <div className="p-4 md:p-8">
+        {readOnly && (
+          <div className="mb-4 bg-blue-50 border border-blue-200 text-blue-900 rounded-lg p-3 text-sm flex items-center gap-2">
+            <span className="text-lg">👁️</span>
+            <span>
+              <strong>מצב צפייה בלבד.</strong> כפעולות כתיבה (כפתורי שמירה, העלאה, מחיקה) מוסתרות.
+              לקבלת הרשאת ביצוע - פנה למנהל המערכת.
+            </span>
+          </div>
+        )}
         {/* Tab navigation */}
         <div className="border-b border-gray-200 mb-6">
           <nav className="flex gap-2 overflow-x-auto whitespace-nowrap" aria-label="Tabs">
@@ -69,6 +79,5 @@ export default function ActionsPage() {
         {activeTab === 'banks' && <BanksTab />}
       </div>
     </>
-    </PageGuard>
   );
 }
