@@ -550,7 +550,11 @@ export default function StudentDetailPage() {
                   )}
 
                   {activeTab === 'donations' && (
-                    <StudentTuitionTab studentId={student.id} familyId={student.family_id || undefined} />
+                    <StudentTuitionTab
+                      studentId={student.id}
+                      familyId={student.family_id || undefined}
+                      studentStatus={student.status as any}
+                    />
                   )}
 
                   {activeTab === 'dormitory' && (

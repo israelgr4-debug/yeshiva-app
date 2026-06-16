@@ -49,6 +49,12 @@ export default function FinancesPage() {
             >
               📋 היסטוריית גביות
             </Link>
+            <Link
+              href="/finances/inactive-payers"
+              className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+            >
+              ⚠️ עזבו אך עדיין משלמים
+            </Link>
           </div>
         </div>
 

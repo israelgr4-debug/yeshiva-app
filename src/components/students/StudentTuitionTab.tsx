@@ -50,10 +50,20 @@ interface UnifiedPayment {
   note: string | null;
 }
 
+type StudentStatus = 'active' | 'chizuk' | 'inactive' | 'graduated';
+
 interface Props {
   studentId: string;
   familyId?: string;
+  studentStatus?: StudentStatus;
 }
+
+const STATUS_META: Record<StudentStatus, { label: string; classes: string; emoji: string; warn?: boolean }> = {
+  active:    { label: 'פעיל',        classes: 'bg-emerald-50 text-emerald-800 border-emerald-200', emoji: '🟢' },
+  chizuk:    { label: 'בחיזוק (מושהה)', classes: 'bg-amber-50 text-amber-800 border-amber-200',     emoji: '🟡', warn: true },
+  inactive:  { label: 'לא פעיל',     classes: 'bg-red-50 text-red-800 border-red-200',             emoji: '🔴', warn: true },
+  graduated: { label: 'סיים',        classes: 'bg-slate-50 text-slate-700 border-slate-200',        emoji: '⚪', warn: true },
+};
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   bank_ho: 'הוראת קבע בנקאית (מס"ב)',
@@ -77,7 +87,7 @@ const SOURCE_LABELS: Record<string, string> = {
   office: '💰 משרד',
 };
 
-export function StudentTuitionTab({ studentId, familyId }: Props) {
+export function StudentTuitionTab({ studentId, familyId, studentStatus }: Props) {
   const [tuition, setTuition] = useState<StudentTuition | null>(null);
   const [familyNedarimSubs, setFamilyNedarimSubs] = useState<NedarimSub[]>([]);
   const [siblingAssignments, setSiblingAssignments] = useState<SiblingAssignment[]>([]);
@@ -231,8 +241,28 @@ export function StudentTuitionTab({ studentId, familyId }: Props) {
     .filter((p) => p.status === 'success')
     .reduce((sum, p) => sum + Number(p.amount), 0);
 
+  const statusMeta = studentStatus ? STATUS_META[studentStatus] : null;
+  const isBankHO = tuition.payment_method === 'bank_ho';
+  const isCreditNed = tuition.payment_method === 'credit_nedarim';
+  const removedFromHK = statusMeta?.warn && (isBankHO || isCreditNed) && tuition.active;
+
   return (
     <div className="space-y-6">
+      {/* Status banner */}
+      {statusMeta && (
+        <div className={`rounded-lg border p-3 flex items-center justify-between flex-wrap gap-2 ${statusMeta.classes}`}>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-xl">{statusMeta.emoji}</span>
+            <span className="font-semibold">סטטוס תלמיד: {statusMeta.label}</span>
+          </div>
+          {removedFromHK && (
+            <div className="text-xs">
+              ⚠ התלמיד אינו פעיל אך עדיין מסומן כפעיל בהוראת הקבע - מומלץ להסיר ידנית ולעדכן את ההוק
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Setup: how does this student pay */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <h4 className="text-sm font-semibold text-gray-700 mb-3">אופן תשלום שכר לימוד</h4>

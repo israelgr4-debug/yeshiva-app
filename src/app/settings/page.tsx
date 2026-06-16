@@ -9,6 +9,7 @@ import { NedarimPlusSettings } from '@/components/settings/NedarimPlusSettings';
 import { EmailSettings } from '@/components/settings/EmailSettings';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
+import { PageGuard } from '@/components/ui/PageGuard';
 
 export default function SettingsPage() {
   const { permissions } = useAuth();
@@ -34,6 +35,7 @@ export default function SettingsPage() {
   };
 
   return (
+    <PageGuard requires="write" message="עמוד ההגדרות סגור לתפקיד 'מנהל' (manager). פתוח רק ל-admin / secretary.">
     <>
       <Header title="הגדרות" subtitle="תצורה של המערכת" />
 
@@ -191,5 +193,6 @@ export default function SettingsPage() {
         </div>
       </div>
     </>
+    </PageGuard>
   );
 }

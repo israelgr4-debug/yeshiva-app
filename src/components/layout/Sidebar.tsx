@@ -113,8 +113,10 @@ export function Sidebar() {
         <nav className="flex-1 px-2.5 py-3 overflow-y-auto">
           <ul className="space-y-0.5">
             {menuItems.filter((item) => {
-              // Graduates-only role: only see /graduates and signs out from anywhere else
+              // Graduates-only role: only see /graduates
               if (permissions.isGraduatesOnly) return item.href === '/graduates';
+              // Settings: hidden from manager + viewer (only admin + secretary)
+              if (item.href === '/settings' && !permissions.canWrite) return false;
               return true;
             }).map((item) => {
               const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
