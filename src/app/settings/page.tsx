@@ -35,7 +35,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <PageGuard requires="write" message="עמוד ההגדרות סגור לתפקיד 'מנהל' (manager). פתוח רק ל-admin / secretary.">
+    <PageGuard requires="admin" message="עמוד ההגדרות מיועד למנהל ראשי (admin) בלבד.">
     <>
       <Header title="הגדרות" subtitle="תצורה של המערכת" />
 

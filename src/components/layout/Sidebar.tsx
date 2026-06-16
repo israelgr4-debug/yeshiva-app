@@ -115,8 +115,8 @@ export function Sidebar() {
             {menuItems.filter((item) => {
               // Graduates-only role: only see /graduates
               if (permissions.isGraduatesOnly) return item.href === '/graduates';
-              // Settings: hidden from manager + viewer (only admin + secretary)
-              if (item.href === '/settings' && !permissions.canWrite) return false;
+              // Settings: admin-only
+              if (item.href === '/settings' && !permissions.isAdmin) return false;
               return true;
             }).map((item) => {
               const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
