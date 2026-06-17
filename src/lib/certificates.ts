@@ -188,7 +188,7 @@ export const REPORT_TYPES: ReportType[] = [
     name: 'אישור עם שעות ומילגה',
     recipient: 'לכל המעונין:',
     extraFields: [
-      { key: 'amount', label: 'סכום מילגה חודשית (ש"ח)', type: 'number', placeholder: '1650' },
+      { key: 'amount', label: 'סכום מילגה חודשית (ש"ח)', type: 'number', placeholder: '1750' },
     ],
     buildBody: (student, year, extras) =>
       `הננו לאשר בזאת כי ה"ה  ${studentLineWithId(student)}\nלומד בישיבתנו כל היום, ותורתו אומנותו.\n שעות הלימוד:\nימים א - ה\nבין השעות 9:00 - 13:30, לפנה"צ,\nומ 15:00 עד 19:30 אחה"צ.\nסה"כ 45 שעות שבועיות.\nהנ"ל מקבל תמיכה חודשית בסך ${extras.amount || '___'} ₪\nמתייחס לשנת הלימודים ${year}`,

@@ -79,9 +79,14 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  // Reset extras when report type changes
+  // Reset extras when report type changes. Some certs have a baked-in default:
+  //   - with_hours_milga → amount=1750 (scholarship the yeshiva pays)
   useEffect(() => {
-    setExtras({});
+    if (selectedReportId === 'with_hours_milga') {
+      setExtras({ amount: '1750' });
+    } else {
+      setExtras({});
+    }
   }, [selectedReportId]);
 
   // Auto-fill exit_date for 'left' certificate when both student + report are set
