@@ -94,12 +94,18 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
     }
   }, [selectedStudent, selectedReport]);
 
-  // Auto-fill tuition monthly amount for 'with_tuition' / 'with_hours_milga' /
-  // 'tuition_with_history' from the student's student_tuition record
+  // Auto-fill amount for tuition-related certificates from student_tuition.
+  // NOT for 'with_hours_milga' - that one has a fixed default of 1750 (the
+  // milga is the scholarship the yeshiva pays, not the tuition the student
+  // pays). User can still override.
   useEffect(() => {
     if (!selectedStudent || !selectedReport) return;
     const cert = selectedReport.id;
-    if (cert !== 'with_tuition' && cert !== 'tuition_with_history' && cert !== 'with_hours_milga') return;
+    if (cert === 'with_hours_milga') {
+      setExtras((prev) => prev.amount ? prev : { ...prev, amount: '1750' });
+      return;
+    }
+    if (cert !== 'with_tuition' && cert !== 'tuition_with_history') return;
     (async () => {
       const { data } = await supabase
         .from('student_tuition')
