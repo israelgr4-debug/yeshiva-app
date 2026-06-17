@@ -9,7 +9,7 @@ interface Props {
   registrations: Registration[];
 }
 
-type ReportType = 'examinees' | 'examiner';
+type ReportType = 'examinees' | 'examiner' | 'photos';
 
 export function TestReportsTab({ registrations }: Props) {
   const [reportType, setReportType] = useState<ReportType>('examinees');
@@ -39,8 +39,15 @@ export function TestReportsTab({ registrations }: Props) {
         if (y !== 0) return y;
         return (a.last_name || '').localeCompare(b.last_name || '', 'he');
       });
+    } else if (reportType === 'photos') {
+      // Sort: last_name → prev_yeshiva (per user request)
+      rows = [...rows].sort((a, b) => {
+        const l = (a.last_name || '').localeCompare(b.last_name || '', 'he');
+        if (l !== 0) return l;
+        return (a.prev_yeshiva_name || '').localeCompare(b.prev_yeshiva_name || '', 'he');
+      });
     } else {
-      // Sort: prev_yeshiva → last_name
+      // examiner: Sort: prev_yeshiva → last_name
       rows = [...rows].sort((a, b) => {
         const y = (a.prev_yeshiva_name || '').localeCompare(b.prev_yeshiva_name || '', 'he');
         if (y !== 0) return y;
@@ -75,6 +82,7 @@ export function TestReportsTab({ registrations }: Props) {
 
   const titleForReport = () => {
     if (reportType === 'examinees') return 'יום בחינה - רשימת נבחנים';
+    if (reportType === 'photos')    return 'יום בחינה - דוח תמונות';
     return 'דוח לבוחן - גיליון ציונים';
   };
 
@@ -129,7 +137,7 @@ export function TestReportsTab({ registrations }: Props) {
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">
             סוג הדוח
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => setReportType('examinees')}
@@ -153,6 +161,18 @@ export function TestReportsTab({ registrations }: Props) {
             >
               <div className="font-semibold text-slate-900">📝 דוח לבוחן (שורות פנויות)</div>
               <div className="text-xs text-slate-500 mt-1">ישיבה, שם · עם מקום להערות · מיון: ישיבה → שם</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setReportType('photos')}
+              className={`text-right p-3 rounded-xl border-2 transition-all ${
+                reportType === 'photos'
+                  ? 'border-amber-500 bg-amber-50'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <div className="font-semibold text-slate-900">📸 דוח תמונות (4 בשורה)</div>
+              <div className="text-xs text-slate-500 mt-1">תמונה + שם + ישיבה קטנה · מיון: שם → ישיבה</div>
             </button>
           </div>
         </div>
@@ -205,9 +225,11 @@ export function TestReportsTab({ registrations }: Props) {
             <Button size="sm" variant="secondary" onClick={handlePrint} disabled={filtered.length === 0}>
               🖨️ הדפס / PDF
             </Button>
-            <Button size="sm" onClick={exportExcel} disabled={filtered.length === 0}>
-              📥 ייצא לאקסל
-            </Button>
+            {reportType !== 'photos' && (
+              <Button size="sm" onClick={exportExcel} disabled={filtered.length === 0}>
+                📥 ייצא לאקסל
+              </Button>
+            )}
           </div>
         </div>
         <p className="text-xs text-slate-400 italic">
@@ -232,6 +254,8 @@ export function TestReportsTab({ registrations }: Props) {
           </div>
         ) : reportType === 'examinees' ? (
           <ExamineesTable rows={filtered} fmtMaterial={fmtMaterial} fmtDate={fmtDate} showDate={selectedDates.size !== 1} />
+        ) : reportType === 'photos' ? (
+          <PhotosGrid rows={filtered} />
         ) : (
           <ExaminerTable rows={filtered} />
         )}
@@ -264,7 +288,58 @@ export function TestReportsTab({ registrations }: Props) {
           border-bottom: 1px dashed #94a3b8;
           vertical-align: top;
         }
+        .photos-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+          direction: rtl;
+        }
+        .photo-card {
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 6px;
+          text-align: center;
+          background: #fff;
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        .photo-frame {
+          width: 100%;
+          aspect-ratio: 3 / 4;
+          background: #f1f5f9;
+          border: 1px solid #94a3b8;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          margin-bottom: 5px;
+        }
+        .photo-frame img { width: 100%; height: 100%; object-fit: cover; }
+        .photo-placeholder { color: #94a3b8; font-size: 10pt; }
+        .photo-name { font-size: 11pt; font-weight: 700; line-height: 1.2; }
+        .photo-yeshiva { font-size: 9pt; color: #475569; margin-top: 2px; line-height: 1.2; }
       `}</style>
+    </div>
+  );
+}
+
+function PhotosGrid({ rows }: { rows: Registration[] }) {
+  return (
+    <div className="photos-grid">
+      {rows.map((r) => (
+        <div key={r.id} className="photo-card">
+          <div className="photo-frame">
+            {r.photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={r.photo_url} alt={`${r.first_name} ${r.last_name}`} />
+            ) : (
+              <span className="photo-placeholder">אין תמונה</span>
+            )}
+          </div>
+          <div className="photo-name">{r.last_name} {r.first_name}</div>
+          <div className="photo-yeshiva">{r.prev_yeshiva_name || '—'}</div>
+        </div>
+      ))}
     </div>
   );
 }

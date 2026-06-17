@@ -12,6 +12,7 @@ import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { Student } from '@/lib/types';
 import { ReportType } from '@/lib/certificates';
 import { exportCertificateToWord } from '@/lib/cert-to-word';
+import { supabase } from '@/lib/supabase';
 
 interface GeneratedCertificate {
   student: Student;
@@ -51,8 +52,91 @@ export default function ReportsPage() {
   const activeSignatureUrl = isChinuch && signatureChinuchUrl ? signatureChinuchUrl : signatureUrl;
 
   const handleGenerate = useCallback(
-    (student: Student, reportType: ReportType, year: string, extras: Record<string, string>) => {
-      setCertificate({ student, reportType, year, extras });
+    async (student: Student, reportType: ReportType, year: string, extras: Record<string, string>) => {
+      let finalExtras = { ...extras };
+      // For 'tuition_with_history' - pre-build the payments table HTML from
+      // the last 12 months of office_payments + paid payment_history.
+      if (reportType.id === 'tuition_with_history') {
+        const since = new Date();
+        since.setMonth(since.getMonth() - 12);
+        const sinceISO = since.toISOString().slice(0, 10);
+        const [officeRes, bankRes, creditRes] = await Promise.all([
+          supabase
+            .from('office_payments')
+            .select('amount, payment_date, method')
+            .eq('student_id', student.id)
+            .gte('payment_date', sinceISO)
+            .order('payment_date', { ascending: false }),
+          supabase
+            .from('payment_history')
+            .select('amount_ils, payment_date, status_code')
+            .eq('student_id', student.id)
+            .eq('status_code', 2)
+            .gte('payment_date', sinceISO)
+            .order('payment_date', { ascending: false }),
+          supabase
+            .from('student_payments_unified')
+            .select('amount, payment_date, source, status')
+            .eq('student_id', student.id)
+            .eq('source', 'credit')
+            .eq('status', 'success')
+            .gte('payment_date', sinceISO)
+            .order('payment_date', { ascending: false }),
+        ]);
+        const office = officeRes.data || [];
+        const bank = bankRes.data || [];
+        const credit = creditRes.data || [];
+
+        const METHOD_LABEL: Record<string, string> = {
+          cash: 'מזומן', check: 'צ׳ק', transfer: 'העברה בנקאית',
+          credit: 'אשראי', other: 'אחר',
+        };
+        type Row = { date: string; amount: number; method: string };
+        const rows: Row[] = [];
+        for (const r of office) rows.push({
+          date: r.payment_date, amount: Number(r.amount) || 0,
+          method: '💰 משרד · ' + (METHOD_LABEL[r.method] || r.method || ''),
+        });
+        for (const r of bank) rows.push({
+          date: r.payment_date, amount: Number(r.amount_ils) || 0,
+          method: '🏦 הוראת קבע בנק',
+        });
+        for (const r of credit) rows.push({
+          date: r.payment_date, amount: Number(r.amount) || 0,
+          method: '💳 הוראת קבע אשראי',
+        });
+        rows.sort((a, b) => b.date.localeCompare(a.date));
+
+        let html: string;
+        if (rows.length === 0) {
+          html = '<em>אין נתוני תשלום ב-12 החודשים האחרונים.</em>';
+        } else {
+          const total = rows.reduce((s, r) => s + r.amount, 0);
+          html =
+            '<table style="width:100%;border-collapse:collapse;direction:rtl;font-size:13px;margin-top:8px">' +
+              '<thead><tr>' +
+                '<th style="border:1px solid #888;padding:6px 8px;background:#f1f5f9;text-align:right">תאריך</th>' +
+                '<th style="border:1px solid #888;padding:6px 8px;background:#f1f5f9;text-align:right">אופן תשלום</th>' +
+                '<th style="border:1px solid #888;padding:6px 8px;background:#f1f5f9;text-align:right">סכום</th>' +
+              '</tr></thead><tbody>' +
+              rows.map((r) => {
+                const d = r.date.split('-').reverse().join('/');
+                return `<tr>
+                  <td style="border:1px solid #888;padding:5px 8px">${d}</td>
+                  <td style="border:1px solid #888;padding:5px 8px">${r.method}</td>
+                  <td style="border:1px solid #888;padding:5px 8px">₪${r.amount.toLocaleString('he-IL')}</td>
+                </tr>`;
+              }).join('') +
+              `<tr style="font-weight:bold;background:#f8fafc">
+                <td colspan="2" style="border:1px solid #888;padding:6px 8px;text-align:left">סה"כ</td>
+                <td style="border:1px solid #888;padding:6px 8px">₪${total.toLocaleString('he-IL')}</td>
+              </tr>` +
+            '</tbody></table>';
+        }
+        finalExtras.payments_html = html;
+      }
+
+      setCertificate({ student, reportType, year, extras: finalExtras });
     },
     []
   );

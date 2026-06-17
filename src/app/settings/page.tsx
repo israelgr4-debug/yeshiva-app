@@ -122,6 +122,27 @@ export default function SettingsPage() {
           </Card>
         )}
 
+        {/* Secretary activity audit (admin only) */}
+        {permissions.isAdmin && (
+          <Card className="mb-6">
+            <CardHeader>
+              <h2 className="text-xl font-bold">👁️ מעקב פעולות מזכירה</h2>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-3">
+                כל מה שמשתמשי <b>מזכירה</b> ביצעו בתוכנה - בשפה ברורה (למשל
+                <span className="mx-1 bg-slate-100 px-1.5 py-0.5 rounded text-xs">
+                  &quot;יעקב כהן: סטטוס שונה מ-פעיל ל-לא פעיל&quot;
+                </span>).
+                מסונן לפי תאריך / סוג פעולה / רשומה, עם פרטי שינוי לכל פעולה.
+              </p>
+              <Link href="/settings/secretary-activity">
+                <Button>פתח מעקב</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
         {/* System Settings */}
         <Card className="mb-6">
           <CardHeader>

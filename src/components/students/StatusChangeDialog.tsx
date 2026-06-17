@@ -14,7 +14,17 @@ interface Props {
   change: StatusChange;
   newStatus: string; // 'inactive' | 'graduated' | 'chizuk' | 'active'
   onCancel: () => void;
-  onConfirm: (data: { exitDate?: string; expectedReturn?: string; entryDate?: string; notes?: string }) => Promise<void>;
+  onConfirm: (data: {
+    exitDate?: string;
+    expectedReturn?: string;
+    entryDate?: string;
+    notes?: string;
+    /** Set when leaving and admin wants one (or more) final tuition charges:
+     *  - undefined = stop tuition immediately (active=false NOW)
+     *  - YYYY-MM-DD = keep tuition active until that date, then auto-stop
+     */
+    tuitionActiveUntil?: string;
+  }) => Promise<void>;
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -33,6 +43,8 @@ export function StatusChangeDialog({ isOpen, change, newStatus, onCancel, onConf
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tuitionMode, setTuitionMode] = useState<'immediate' | 'until'>('immediate');
+  const [tuitionUntil, setTuitionUntil] = useState('');
 
   if (!isOpen) return null;
 
@@ -63,6 +75,10 @@ export function StatusChangeDialog({ isOpen, change, newStatus, onCancel, onConf
       return;
     }
 
+    if (isLeave && tuitionMode === 'until' && !tuitionUntil) {
+      setError('בחר תאריך גביה אחרון, או החלף ל-"מיידית"');
+      return;
+    }
     setSaving(true);
     try {
       await onConfirm({
@@ -70,6 +86,7 @@ export function StatusChangeDialog({ isOpen, change, newStatus, onCancel, onConf
         expectedReturn: isChizuk ? expectedReturn || undefined : undefined,
         entryDate: isReturn ? entryDate : undefined,
         notes: notes.trim() || undefined,
+        tuitionActiveUntil: isLeave && tuitionMode === 'until' ? tuitionUntil : undefined,
       });
     } catch (err: any) {
       setError(err?.message || 'שגיאה');
@@ -116,6 +133,48 @@ export function StatusChangeDialog({ isOpen, change, newStatus, onCancel, onConf
               value={entryDate}
               onChange={(e) => setEntryDate(e.target.value)}
             />
+          )}
+
+          {isLeave && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <label className="block text-sm font-semibold text-amber-900 mb-2">💰 הפסקת שכר לימוד</label>
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tuitionMode"
+                    checked={tuitionMode === 'immediate'}
+                    onChange={() => setTuitionMode('immediate')}
+                    className="mt-1"
+                  />
+                  <div className="text-sm">
+                    <div className="font-medium text-amber-900">מיידית</div>
+                    <div className="text-xs text-amber-800">לא יחויב בחיובים נוספים, החל מעכשיו</div>
+                  </div>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tuitionMode"
+                    checked={tuitionMode === 'until'}
+                    onChange={() => setTuitionMode('until')}
+                    className="mt-1"
+                  />
+                  <div className="flex-1 text-sm">
+                    <div className="font-medium text-amber-900">להמשיך לחייב עד תאריך:</div>
+                    <div className="text-xs text-amber-800 mb-2">השתמש אם רוב החודש הוא היה - יחויב בגביה אחת נוספת ואז ייפסק</div>
+                    {tuitionMode === 'until' && (
+                      <input
+                        type="date"
+                        value={tuitionUntil}
+                        onChange={(e) => setTuitionUntil(e.target.value)}
+                        className="w-full px-3 py-2 border border-amber-300 rounded text-sm"
+                      />
+                    )}
+                  </div>
+                </label>
+              </div>
+            </div>
           )}
 
           <div>

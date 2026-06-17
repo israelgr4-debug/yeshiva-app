@@ -15,6 +15,7 @@ export type ListReportId =
   | 'details' // דוח פרטים - cards with photo
   | 'ram' // דוח ר"מ - 2 columns with 3 lines
   | 'photos' // דוח תמונות - names and photos
+  | 'eligible' // דוח זכאים (משרד הדתות) - shiur/last/first/phone
   | 'custom'; // מחולל דוחות - choose fields + export to Excel
 
 export interface ListReportDef {
@@ -60,6 +61,12 @@ export const LIST_REPORTS: ListReportDef[] = [
     name: 'דוח תמונות',
     description: 'שם וצילום של כל תלמיד',
     icon: '📸',
+  },
+  {
+    id: 'eligible',
+    name: 'דוח זכאים (משרד הדתות)',
+    description: 'רק תלמידים שמופיעים בדוח האחרון של משרד הדתות כ"זכאי"',
+    icon: '✅',
   },
   {
     id: 'custom',

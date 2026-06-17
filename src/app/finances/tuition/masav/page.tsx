@@ -60,8 +60,10 @@ export default function MasavExportPage() {
     (async () => {
       setLoading(true);
       const [tuitions, students, families] = await Promise.all([
-        fetchAll<TuitionRow>('student_tuition', 'student_id, monthly_amount, bank_day', (q) =>
-          q.eq('payment_method', 'bank_ho').eq('active', true)
+        fetchAll<TuitionRow & { tuition_active_until?: string | null }>(
+          'student_tuition',
+          'student_id, monthly_amount, bank_day, tuition_active_until',
+          (q) => q.eq('payment_method', 'bank_ho').eq('active', true)
         ),
         fetchAll<StudentLite>('students', 'id, first_name, last_name, family_id', (q) =>
           q.eq('status', 'active')
@@ -78,6 +80,8 @@ export default function MasavExportPage() {
       // Group tuitions by family_id
       const byFamily: Record<string, FamilyCharge> = {};
       for (const t of tuitions) {
+        // Honor scheduled stop date: if charge_date > tuition_active_until → skip
+        if (t.tuition_active_until && chargeDate > t.tuition_active_until) continue;
         const student = studentMap[t.student_id];
         if (!student?.family_id) continue;
         const fam = familyMap[student.family_id];

@@ -18,6 +18,7 @@ import { MultiDetailsReport } from '@/components/lists/MultiDetailsReport';
 import { DetailsReport } from '@/components/lists/DetailsReport';
 import { RamReport } from '@/components/lists/RamReport';
 import { PhotosReport } from '@/components/lists/PhotosReport';
+import { EligibleReport } from '@/components/lists/EligibleReport';
 import { CustomReportBuilder } from '@/components/lists/CustomReportBuilder';
 
 export default function ListsPage() {
@@ -140,6 +141,8 @@ export default function ListsPage() {
         return <RamReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
       case 'photos':
         return <PhotosReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
+      case 'eligible':
+        return <EligibleReport students={filteredStudents} families={families} />;
     }
   };
 

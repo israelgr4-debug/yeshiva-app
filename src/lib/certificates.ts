@@ -73,7 +73,8 @@ export type ReportTypeId =
   | 'left_with_masachtot'
   | 'visa'
   | 'exit_abroad'
-  | 'kabala_46';
+  | 'kabala_46'
+  | 'tuition_with_history';
 
 export interface ExtraField {
   key: string;
@@ -221,10 +222,26 @@ export const REPORT_TYPES: ReportType[] = [
     name: 'אישור תלמיד שעזב',
     recipient: 'לכל המעונין:',
     extraFields: [
+      // endDate: pre-filled from student.exit_date when student is selected.
       { key: 'endDate', label: 'תאריך עזיבה', type: 'date' },
+      // chinuchEndDate (optional): if the student studied in 'חינוך' first and then
+      // moved to the regular yeshiva, this is the date when chinuch ended (i.e. start of
+      // the regular-yeshiva period). The cert then prints two separate periods.
+      { key: 'chinuchEndDate', label: 'תאריך מעבר מחינוך לישיבה (אם רלוונטי)', type: 'date' },
     ],
-    buildBody: (student, _year, extras) =>
-      `הננו לאשר בזאת כי ה"ה  ${studentLineWithId(student)}\nלמד בישיבתנו בין התאריכים ${student.admission_date || '___'} –  ${extras.endDate || '___'}`,
+    buildBody: (student, _year, extras) => {
+      const start = student.admission_date || '___';
+      const end = extras.endDate || '___';
+      // Two-period mode: chinuch then yeshiva
+      if (extras.chinuchEndDate && extras.chinuchEndDate.trim()) {
+        return (
+          `הננו לאשר בזאת כי ה"ה  ${studentLineWithId(student)}\n` +
+          `למד בעמותת "חינוך" שלנו בין התאריכים ${start} – ${extras.chinuchEndDate}\n` +
+          `ולמד בישיבת מיר מודיעין עילית בין התאריכים ${extras.chinuchEndDate} – ${end}`
+        );
+      }
+      return `הננו לאשר בזאת כי ה"ה  ${studentLineWithId(student)}\nלמד בישיבתנו בין התאריכים ${start} –  ${end}`;
+    },
   },
   {
     id: 'left_with_masachtot',
@@ -246,12 +263,25 @@ export const REPORT_TYPES: ReportType[] = [
     name: 'אישור תלמיד לויזה',
     recipient: 'לכבוד משרד הפנים',
     extraFields: [
-      { key: 'fromYear', label: 'משנת לימודים', type: 'text', placeholder: 'תשפ"ד' },
-      { key: 'toYear', label: 'עד שנת לימודים', type: 'text', placeholder: 'תשפ"ה' },
-      { key: 'passportHolder', label: 'נושא דרכון (מספר)', type: 'text' },
+      { key: 'fromYear', label: 'משנת לימודים', type: 'text', placeholder: 'תשפ"ו' },
+      { key: 'toYear', label: 'עד שנת לימודים', type: 'text', placeholder: 'תשפ"ט' },
+      { key: 'studentNameEn', label: 'שם התלמיד באנגלית (גדולות)', type: 'text', placeholder: 'PITEM MOSHE' },
+      { key: 'passportCountry', label: 'מדינת הדרכון', type: 'text', placeholder: 'ארגנטינה' },
+      { key: 'passportNumber', label: 'מספר דרכון', type: 'text', placeholder: 'A83028329' },
+      { key: 'fatherBirthDate', label: 'תאריך לידת האב', type: 'date' },
+      { key: 'motherBirthDate', label: 'תאריך לידת האם', type: 'date' },
+      { key: 'startMonth', label: 'תחילת לימודים (MM/YYYY)', type: 'text', placeholder: '9/2025' },
     ],
-    buildBody: (student, _year, extras) =>
-      `הנדון: אישור לימודים משנת הלימודים ${extras.fromYear || '___'} ועד שנת ${extras.toYear || '___'}\nהננו לאשר בזאת כי ה"ה   ${studentLine(student)} נושא דרכון ${extras.passportHolder || '___'}\nהינו תלמיד ישיבתנו החל מתאריך ${student.admission_date || '___'}\n שעות הלימוד:\nימים א - ה\nבין השעות 9:00 - 13:00, לפנה"צ,\nומ 15:30 -  19:00 אחה"צ.\nומ 21:00 – 22:30 בערב\nבדקנו וידוע לנו כי הנ"ל יהודי מלידה`,
+    buildBody: (_student, _year, extras) =>
+      `הנדון: אישור לימודים לשנת הלימודים ${extras.fromYear || '___'} עד ${extras.toYear || '___'}\n\n` +
+      `הריני לאשר כי התלמיד ${extras.studentNameEn || '___'}\n` +
+      `מס' דרכון ${extras.passportCountry || '___'} ${extras.passportNumber || '___'}\n` +
+      `ת.ל האב ${extras.fatherBirthDate || '___'}\n` +
+      `ת.ל. האם ${extras.motherBirthDate || '___'}\n` +
+      `הינו תלמיד ישיבתנו החל מ ${extras.startMonth || '___'}\n\n` +
+      `הנ"ל לומד בימים א - ה בין השעות 9:30-13:30 ו 15:00-19:30\n` +
+      `וביום ו בין 9:00-12:00\n\n` +
+      `בדקנו וידוע לנו כי הנ"ל יהודי מלידה`,
     signer: ROSH_YESHIVA,
   },
 
@@ -267,6 +297,22 @@ export const REPORT_TYPES: ReportType[] = [
     buildBody: (student, _year, extras) =>
       `הננו לאשר בזאת לתלמיד ${studentLine(student)} ת.ז. ${student.id_number}\nלצאת לחו"ל בין התאריכים ${extras.fromDate || '___'} עד ${extras.toDate || '___'}.`,
     signer: { name: '', idNumber: '', title: 'חתימת ראש הישיבה' },
+  },
+
+  // --- אישור שכר לימוד עם פירוט תשלומים 12 חודשים ---
+  {
+    id: 'tuition_with_history',
+    name: 'אישור שכר לימוד עם פירוט 12 חודשים',
+    recipient: 'לכל המעונין:',
+    extraFields: [
+      { key: 'amount', label: 'שכר לימוד חודשי (ש"ח)', type: 'number', placeholder: '600' },
+      // payments_html is auto-populated by /reports page when this cert type is chosen
+    ],
+    buildBody: (student, year, extras) =>
+      `הננו לאשר כי התלמיד ${studentLineWithId(student)}\n` +
+      `לומד בשנת הלימודים ${year} בישיבה ומשתתף בשכר לימוד בסך ₪${extras.amount || '___'} לחודש.\n\n` +
+      `להלן פירוט התשלומים ב-12 החודשים האחרונים:\n` +
+      (extras.payments_html || '<em>אין נתוני תשלום ב-12 החודשים האחרונים.</em>'),
   },
 
   // --- קבלה סעיף 46 ---

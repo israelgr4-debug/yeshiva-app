@@ -84,6 +84,36 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
     setExtras({});
   }, [selectedReportId]);
 
+  // Auto-fill exit_date for 'left' certificate when both student + report are set
+  useEffect(() => {
+    if (!selectedStudent || !selectedReport) return;
+    if (selectedReport.id !== 'left' && selectedReport.id !== 'left_with_masachtot') return;
+    const exit = (selectedStudent as any).exit_date as string | null | undefined;
+    if (exit) {
+      setExtras((prev) => prev.endDate ? prev : { ...prev, endDate: exit });
+    }
+  }, [selectedStudent, selectedReport]);
+
+  // Auto-fill tuition monthly amount for 'with_tuition' / 'with_hours_milga' /
+  // 'tuition_with_history' from the student's student_tuition record
+  useEffect(() => {
+    if (!selectedStudent || !selectedReport) return;
+    const cert = selectedReport.id;
+    if (cert !== 'with_tuition' && cert !== 'tuition_with_history' && cert !== 'with_hours_milga') return;
+    (async () => {
+      const { data } = await supabase
+        .from('student_tuition')
+        .select('monthly_amount')
+        .eq('student_id', selectedStudent.id)
+        .eq('active', true)
+        .maybeSingle();
+      const amt = Number(data?.monthly_amount) || 0;
+      if (amt > 0) {
+        setExtras((prev) => prev.amount ? prev : { ...prev, amount: String(Math.round(amt)) });
+      }
+    })();
+  }, [selectedStudent, selectedReport]);
+
   const handleSelectStudent = (student: Student) => {
     setSelectedStudentId(student.id);
     setSearchTerm(`${student.first_name} ${student.last_name} - ${student.id_number}`);
@@ -95,24 +125,29 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
   const handleGenerate = async () => {
     if (!selectedStudent || !selectedReport) return;
 
-    // Check if student has an active tuition charge (skip for "left" certificates)
-    if (!LEFT_STUDENT_REPORT_IDS.includes(selectedReport.id)) {
+    // Warn only if tuition is genuinely UNDEFINED.
+    // Skip warning for:
+    //   - 'left' certificates (תלמיד שעזב)
+    //   - 'כולל' students (no tuition required)
+    //   - Any student_tuition record with method != 'none' (exempt / office /
+    //     bank / credit are all OK - the user explicitly asked for this)
+    const isKollel = (selectedStudent as any).institution_name === 'כולל';
+    if (!LEFT_STUDENT_REPORT_IDS.includes(selectedReport.id) && !isKollel) {
       setCheckingTuition(true);
       try {
-        // Per-student tuition table - check that the student has an active record
-        // with a real paying method (bank_ho / credit_nedarim / office). 'exempt'
-        // and 'none' are treated as not paying.
         const { data } = await supabase
           .from('student_tuition')
           .select('id, payment_method, active')
           .eq('student_id', selectedStudent.id)
           .eq('active', true)
-          .in('payment_method', ['bank_ho', 'credit_nedarim', 'office'])
           .limit(1);
 
-        if (!data || data.length === 0) {
+        // No record OR record with method='none' → warn
+        const rec = data?.[0];
+        const isUndefined = !rec || rec.payment_method === 'none';
+        if (isUndefined) {
           const proceed = confirm(
-            `⚠️ אזהרה\n\nלתלמיד ${selectedStudent.first_name} ${selectedStudent.last_name} אין גביה פעילה של שכר לימוד.\n\nלהוציא את האישור בכל זאת?`
+            `⚠️ אזהרה\n\nשכר הלימוד של ${selectedStudent.first_name} ${selectedStudent.last_name} אינו מוגדר במערכת (לא משלם / לא הוגדר).\n\nלהוציא את האישור בכל זאת?`
           );
           if (!proceed) {
             setCheckingTuition(false);

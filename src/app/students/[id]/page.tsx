@@ -238,7 +238,7 @@ export default function StudentDetailPage() {
   // Called after either: no status change, or status change + dialog confirmation
   async function finalizeSave(
     finalStudentData: Record<string, any>,
-    statusChangeData?: { exitDate?: string; expectedReturn?: string; entryDate?: string; notes?: string }
+    statusChangeData?: { exitDate?: string; expectedReturn?: string; entryDate?: string; notes?: string; tuitionActiveUntil?: string }
   ) {
     // Merge status-change dates into the student record
     if (statusChangeData) {
@@ -268,6 +268,27 @@ export default function StudentDetailPage() {
 
     const updated = await updateStudent(id, finalStudentData);
     if (!updated) return;
+
+    // Update the student's tuition record based on the leave choice
+    if (becameNonActive) {
+      try {
+        if (statusChangeData?.tuitionActiveUntil) {
+          // Keep billing until the picked date (inclusive), then auto-stop
+          await supabase
+            .from('student_tuition')
+            .update({ tuition_active_until: statusChangeData.tuitionActiveUntil })
+            .eq('student_id', id);
+        } else {
+          // Immediate stop: flip active=false
+          await supabase
+            .from('student_tuition')
+            .update({ active: false })
+            .eq('student_id', id);
+        }
+      } catch (err) {
+        console.error('Failed to update student_tuition on leave:', err);
+      }
+    }
 
     setStudent(updated);
     setIsEditing(false);
