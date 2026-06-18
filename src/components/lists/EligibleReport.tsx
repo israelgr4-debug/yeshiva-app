@@ -8,7 +8,7 @@ import { sortStudentsByName, groupStudentsByShiur } from '@/lib/list-reports';
 interface Props {
   /** Students already filtered by shiur + status by the parent page. */
   students: Student[];
-  /** Families lookup so we can fall back to home_phone if student has no phone. */
+  /** Unused - kept for API parity with other list reports. */
   families?: Record<string, Family>;
 }
 
@@ -31,7 +31,8 @@ function normalizeId(id: string | null | undefined): string {
   return String(id).replace(/\D/g, '').replace(/^0+/, '');
 }
 
-export function EligibleReport({ students, families }: Props) {
+export function EligibleReport({ students, families: _families }: Props) {
+  void _families;
   const { getSetting } = useSystemSettings();
   const [datData, setDatData] = useState<StoredData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,11 +69,9 @@ export function EligibleReport({ students, families }: Props) {
 
   const groups = useMemo(() => groupStudentsByShiur(filtered), [filtered]);
 
-  const phoneFor = (s: Student): string => {
-    if (s.phone) return s.phone;
-    const fam = s.family_id ? families?.[s.family_id] : null;
-    return fam?.father_phone || fam?.home_phone || fam?.mother_phone || '';
-  };
+  // Use only the student's own phone (from the student card),
+  // not the family phones.
+  const phoneFor = (s: Student): string => s.phone || '';
 
   if (loading) {
     return <div className="text-center py-12 text-gray-500">טוען...</div>;

@@ -75,7 +75,13 @@ export default function ListsPage() {
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
       if (statusFilter && s.status !== statusFilter) return false;
-      if (selectedShiurim.size > 0 && !selectedShiurim.has(s.shiur || '')) return false;
+      if (selectedShiurim.size > 0) {
+        // Virtual 'כולל' entry: filter by institution_name instead of shiur
+        const isKollel = (s.institution_name || '') === 'כולל';
+        const shiurMatches = selectedShiurim.has(s.shiur || '');
+        const kollelMatches = selectedShiurim.has('כולל') && isKollel;
+        if (!shiurMatches && !kollelMatches) return false;
+      }
       return true;
     });
   }, [students, statusFilter, selectedShiurim]);
@@ -154,7 +160,7 @@ export default function ListsPage() {
       return next;
     });
   };
-  const selectAllShiurim = () => setSelectedShiurim(new Set(SHIURIM.map((s) => s.name)));
+  const selectAllShiurim = () => setSelectedShiurim(new Set([...SHIURIM.map((s) => s.name), 'כולל']));
   const clearShiurim = () => setSelectedShiurim(new Set());
 
   return (
@@ -243,6 +249,18 @@ export default function ListsPage() {
                           <span>{s.name}</span>
                         </label>
                       ))}
+                      {/* Virtual 'כולל' entry - filters by institution_name */}
+                      <label
+                        className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50 rounded px-1.5 py-0.5 border-t border-slate-200 mt-1 pt-1.5"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedShiurim.has('כולל')}
+                          onChange={() => toggleShiur('כולל')}
+                          className="accent-blue-600"
+                        />
+                        <span>📘 כולל</span>
+                      </label>
                     </div>
                     {selectedShiurim.size > 1 && (
                       <p className="text-[11px] text-slate-500 mt-1">
