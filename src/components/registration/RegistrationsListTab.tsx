@@ -38,11 +38,15 @@ const STATUS_TONE: Record<string, string> = {
   converted: 'bg-violet-50 text-violet-800 ring-violet-200',
 };
 
+type SortKey = 'name' | 'id_number' | 'prev_yeshiva_name' | 'father_name' | 'father_phone' | 'city' | 'status';
+
 export function RegistrationsListTab({ registrations, onEdit, onChanged }: Props) {
   const { remove } = useRegistrations();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [yeshivaFilter, setYeshivaFilter] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const yeshivot = useMemo(() => {
     const set = new Set<string>();
@@ -56,7 +60,7 @@ export function RegistrationsListTab({ registrations, onEdit, onChanged }: Props
   }, [registrations]);
 
   const filtered = useMemo(() => {
-    return registrations.filter((r) => {
+    const list = registrations.filter((r) => {
       if (statusFilter && r.status !== statusFilter) return false;
       if (yeshivaFilter && r.prev_yeshiva_name !== yeshivaFilter) return false;
       if (search) {
@@ -75,7 +79,39 @@ export function RegistrationsListTab({ registrations, onEdit, onChanged }: Props
       }
       return true;
     });
-  }, [registrations, search, statusFilter, yeshivaFilter]);
+
+    // Sort
+    const keyVal = (r: Registration): string => {
+      switch (sortKey) {
+        case 'name':              return `${r.last_name || ''} ${r.first_name || ''}`.trim();
+        case 'id_number':         return r.id_number || '';
+        case 'prev_yeshiva_name': return r.prev_yeshiva_name || '';
+        case 'father_name':       return r.father_name || '';
+        case 'father_phone':      return r.father_phone || '';
+        case 'city':              return r.city || '';
+        case 'status':            return r.status || '';
+      }
+    };
+    const sorted = [...list].sort((a, b) => {
+      const va = keyVal(a);
+      const vb = keyVal(b);
+      // Push empty values to the end always (regardless of asc/desc)
+      if (!va && vb) return 1;
+      if (va && !vb) return -1;
+      const cmp = va.localeCompare(vb, 'he', { numeric: true });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return sorted;
+  }, [registrations, search, statusFilter, yeshivaFilter, sortKey, sortDir]);
+
+  const handleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
 
   const handleDelete = async (r: Registration) => {
     if (!confirm(`למחוק את הרישום של ${r.first_name} ${r.last_name}?`)) return;
@@ -131,12 +167,13 @@ export function RegistrationsListTab({ registrations, onEdit, onChanged }: Props
             <table className="w-full text-sm">
               <thead className="bg-slate-50/80 border-b border-slate-200">
                 <tr>
-                  <th className="px-3 py-2.5 text-start font-semibold text-slate-600 text-xs uppercase tracking-wider">שם</th>
-                  <th className="px-3 py-2.5 text-start font-semibold text-slate-600 text-xs uppercase tracking-wider">ת״ז</th>
-                  <th className="px-3 py-2.5 text-start font-semibold text-slate-600 text-xs uppercase tracking-wider">ישיבה קטנה</th>
-                  <th className="px-3 py-2.5 text-start font-semibold text-slate-600 text-xs uppercase tracking-wider">אב</th>
-                  <th className="px-3 py-2.5 text-start font-semibold text-slate-600 text-xs uppercase tracking-wider">טלפון</th>
-                  <th className="px-3 py-2.5 text-start font-semibold text-slate-600 text-xs uppercase tracking-wider">סטטוס</th>
+                  <SortHeader col="name"              label="שם"          sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <SortHeader col="id_number"         label="ת״ז"         sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <SortHeader col="prev_yeshiva_name" label="ישיבה קטנה"  sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <SortHeader col="city"              label="עיר"         sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <SortHeader col="father_name"       label="אב"          sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <SortHeader col="father_phone"      label="טלפון"       sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <SortHeader col="status"            label="סטטוס"       sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                   <th className="px-3 py-2.5"></th>
                 </tr>
               </thead>
@@ -154,6 +191,7 @@ export function RegistrationsListTab({ registrations, onEdit, onChanged }: Props
                     </td>
                     <td className="px-3 py-2.5 font-mono text-xs text-slate-500">{r.id_number || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.prev_yeshiva_name || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-700">{r.city || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.father_name || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-500 tabular-nums">
                       {r.father_phone ? (
@@ -186,5 +224,33 @@ function FilterField({ label, children }: { label: string; children: React.React
       <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</label>
       {children}
     </div>
+  );
+}
+
+function SortHeader({
+  col, label, sortKey, sortDir, onSort,
+}: {
+  col: SortKey;
+  label: string;
+  sortKey: SortKey;
+  sortDir: 'asc' | 'desc';
+  onSort: (k: SortKey) => void;
+}) {
+  const active = sortKey === col;
+  const arrow = active ? (sortDir === 'asc' ? '▲' : '▼') : '↕';
+  return (
+    <th className="px-3 py-2.5 text-start">
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        className={`flex items-center gap-1 font-semibold text-xs uppercase tracking-wider transition-colors ${
+          active ? 'text-blue-700' : 'text-slate-600 hover:text-slate-900'
+        }`}
+        title={active ? `מסונן לפי ${label} (${sortDir === 'asc' ? 'א-ת' : 'ת-א'}) - לחץ להפיכה` : `מיין לפי ${label}`}
+      >
+        <span>{label}</span>
+        <span className={`text-[10px] ${active ? 'opacity-100' : 'opacity-30'}`}>{arrow}</span>
+      </button>
+    </th>
   );
 }
