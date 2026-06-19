@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/Button';
 import { useRegistrations } from '@/hooks/useRegistrations';
+import { supabase } from '@/lib/supabase';
 
 /** Map from Hebrew column header → Registration field key */
 const COLUMN_MAP: Record<string, string> = {
@@ -65,9 +66,21 @@ interface Props {
   onImported: () => void;
 }
 
+interface ImportError {
+  row: number;
+  name: string;
+  reason: string;
+}
+
 export function RegistrationImportButtons({ onImported }: Props) {
   const { create } = useRegistrations();
   const [busy, setBusy] = useState(false);
+  const [importReport, setImportReport] = useState<{
+    imported: number;
+    skipped: number;
+    errors: ImportError[];
+  } | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleSampleDownload = () => {
@@ -104,8 +117,10 @@ export function RegistrationImportButtons({ onImported }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     setBusy(true);
+    setImportReport(null);
     let imported = 0;
-    let errors = 0;
+    let skipped = 0;
+    const errors: ImportError[] = [];
     try {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
@@ -116,13 +131,11 @@ export function RegistrationImportButtons({ onImported }: Props) {
         return;
       }
 
-      // Map header → field for THIS sheet (handles user customization)
       const firstRow = rows[0];
       const headerKeys = Object.keys(firstRow);
       const headerMap: Record<string, string> = {};
       for (const k of headerKeys) {
         const trimmed = String(k).replace(/[\s"׳']+/g, '').trim();
-        // Try exact match first
         for (const [hebrew, field] of Object.entries(COLUMN_MAP)) {
           const cleanHeb = hebrew.replace(/[\s"׳']+/g, '').trim();
           if (trimmed === cleanHeb) {
@@ -137,7 +150,12 @@ export function RegistrationImportButtons({ onImported }: Props) {
         return;
       }
 
-      for (const row of rows) {
+      // Track unrecognized headers - show as info in the report
+      const unrecognized = headerKeys.filter((k) => !headerMap[k] && String(k).trim());
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const xlsxRow = i + 2; // +1 for header row, +1 to make 1-indexed
         const data: any = {};
         let hasName = false;
         for (const [key, value] of Object.entries(row)) {
@@ -152,24 +170,75 @@ export function RegistrationImportButtons({ onImported }: Props) {
           data[field] = v;
           if (field === 'first_name' || field === 'last_name') hasName = true;
         }
+        const label = `${data.last_name || ''} ${data.first_name || ''}`.trim() || '(ללא שם)';
         if (!hasName) {
-          continue; // skip rows with no name
+          skipped++;
+          errors.push({
+            row: xlsxRow,
+            name: '(ריק)',
+            reason: 'שורה ללא שם פרטי / שם משפחה - דולגה',
+          });
+          continue;
         }
         try {
           await create(data);
           imported++;
-        } catch (err) {
+        } catch (err: any) {
+          const msg = err?.message || err?.details || String(err) || 'שגיאה לא ידועה';
+          // Translate common Supabase errors to Hebrew
+          let humanReason = msg;
+          if (/duplicate key|unique/i.test(msg)) humanReason = 'מועמד כבר קיים במערכת (כפילות)';
+          else if (/invalid input|invalid date/i.test(msg)) humanReason = 'ערך לא תקין באחד השדות (כנראה תאריך)';
+          else if (/not.*null|null value/i.test(msg)) humanReason = 'שדה חובה ריק';
+          else if (/permission|RLS/i.test(msg)) humanReason = 'אין הרשאה (RLS)';
+          errors.push({ row: xlsxRow, name: label, reason: humanReason });
           console.error('Row import failed', err, data);
-          errors++;
         }
       }
-      alert(`הסתיים. ${imported} מועמדים יובאו${errors > 0 ? `, ${errors} שגיאות` : ''}.`);
+
+      const reportErrors = [...errors];
+      if (unrecognized.length > 0) {
+        reportErrors.unshift({
+          row: 1,
+          name: '(כותרות)',
+          reason: `כותרות לא מזוהות (יוכלו): ${unrecognized.join(', ')}`,
+        });
+      }
+      setImportReport({ imported, skipped, errors: reportErrors });
       onImported();
     } catch (err: any) {
       alert('שגיאה בייבוא: ' + (err?.message || err));
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    const confirmation = prompt(
+      '⚠️ פעולה זו תמחק את כל המועמדים במערכת!\n\n' +
+      'אם אתה בטוח - הקלד את המילה "מחק" ולחץ אישור:'
+    );
+    if (confirmation !== 'מחק') {
+      if (confirmation !== null) alert('הביטול בוצע - לא הוקלד "מחק"');
+      return;
+    }
+    setDeletingAll(true);
+    try {
+      // Delete in batches to avoid timeouts; use a synthetic always-true
+      // condition since Supabase requires a filter on DELETE.
+      const { error, count } = await supabase
+        .from('registrations')
+        .delete({ count: 'exact' })
+        .gte('created_at', '1900-01-01');
+      if (error) throw error;
+      alert(`✅ נמחקו ${count ?? 0} מועמדים.`);
+      setImportReport(null);
+      onImported();
+    } catch (err: any) {
+      alert('שגיאה במחיקה: ' + (err?.message || err));
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -194,6 +263,16 @@ export function RegistrationImportButtons({ onImported }: Props) {
       >
         {busy ? 'מייבא...' : '📤 ייבא Excel'}
       </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="danger"
+        onClick={handleDeleteAll}
+        disabled={deletingAll || busy}
+        title="מחיקת כל המועמדים במערכת - בלתי הפיכה"
+      >
+        {deletingAll ? 'מוחק...' : '🗑️ מחק הכל'}
+      </Button>
       <input
         ref={fileRef}
         type="file"
@@ -201,6 +280,74 @@ export function RegistrationImportButtons({ onImported }: Props) {
         onChange={handleFile}
         className="hidden"
       />
+
+      {importReport && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col">
+            <div className="px-6 py-4 border-b flex justify-between items-start">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">📊 דוח ייבוא</h3>
+                <div className="text-sm text-slate-600 mt-1 space-x-3 space-x-reverse">
+                  <span>✅ <b>{importReport.imported}</b> יובאו</span>
+                  {importReport.skipped > 0 && (
+                    <span>⏭️ <b>{importReport.skipped}</b> דולגו</span>
+                  )}
+                  {importReport.errors.length > 0 && (
+                    <span className="text-red-700">❌ <b>{importReport.errors.length}</b> שגיאות</span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportReport(null)}
+                className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+              >×</button>
+            </div>
+
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              {importReport.errors.length === 0 ? (
+                <div className="text-center py-10 text-emerald-700">
+                  <p className="text-5xl mb-2">🎉</p>
+                  <p className="font-semibold">הקובץ יובא בלי שגיאות!</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-700 mb-3 font-semibold">פירוט שגיאות:</p>
+                  <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-3 py-2 text-start w-16">שורה</th>
+                          <th className="px-3 py-2 text-start">שם</th>
+                          <th className="px-3 py-2 text-start">סיבה</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importReport.errors.map((e, i) => (
+                          <tr key={i} className="border-t border-slate-100">
+                            <td className="px-3 py-2 tabular-nums font-semibold">{e.row}</td>
+                            <td className="px-3 py-2">{e.name}</td>
+                            <td className="px-3 py-2 text-red-700">{e.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-3">
+                    💡 השורה מתייחסת למספר השורה בקובץ ה-Excel המקורי (כולל כותרת = שורה 1).
+                    תקן את השורות הבעייתיות בקובץ ויבא שוב. אם תרצה להתחיל מאפס -
+                    לחץ &quot;🗑️ מחק הכל&quot; לפני הייבוא.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="px-6 py-3 border-t flex justify-end">
+              <Button size="sm" onClick={() => setImportReport(null)}>סגור</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
