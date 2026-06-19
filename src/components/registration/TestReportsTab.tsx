@@ -11,9 +11,12 @@ interface Props {
 
 type ReportType = 'examinees' | 'examiner' | 'photos';
 
+type PhotosSort = 'name' | 'yeshiva';
+
 export function TestReportsTab({ registrations }: Props) {
   const [reportType, setReportType] = useState<ReportType>('examinees');
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+  const [photosSort, setPhotosSort] = useState<PhotosSort>('name');
 
   // Available test dates (only future-or-present sorted desc)
   const availableDates = useMemo(() => {
@@ -40,8 +43,15 @@ export function TestReportsTab({ registrations }: Props) {
         return (a.last_name || '').localeCompare(b.last_name || '', 'he');
       });
     } else if (reportType === 'photos') {
-      // Sort: last_name → prev_yeshiva (per user request)
+      // Photos report: user-selectable sort.
+      //   'name'    → last_name → prev_yeshiva
+      //   'yeshiva' → prev_yeshiva → last_name
       rows = [...rows].sort((a, b) => {
+        if (photosSort === 'yeshiva') {
+          const y = (a.prev_yeshiva_name || '').localeCompare(b.prev_yeshiva_name || '', 'he');
+          if (y !== 0) return y;
+          return (a.last_name || '').localeCompare(b.last_name || '', 'he');
+        }
         const l = (a.last_name || '').localeCompare(b.last_name || '', 'he');
         if (l !== 0) return l;
         return (a.prev_yeshiva_name || '').localeCompare(b.prev_yeshiva_name || '', 'he');
@@ -55,7 +65,7 @@ export function TestReportsTab({ registrations }: Props) {
       });
     }
     return rows;
-  }, [registrations, selectedDates, reportType]);
+  }, [registrations, selectedDates, reportType, photosSort]);
 
   const toggleDate = (d: string) => {
     const next = new Set(selectedDates);
@@ -172,10 +182,45 @@ export function TestReportsTab({ registrations }: Props) {
               }`}
             >
               <div className="font-semibold text-slate-900">📸 דוח תמונות (4 בשורה)</div>
-              <div className="text-xs text-slate-500 mt-1">תמונה + שם + ישיבה קטנה · מיון: שם → ישיבה</div>
+              <div className="text-xs text-slate-500 mt-1">תמונה + שם + ישיבה קטנה</div>
             </button>
           </div>
         </div>
+
+        {/* Photos sort picker - visible only for photos report */}
+        {reportType === 'photos' && (
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">
+              מיון
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPhotosSort('name')}
+                className={`text-right p-3 rounded-xl border-2 transition-all ${
+                  photosSort === 'name'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className="font-semibold text-slate-900">👤 לפי שם משפחה</div>
+                <div className="text-xs text-slate-500 mt-1">שם משפחה א-ת → ישיבה</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPhotosSort('yeshiva')}
+                className={`text-right p-3 rounded-xl border-2 transition-all ${
+                  photosSort === 'yeshiva'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className="font-semibold text-slate-900">🏫 לפי ישיבה קטנה</div>
+                <div className="text-xs text-slate-500 mt-1">ישיבה א-ת → שם משפחה</div>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Date filter */}
         <div>
