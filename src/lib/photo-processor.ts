@@ -101,6 +101,37 @@ function fallbackCrop(iw: number, ih: number) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
+/** Suppress white "bleed" from the original photo's background that the
+ *  model left along the silhouette edge (thin strips where the model said
+ *  "background" but the alpha drop is gradual).
+ *
+ *  Algorithm: any pixel that is BOTH near-white AND has soft (non-full)
+ *  alpha is most likely background bleed. Make those fully transparent.
+ *  Pure-white inside the face is rare; even sun highlights have some
+ *  color tint, and the foreground at the face center has alpha=255.
+ */
+function killWhiteBleed(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const { width, height } = canvas;
+  const img = ctx.getImageData(0, 0, width, height);
+  const data = img.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3];
+    if (a === 0 || a === 255) continue; // already fully decided
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    // "near white" = high lightness + very low saturation
+    const minC = Math.min(r, g, b);
+    const maxC = Math.max(r, g, b);
+    const light = (maxC + minC) / 2;
+    const sat = maxC === 0 ? 0 : (maxC - minC);
+    if (light > 220 && sat < 25) {
+      data[i + 3] = 0; // strip it
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 /** Proper hole-fill: any transparent region NOT connected to the image edge
  *  is an internal hole inside the subject - the model misclassified a few
  *  pixels of face/hair as background. Fill those by setting alpha=255 and
@@ -306,10 +337,11 @@ export async function processStudentPhoto(
   const fgCtx = fg.getContext('2d');
   if (!fgCtx) throw new Error('Canvas context unavailable');
   fgCtx.drawImage(finalImg, 0, 0);
-  // Fill ONLY internal holes in the alpha mask (transparent regions not
-  // connected to the image edge). This kills white specks inside the face
-  // without growing the silhouette outward (which previously created white
-  // halos around hair when bg pixels got pulled in).
+  // Two-step matte cleanup:
+  //  1) killWhiteBleed strips near-white pixels with soft alpha (those are
+  //     the edge strips of the original studio background bleeding through).
+  //  2) fillAlphaHoles then patches any internal holes left in the face.
+  killWhiteBleed(fg);
   fillAlphaHoles(fg);
   autoEnhance(fg); // analyzes opaque pixels only, alpha preserved
 
