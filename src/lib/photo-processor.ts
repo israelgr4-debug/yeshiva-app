@@ -57,16 +57,15 @@ async function detectFaceBox(image: HTMLImageElement): Promise<BBox | null> {
  *  - extends downward to include the neck/shoulders
  */
 function computeCrop(face: BBox, iw: number, ih: number): { x: number; y: number; w: number; h: number } {
-  // The face box covers roughly chin-to-forehead. Compromise between
-  // a tight headshot and a portrait with visible breathing room:
-  //   - top padding    = 0.60 * face_height (clear headroom, top of head
-  //                      well inside the frame)
-  //   - bottom padding = 0.85 * face_height (chin + collar)
+  // The face box covers roughly chin-to-forehead. Keep the same total
+  // crop size (~2.45 × face_height → face ≈ 40% of the frame) but shift
+  // the face DOWN in the frame so there's clear headroom above:
+  //   - top padding    = 0.95 * face_height (extra headroom above the head)
+  //   - bottom padding = 0.50 * face_height (a hint of collar)
   //   - left/right     = (target_width - face_width) / 2, centered on face
-  // Total = 2.45 × face_height → face fills ~40% of the frame.
   const RATIO_W = 3, RATIO_H = 4;
-  const topPad    = face.h * 0.60;
-  const bottomPad = face.h * 0.85;
+  const topPad    = face.h * 0.95;
+  const bottomPad = face.h * 0.50;
   const cropH = face.h + topPad + bottomPad;
   const cropW = cropH * (RATIO_W / RATIO_H);
 
@@ -100,6 +99,39 @@ function fallbackCrop(iw: number, ih: number) {
   const x = (iw - w) / 2;
   const y = Math.min(ih - h, ih * 0.05); // slight headroom from top
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+}
+
+/** Dilate the alpha channel by N pixels (4-neighbor max). Fills small holes
+ *  inside the foreground mask that the model misclassified as background -
+ *  these are the source of white "specks" on hair/face when compositing.
+ *  Color channels are left untouched; only the alpha is grown. */
+function dilateAlpha(canvas: HTMLCanvasElement, radius: number) {
+  if (radius <= 0) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const { width, height } = canvas;
+  const img = ctx.getImageData(0, 0, width, height);
+  const src = img.data;
+  const alpha = new Uint8ClampedArray(width * height);
+  for (let i = 0, j = 0; i < src.length; i += 4, j++) alpha[j] = src[i + 3];
+
+  // Iterative 3×3 max-filter dilation (radius times)
+  for (let r = 0; r < radius; r++) {
+    const next = new Uint8ClampedArray(alpha);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let m = alpha[y * width + x];
+        if (y > 0)         m = Math.max(m, alpha[(y - 1) * width + x]);
+        if (y < height-1)  m = Math.max(m, alpha[(y + 1) * width + x]);
+        if (x > 0)         m = Math.max(m, alpha[y * width + (x - 1)]);
+        if (x < width-1)   m = Math.max(m, alpha[y * width + (x + 1)]);
+        next[y * width + x] = m;
+      }
+    }
+    alpha.set(next);
+  }
+  for (let i = 0, j = 0; i < src.length; i += 4, j++) src[i + 3] = alpha[j];
+  ctx.putImageData(img, 0, 0);
 }
 
 /** Auto color enhancement on an alpha-transparent canvas (analyzes ONLY the
@@ -227,6 +259,9 @@ export async function processStudentPhoto(
   const fgCtx = fg.getContext('2d');
   if (!fgCtx) throw new Error('Canvas context unavailable');
   fgCtx.drawImage(finalImg, 0, 0);
+  // Grow the alpha mask by a few pixels - hides the white "specks" where
+  // the model classified small face/hair regions as background.
+  dilateAlpha(fg, 3);
   autoEnhance(fg); // analyzes opaque pixels only, alpha preserved
 
   // Composite enhanced foreground over a soft photo-studio gray
