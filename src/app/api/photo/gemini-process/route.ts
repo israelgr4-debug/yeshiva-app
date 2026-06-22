@@ -16,28 +16,37 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Model name has changed a few times. Try them in order until one works.
+// Only image-EDIT capable models. Other Gemini flash models accept image
+// input but can't return image output. Order matters - first available wins.
 const CANDIDATE_MODELS = [
   'gemini-2.5-flash-image',
   'gemini-2.5-flash-image-preview',
   'gemini-2.0-flash-preview-image-generation',
-  'gemini-2.0-flash-exp',
 ];
 const urlFor = (m: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`;
 
+// English prompt - image-edit models follow English instructions much more
+// reliably than Hebrew (the model is multilingual but its image-editing
+// fine-tuning is heavily English-biased).
 const PROMPT = `
-תפקיד: עורך תמונות לכרטיסי תלמיד ישיבה.
+Edit this portrait photo of a person into a clean ID-card style headshot:
 
-עבד את התמונה כך:
-1. חתוך לפורטרט "ראש + כתפיים" - הפנים תופסות כ-40-50% מגובה התמונה, עם מרווח קל מעל הראש.
-2. הסר את הרקע המקורי לחלוטין והחלף ברקע סטודיו אפור-בהיר אחיד צבע #E5E7EB.
-3. נרמל את התאורה בפנים ובבגדים כך שתהיה אחידה משני הצדדים (אם צד אחד היה בצל - תאיר אותו, אם צד אחד נשטף - תרגיע).
-4. שמור על צבעי הבגדים האמיתיים בדיוק (חליפה נייבי תישאר נייבי, חולצה לבנה תישאר לבנה).
-5. שמור על מאפייני הפנים בדיוק - אותה זהות.
-6. יחס מסך: 4:5 פורטרט (רוחב:גובה).
+1. CROP to a 4:5 portrait of head and shoulders. The face should fill roughly
+   40-50% of the frame height, with comfortable headroom above the head.
+2. REPLACE the original background with a clean, uniform light-gray studio
+   backdrop (hex color #E5E7EB). Make sure no traces of the original
+   background remain - especially along hair, collar, and shoulders.
+3. NORMALIZE the lighting on the face and clothing so it appears evenly lit
+   from both sides. If one side is in shadow, brighten it. If one side is
+   blown-out, tone it down. The goal is a balanced studio look.
+4. PRESERVE the true clothing colors exactly. A navy suit must remain navy.
+   A black suit must remain black. A white shirt must remain white. Do not
+   shift any colors to gray.
+5. PRESERVE the subject's facial identity, features, hair, glasses, and
+   expression EXACTLY. Do not alter the face.
 
-החזר רק את התמונה המעובדת, ללא טקסט.
+Return only the edited image. No text.
 `;
 
 export async function POST(req: NextRequest) {
@@ -70,8 +79,10 @@ export async function POST(req: NextRequest) {
       },
     ],
     generationConfig: {
-      // Image-output models accept TEXT and IMAGE response modalities
-      responseModalities: ['IMAGE'],
+      // Both TEXT and IMAGE - the image-edit models require BOTH modalities,
+      // not just IMAGE. With IMAGE-only the API returns no image at all.
+      responseModalities: ['TEXT', 'IMAGE'],
+      temperature: 0.4, // low randomness - we want a faithful edit, not a creative riff
     },
   };
 
@@ -127,8 +138,18 @@ export async function POST(req: NextRequest) {
     }
   }
   if (!outBase64) {
+    // Surface what Gemini DID return (often a refusal explanation)
+    const textPart = parts.find((p: any) => typeof p.text === 'string')?.text;
+    const finishReason = json?.candidates?.[0]?.finishReason;
+    const safety = json?.candidates?.[0]?.safetyRatings;
     return NextResponse.json(
-      { error: 'Gemini לא החזיר תמונה. Response: ' + JSON.stringify(json).slice(0, 300) },
+      {
+        error:
+          'Gemini לא החזיר תמונה. ' +
+          (textPart ? `הודעת המודל: ${String(textPart).slice(0, 300)}` :
+            `סיבת סיום: ${finishReason || 'לא ידוע'}`),
+        details: { finishReason, safety, model: modelUsed },
+      },
       { status: 502 }
     );
   }
@@ -136,6 +157,6 @@ export async function POST(req: NextRequest) {
   const outBuf = Buffer.from(outBase64, 'base64');
   return new NextResponse(outBuf, {
     status: 200,
-    headers: { 'Content-Type': outMime },
+    headers: { 'Content-Type': outMime, 'X-Gemini-Model': modelUsed },
   });
 }
