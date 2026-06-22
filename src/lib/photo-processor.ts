@@ -57,15 +57,16 @@ async function detectFaceBox(image: HTMLImageElement): Promise<BBox | null> {
  *  - extends downward to include the neck/shoulders
  */
 function computeCrop(face: BBox, iw: number, ih: number): { x: number; y: number; w: number; h: number } {
-  // The face box covers roughly chin-to-forehead. We want the face to be
-  // the dominant element — ~50% of the frame height:
-  //   - top padding    = 0.30 * face_height (small headroom)
-  //   - bottom padding = 0.70 * face_height (chin + a hint of collar)
+  // The face box covers roughly chin-to-forehead. Compromise between
+  // a tight headshot and a portrait with visible breathing room:
+  //   - top padding    = 0.60 * face_height (clear headroom, top of head
+  //                      well inside the frame)
+  //   - bottom padding = 0.85 * face_height (chin + collar)
   //   - left/right     = (target_width - face_width) / 2, centered on face
-  // Target ratio is 3:4 (width:height).
+  // Total = 2.45 × face_height → face fills ~40% of the frame.
   const RATIO_W = 3, RATIO_H = 4;
-  const topPad    = face.h * 0.30;
-  const bottomPad = face.h * 0.70;
+  const topPad    = face.h * 0.60;
+  const bottomPad = face.h * 0.85;
   const cropH = face.h + topPad + bottomPad;
   const cropW = cropH * (RATIO_W / RATIO_H);
 
