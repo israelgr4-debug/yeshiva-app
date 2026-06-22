@@ -53,19 +53,18 @@ async function detectFaceBox(image: HTMLImageElement): Promise<BBox | null> {
 
 /**
  * Given a face bbox in an image of (iw, ih), return a 3:4 portrait crop that:
- *  - keeps the face in the upper third
+ *  - keeps the face centered around the upper third (with a real headroom)
  *  - extends downward to include the neck/shoulders
- *  - extends upward to leave a small headroom
  */
 function computeCrop(face: BBox, iw: number, ih: number): { x: number; y: number; w: number; h: number } {
   // The face box covers roughly chin-to-forehead. We want:
-  //   - top padding  = 0.5 * face_height (forehead + a bit of headroom)
-  //   - bottom padding = 1.2 * face_height (neck + collar)
+  //   - top padding   = 0.95 * face_height (real headroom - head not too high)
+  //   - bottom padding = 1.50 * face_height (neck + shoulders / collar)
   //   - left/right    = (target_width - face_width) / 2, centered on face
   // Target ratio is 3:4 (width:height).
   const RATIO_W = 3, RATIO_H = 4;
-  const topPad    = face.h * 0.55;
-  const bottomPad = face.h * 1.20;
+  const topPad    = face.h * 0.95;
+  const bottomPad = face.h * 1.50;
   const cropH = face.h + topPad + bottomPad;
   const cropW = cropH * (RATIO_W / RATIO_H);
 
@@ -101,7 +100,10 @@ function fallbackCrop(iw: number, ih: number) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
-/** Auto color enhancement: simple histogram stretch + slight saturation boost. */
+/** Auto color enhancement on an alpha-transparent canvas (analyzes ONLY the
+ *  foreground pixels so the background fill doesn't skew the histogram).
+ *  Conservative: 5%-95% percentile stretch, gentle 1.08 saturation lift.
+ */
 function autoEnhance(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -109,33 +111,35 @@ function autoEnhance(canvas: HTMLCanvasElement) {
   const img = ctx.getImageData(0, 0, width, height);
   const data = img.data;
 
-  // Find 1st and 99th percentiles of luminance for stretch
+  // Histogram of luminance over OPAQUE foreground pixels only
   const hist = new Uint32Array(256);
   for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] === 0) continue; // skip transparent pixels
+    if (data[i + 3] < 128) continue; // exclude transparent + soft edges
     const lum = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
     hist[lum]++;
   }
   const totalOpaque = hist.reduce((a, b) => a + b, 0);
   if (totalOpaque === 0) return;
-  const loCut = totalOpaque * 0.01;
-  const hiCut = totalOpaque * 0.99;
+  // Wider percentile cuts → less aggressive (5-95 instead of 1-99)
+  const loCut = totalOpaque * 0.05;
+  const hiCut = totalOpaque * 0.95;
   let acc = 0, lo = 0, hi = 255;
   for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= loCut) { lo = i; break; } }
   acc = 0;
   for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= hiCut) { hi = i; break; } }
-  if (hi <= lo) { lo = 0; hi = 255; }
-  const scale = 255 / (hi - lo);
+  if (hi - lo < 50) { lo = 0; hi = 255; } // very low-contrast → don't try
+  // Clamp the stretch so we never amplify by more than ~1.4× (avoid blown-out highlights / saturated skin)
+  let scale = 255 / (hi - lo);
+  if (scale > 1.4) scale = 1.4;
 
-  // Apply stretch + light saturation boost (×1.10)
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] === 0) continue;
     let r = (data[i] - lo) * scale;
     let g = (data[i + 1] - lo) * scale;
     let b = (data[i + 2] - lo) * scale;
-    // Saturation boost: blend toward grayscale less
+    // Gentle saturation: ×1.08
     const gray = r * 0.299 + g * 0.587 + b * 0.114;
-    const sat = 1.10;
+    const sat = 1.08;
     r = gray + (r - gray) * sat;
     g = gray + (g - gray) * sat;
     b = gray + (b - gray) * sat;
@@ -200,26 +204,38 @@ export async function processStudentPhoto(
     c.toBlob((b) => resolve(b!), 'image/png')
   );
 
-  // 3. Remove background (lib loaded from CDN at runtime)
-  log('מסיר רקע (עשוי לקחת כמה שניות)...');
+  // 3. Remove background (lib loaded from CDN at runtime).
+  // model: 'isnet' = highest quality (default 'isnet_fp16' is faster but
+  // leaves white patches on hair/glasses; full isnet is much cleaner).
+  log('מסיר רקע (איכות גבוהה - יכול לקחת 30-60 שניות)...');
   const imgly = await loadImgly();
   const noBg = await imgly.removeBackground(croppedBlob, {
+    model: 'isnet',
     output: { format: 'image/png', quality: 0.95 },
   });
 
-  // 4. Reload as image + run color enhancement
+  // 4. Reload as image + color-enhance the FOREGROUND only, THEN composite
+  // over a neutral background. This order matters: analyzing after the
+  // background fill would skew the histogram toward the bg color.
   log('משפר צבעים...');
   const finalImg = await loadImage(noBg);
+  const fg = document.createElement('canvas');
+  fg.width = finalImg.naturalWidth;
+  fg.height = finalImg.naturalHeight;
+  const fgCtx = fg.getContext('2d');
+  if (!fgCtx) throw new Error('Canvas context unavailable');
+  fgCtx.drawImage(finalImg, 0, 0);
+  autoEnhance(fg); // analyzes opaque pixels only, alpha preserved
+
+  // Composite enhanced foreground over a soft photo-studio gray
   const out = document.createElement('canvas');
-  out.width = finalImg.naturalWidth;
-  out.height = finalImg.naturalHeight;
+  out.width = fg.width;
+  out.height = fg.height;
   const ox = out.getContext('2d');
   if (!ox) throw new Error('Canvas context unavailable');
-  // Light gray background for the transparent areas (better for prints)
-  ox.fillStyle = '#f5f5f5';
+  ox.fillStyle = '#e8e9eb'; // neutral cool gray - flattering for portraits
   ox.fillRect(0, 0, out.width, out.height);
-  ox.drawImage(finalImg, 0, 0);
-  autoEnhance(out);
+  ox.drawImage(fg, 0, 0);
 
   const finalBlob: Blob = await new Promise((resolve) =>
     out.toBlob((b) => resolve(b!), 'image/jpeg', 0.92)
