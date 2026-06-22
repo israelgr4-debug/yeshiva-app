@@ -63,7 +63,9 @@ function computeCrop(face: BBox, iw: number, ih: number): { x: number; y: number
   //   - top padding    = 0.95 * face_height (extra headroom above the head)
   //   - bottom padding = 0.50 * face_height (a hint of collar)
   //   - left/right     = (target_width - face_width) / 2, centered on face
-  const RATIO_W = 3, RATIO_H = 4;
+  // 4:5 portrait (standard ID/passport ratio) - slightly wider than 3:4 so
+  // adult shoulders fit inside the frame without being clipped.
+  const RATIO_W = 4, RATIO_H = 5;
   const topPad    = face.h * 0.95;
   const bottomPad = face.h * 0.50;
   const cropH = face.h + topPad + bottomPad;
@@ -93,7 +95,7 @@ function computeCrop(face: BBox, iw: number, ih: number): { x: number; y: number
 
 /** Fallback: crop center-top 3:4 when no face is detected. */
 function fallbackCrop(iw: number, ih: number) {
-  const ratioW = 3, ratioH = 4;
+  const ratioW = 4, ratioH = 5; // match the main crop aspect (4:5 portrait)
   let w = iw, h = iw * (ratioH / ratioW);
   if (h > ih) { h = ih; w = h * (ratioW / ratioH); }
   const x = (iw - w) / 2;
@@ -192,7 +194,7 @@ export async function processStudentPhoto(
 
   // Output canvas at max 1200px wide (3:4)
   const TARGET_W = Math.min(1200, crop.w);
-  const TARGET_H = Math.round(TARGET_W * 4 / 3);
+  const TARGET_H = Math.round(TARGET_W * 5 / 4); // 4:5 portrait
   const c = document.createElement('canvas');
   c.width = TARGET_W;
   c.height = TARGET_H;
