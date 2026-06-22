@@ -73,9 +73,17 @@ export function TestReportsTab({ registrations }: Props) {
     setSelectedDates(next);
   };
 
+  /** Format YYYY-MM-DD as Hebrew calendar date (e.g. "ב' אדר תשפ"ו"), no Gregorian. */
   const fmtDate = (d: string) => {
     try {
-      return new Date(d).toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'numeric', year: 'numeric' });
+      const dt = new Date(d);
+      const weekday = dt.toLocaleDateString('he-IL', { weekday: 'long' });
+      const hebrew = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(dt);
+      return `יום ${weekday} · ${hebrew}`;
     } catch { return d; }
   };
 
