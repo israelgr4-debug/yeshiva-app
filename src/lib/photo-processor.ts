@@ -101,36 +101,83 @@ function fallbackCrop(iw: number, ih: number) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
-/** Dilate the alpha channel by N pixels (4-neighbor max). Fills small holes
- *  inside the foreground mask that the model misclassified as background -
- *  these are the source of white "specks" on hair/face when compositing.
- *  Color channels are left untouched; only the alpha is grown. */
-function dilateAlpha(canvas: HTMLCanvasElement, radius: number) {
-  if (radius <= 0) return;
+/** Proper hole-fill: any transparent region NOT connected to the image edge
+ *  is an internal hole inside the subject - the model misclassified a few
+ *  pixels of face/hair as background. Fill those by setting alpha=255 and
+ *  copying the average color of nearby opaque pixels.
+ *
+ *  Outline pixels (transparent regions reachable from the edge) are left
+ *  alone, so this does NOT create white halos around hair like a plain
+ *  dilation would.
+ */
+function fillAlphaHoles(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const { width, height } = canvas;
   const img = ctx.getImageData(0, 0, width, height);
-  const src = img.data;
-  const alpha = new Uint8ClampedArray(width * height);
-  for (let i = 0, j = 0; i < src.length; i += 4, j++) alpha[j] = src[i + 3];
+  const data = img.data;
+  const N = width * height;
+  const THRESHOLD = 64; // alpha below this counts as "transparent"
 
-  // Iterative 3×3 max-filter dilation (radius times)
-  for (let r = 0; r < radius; r++) {
-    const next = new Uint8ClampedArray(alpha);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let m = alpha[y * width + x];
-        if (y > 0)         m = Math.max(m, alpha[(y - 1) * width + x]);
-        if (y < height-1)  m = Math.max(m, alpha[(y + 1) * width + x]);
-        if (x > 0)         m = Math.max(m, alpha[y * width + (x - 1)]);
-        if (x < width-1)   m = Math.max(m, alpha[y * width + (x + 1)]);
-        next[y * width + x] = m;
+  // Mark every transparent pixel that's connected to the image edge.
+  // Anything left unmarked AND transparent = internal hole.
+  const reached = new Uint8Array(N);
+  const stack: number[] = [];
+  const pushIfBg = (idx: number) => {
+    if (reached[idx]) return;
+    if (data[idx * 4 + 3] >= THRESHOLD) return;
+    reached[idx] = 1;
+    stack.push(idx);
+  };
+  for (let x = 0; x < width; x++) {
+    pushIfBg(x);
+    pushIfBg((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y++) {
+    pushIfBg(y * width);
+    pushIfBg(y * width + (width - 1));
+  }
+  while (stack.length) {
+    const idx = stack.pop()!;
+    const x = idx % width, y = (idx / width) | 0;
+    if (x > 0)         pushIfBg(idx - 1);
+    if (x < width - 1) pushIfBg(idx + 1);
+    if (y > 0)         pushIfBg(idx - width);
+    if (y < height - 1) pushIfBg(idx + width);
+  }
+
+  // Fill internal holes: set alpha=255, replace RGB with avg of nearby
+  // opaque pixels in a 7×7 window.
+  for (let idx = 0; idx < N; idx++) {
+    if (reached[idx]) continue;
+    if (data[idx * 4 + 3] >= THRESHOLD) continue;
+    // Internal hole pixel
+    const x = idx % width, y = (idx / width) | 0;
+    let rSum = 0, gSum = 0, bSum = 0, count = 0;
+    const R = 3;
+    for (let dy = -R; dy <= R; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= height) continue;
+      for (let dx = -R; dx <= R; dx++) {
+        const xx = x + dx;
+        if (xx < 0 || xx >= width) continue;
+        const j = (yy * width + xx) * 4;
+        if (data[j + 3] >= THRESHOLD) {
+          rSum += data[j];
+          gSum += data[j + 1];
+          bSum += data[j + 2];
+          count++;
+        }
       }
     }
-    alpha.set(next);
+    const j = idx * 4;
+    if (count > 0) {
+      data[j]     = rSum / count;
+      data[j + 1] = gSum / count;
+      data[j + 2] = bSum / count;
+    }
+    data[j + 3] = 255;
   }
-  for (let i = 0, j = 0; i < src.length; i += 4, j++) src[i + 3] = alpha[j];
   ctx.putImageData(img, 0, 0);
 }
 
@@ -259,9 +306,11 @@ export async function processStudentPhoto(
   const fgCtx = fg.getContext('2d');
   if (!fgCtx) throw new Error('Canvas context unavailable');
   fgCtx.drawImage(finalImg, 0, 0);
-  // Grow the alpha mask by a few pixels - hides the white "specks" where
-  // the model classified small face/hair regions as background.
-  dilateAlpha(fg, 3);
+  // Fill ONLY internal holes in the alpha mask (transparent regions not
+  // connected to the image edge). This kills white specks inside the face
+  // without growing the silhouette outward (which previously created white
+  // halos around hair when bg pixels got pulled in).
+  fillAlphaHoles(fg);
   autoEnhance(fg); // analyzes opaque pixels only, alpha preserved
 
   // Composite enhanced foreground over a soft photo-studio gray
