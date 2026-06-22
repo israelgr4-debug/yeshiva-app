@@ -364,14 +364,12 @@ export async function processStudentPhoto(
   if (!fgCtx) throw new Error('Canvas context unavailable');
   fgCtx.drawImage(finalImg, 0, 0);
   // Matte cleanup, in order:
-  //  1) erodeAlpha(2): uniformly shrink the silhouette by 2px - removes
-  //     edge bleed at ALL boundaries (face, hair, suit, neck). Cheap fix
-  //     for the white strips along dark fabric where the model's soft
-  //     alpha left mid-lightness pixels mixing fg + bg.
+  //  1) erodeAlpha(4): shrink silhouette 4px - aggressive enough to wipe
+  //     mid-lightness edge bleed on dark fabric (suit) too.
   //  2) killWhiteBleed: any remaining semi-transparent near-white pixels
   //     (e.g. sun glare on glasses) → fully transparent.
   //  3) fillAlphaHoles: patch any internal holes inside the silhouette.
-  erodeAlpha(fg, 2);
+  erodeAlpha(fg, 4);
   killWhiteBleed(fg);
   fillAlphaHoles(fg);
   autoEnhance(fg);
@@ -382,7 +380,7 @@ export async function processStudentPhoto(
   out.height = fg.height;
   const ox = out.getContext('2d');
   if (!ox) throw new Error('Canvas context unavailable');
-  ox.fillStyle = '#e8e9eb'; // neutral cool gray - flattering for portraits
+  ox.fillStyle = '#b9bcc2'; // medium gray - hides any remaining light bleed
   ox.fillRect(0, 0, out.width, out.height);
   ox.drawImage(fg, 0, 0);
 
