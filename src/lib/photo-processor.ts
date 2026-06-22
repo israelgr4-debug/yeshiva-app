@@ -14,20 +14,6 @@
 
 import * as faceapi from '@vladmandic/face-api';
 
-// @imgly/background-removal ships an onnxruntime-web .mjs that Next.js's
-// Terser pass chokes on at build time. We load it from a CDN at runtime
-// instead. Use esm.sh because it rewrites bare specifiers (like
-// 'onnxruntime-web') into resolvable URLs - jsdelivr serves the raw npm
-// file which fails with 'Failed to resolve module specifier'.
-const IMGLY_CDN = 'https://esm.sh/@imgly/background-removal@1.7.0?bundle';
-let imglyModulePromise: Promise<any> | null = null;
-async function loadImgly(): Promise<any> {
-  if (!imglyModulePromise) {
-    imglyModulePromise = import(/* webpackIgnore: true */ IMGLY_CDN);
-  }
-  return imglyModulePromise;
-}
-
 const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model';
 
 let faceModelsLoaded = false;
@@ -158,15 +144,18 @@ export async function processStudentPhoto(
     c.toBlob((b) => resolve(b!), 'image/png')
   );
 
-  // 3. Remove background (lib loaded from CDN at runtime).
-  // model: 'isnet' = highest quality (default 'isnet_fp16' is faster but
-  // leaves white patches on hair/glasses; full isnet is much cleaner).
-  log('מסיר רקע (איכות גבוהה - יכול לקחת 30-60 שניות)...');
-  const imgly = await loadImgly();
-  const noBg = await imgly.removeBackground(croppedBlob, {
-    model: 'isnet',
-    output: { format: 'image/png', quality: 0.95 },
-  });
+  // 3. Remove background via remove.bg server proxy.
+  //    Person-optimized model + commercial-grade edges. ~3-5s per image.
+  //    50 free credits/month at remove.bg - well within yeshiva volume.
+  log('מסיר רקע (remove.bg)...');
+  const bgFd = new FormData();
+  bgFd.append('image_file', croppedBlob, 'photo.png');
+  const bgRes = await fetch('/api/photo/remove-bg', { method: 'POST', body: bgFd });
+  if (!bgRes.ok) {
+    const err = await bgRes.text().catch(() => '');
+    throw new Error(`remove.bg נכשל: ${err.slice(0, 200) || bgRes.status}`);
+  }
+  const noBg = await bgRes.blob();
 
   // 4. Reload as image + color-enhance the FOREGROUND only, THEN composite
   // over a neutral background. This order matters: analyzing after the

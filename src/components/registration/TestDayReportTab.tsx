@@ -77,7 +77,7 @@ export function TestDayReportTab({ registrations, onChanged }: Props) {
       `יכול לקחת 15-30 שניות. התמונה הישנה תוחלף.`
     )) return;
     setProcessingId(r.id);
-    setProcessingStep('טוען מודלים...');
+    setProcessingStep('מתחיל...');
     try {
       // Dynamic import: keeps face-api + background-removal out of the
       // server bundle entirely (they're browser-only and have native deps).
