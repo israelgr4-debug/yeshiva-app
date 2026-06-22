@@ -101,143 +101,6 @@ function fallbackCrop(iw: number, ih: number) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
-/** Erode the alpha mask uniformly by `radius` pixels (4-neighbor min).
- *  Trims edge bleed at ALL silhouette boundaries - face, hair, suit, neck.
- *  Lose ~1-2px of true edge but the matte becomes clean of background
- *  mixing. Particularly important on dark fabric (suit) where the bleed
- *  shows as mid-lightness pixels that no color-based filter can catch.
- */
-function erodeAlpha(canvas: HTMLCanvasElement, radius: number) {
-  if (radius <= 0) return;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const { width, height } = canvas;
-  const img = ctx.getImageData(0, 0, width, height);
-  const data = img.data;
-  const N = width * height;
-  const alpha = new Uint8ClampedArray(N);
-  for (let i = 0, j = 0; i < data.length; i += 4, j++) alpha[j] = data[i + 3];
-
-  for (let r = 0; r < radius; r++) {
-    const next = new Uint8ClampedArray(alpha);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let m = alpha[y * width + x];
-        if (y > 0)         m = Math.min(m, alpha[(y - 1) * width + x]);
-        if (y < height-1)  m = Math.min(m, alpha[(y + 1) * width + x]);
-        if (x > 0)         m = Math.min(m, alpha[y * width + (x - 1)]);
-        if (x < width-1)   m = Math.min(m, alpha[y * width + (x + 1)]);
-        next[y * width + x] = m;
-      }
-    }
-    alpha.set(next);
-  }
-  for (let i = 0, j = 0; i < data.length; i += 4, j++) data[i + 3] = alpha[j];
-  ctx.putImageData(img, 0, 0);
-}
-
-/** Suppress near-white pixels with soft alpha (catches whatever bleed
- *  remained after erosion - sun glare on glasses, etc).
- */
-function killWhiteBleed(canvas: HTMLCanvasElement) {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const { width, height } = canvas;
-  const img = ctx.getImageData(0, 0, width, height);
-  const data = img.data;
-  for (let i = 0; i < data.length; i += 4) {
-    const a = data[i + 3];
-    if (a === 0 || a === 255) continue;
-    const r = data[i], g = data[i + 1], b = data[i + 2];
-    const minC = Math.min(r, g, b);
-    const maxC = Math.max(r, g, b);
-    const light = (maxC + minC) / 2;
-    const sat = maxC - minC;
-    if (light > 220 && sat < 25) data[i + 3] = 0;
-  }
-  ctx.putImageData(img, 0, 0);
-}
-
-/** Proper hole-fill: any transparent region NOT connected to the image edge
- *  is an internal hole inside the subject - the model misclassified a few
- *  pixels of face/hair as background. Fill those by setting alpha=255 and
- *  copying the average color of nearby opaque pixels.
- *
- *  Outline pixels (transparent regions reachable from the edge) are left
- *  alone, so this does NOT create white halos around hair like a plain
- *  dilation would.
- */
-function fillAlphaHoles(canvas: HTMLCanvasElement) {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const { width, height } = canvas;
-  const img = ctx.getImageData(0, 0, width, height);
-  const data = img.data;
-  const N = width * height;
-  const THRESHOLD = 64; // alpha below this counts as "transparent"
-
-  // Mark every transparent pixel that's connected to the image edge.
-  // Anything left unmarked AND transparent = internal hole.
-  const reached = new Uint8Array(N);
-  const stack: number[] = [];
-  const pushIfBg = (idx: number) => {
-    if (reached[idx]) return;
-    if (data[idx * 4 + 3] >= THRESHOLD) return;
-    reached[idx] = 1;
-    stack.push(idx);
-  };
-  for (let x = 0; x < width; x++) {
-    pushIfBg(x);
-    pushIfBg((height - 1) * width + x);
-  }
-  for (let y = 0; y < height; y++) {
-    pushIfBg(y * width);
-    pushIfBg(y * width + (width - 1));
-  }
-  while (stack.length) {
-    const idx = stack.pop()!;
-    const x = idx % width, y = (idx / width) | 0;
-    if (x > 0)         pushIfBg(idx - 1);
-    if (x < width - 1) pushIfBg(idx + 1);
-    if (y > 0)         pushIfBg(idx - width);
-    if (y < height - 1) pushIfBg(idx + width);
-  }
-
-  // Fill internal holes: set alpha=255, replace RGB with avg of nearby
-  // opaque pixels in a 7×7 window.
-  for (let idx = 0; idx < N; idx++) {
-    if (reached[idx]) continue;
-    if (data[idx * 4 + 3] >= THRESHOLD) continue;
-    // Internal hole pixel
-    const x = idx % width, y = (idx / width) | 0;
-    let rSum = 0, gSum = 0, bSum = 0, count = 0;
-    const R = 3;
-    for (let dy = -R; dy <= R; dy++) {
-      const yy = y + dy;
-      if (yy < 0 || yy >= height) continue;
-      for (let dx = -R; dx <= R; dx++) {
-        const xx = x + dx;
-        if (xx < 0 || xx >= width) continue;
-        const j = (yy * width + xx) * 4;
-        if (data[j + 3] >= THRESHOLD) {
-          rSum += data[j];
-          gSum += data[j + 1];
-          bSum += data[j + 2];
-          count++;
-        }
-      }
-    }
-    const j = idx * 4;
-    if (count > 0) {
-      data[j]     = rSum / count;
-      data[j + 1] = gSum / count;
-      data[j + 2] = bSum / count;
-    }
-    data[j + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-}
-
 /** Auto color enhancement on an alpha-transparent canvas (analyzes ONLY the
  *  foreground pixels so the background fill doesn't skew the histogram).
  *  Conservative: 5%-95% percentile stretch, gentle 1.08 saturation lift.
@@ -363,15 +226,9 @@ export async function processStudentPhoto(
   const fgCtx = fg.getContext('2d');
   if (!fgCtx) throw new Error('Canvas context unavailable');
   fgCtx.drawImage(finalImg, 0, 0);
-  // Matte cleanup, in order:
-  //  1) erodeAlpha(4): shrink silhouette 4px - aggressive enough to wipe
-  //     mid-lightness edge bleed on dark fabric (suit) too.
-  //  2) killWhiteBleed: any remaining semi-transparent near-white pixels
-  //     (e.g. sun glare on glasses) → fully transparent.
-  //  3) fillAlphaHoles: patch any internal holes inside the silhouette.
-  erodeAlpha(fg, 4);
-  killWhiteBleed(fg);
-  fillAlphaHoles(fg);
+  // No matte manipulation - trust the model's mask. Earlier attempts
+  // (erodeAlpha / killWhiteBleed) were too destructive (chewed into
+  // shoulders). Just color-enhance the foreground.
   autoEnhance(fg);
 
   // Composite enhanced foreground over a soft photo-studio gray
@@ -380,7 +237,7 @@ export async function processStudentPhoto(
   out.height = fg.height;
   const ox = out.getContext('2d');
   if (!ox) throw new Error('Canvas context unavailable');
-  ox.fillStyle = '#b9bcc2'; // medium gray - hides any remaining light bleed
+  ox.fillStyle = '#f0f0f2'; // soft light gray studio background
   ox.fillRect(0, 0, out.width, out.height);
   ox.drawImage(fg, 0, 0);
 
