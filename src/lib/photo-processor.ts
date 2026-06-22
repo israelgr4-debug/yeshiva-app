@@ -183,18 +183,13 @@ export async function processStudentPhoto(
   // crushed dark navy fabric down to ~black/gray (lost the blue tint of
   // suits). The model's original output is colorimetrically correct.
 
-  // Composite enhanced foreground over a soft photo-studio gray
-  const out = document.createElement('canvas');
-  out.width = fg.width;
-  out.height = fg.height;
-  const ox = out.getContext('2d');
-  if (!ox) throw new Error('Canvas context unavailable');
-  ox.fillStyle = '#f0f0f2'; // soft light gray studio background
-  ox.fillRect(0, 0, out.width, out.height);
-  ox.drawImage(fg, 0, 0);
-
+  // Output PNG with transparency - no background composite. Lets the
+  // viewer (card / certificate / wherever) decide the background.
+  // Also dodges any compression artifacts that could be misread as
+  // color shifts.
+  const out = fg;
   const finalBlob: Blob = await new Promise((resolve) =>
-    out.toBlob((b) => resolve(b!), 'image/jpeg', 0.92)
+    out.toBlob((b) => resolve(b!), 'image/png')
   );
 
   log('הושלם');

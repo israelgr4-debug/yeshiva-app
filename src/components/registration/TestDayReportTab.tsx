@@ -85,7 +85,7 @@ export function TestDayReportTab({ registrations, onChanged }: Props) {
       const res = await fetch(r.photo_url);
       const orig = await res.blob();
       const out = await processStudentPhoto(orig, setProcessingStep);
-      const f = new File([out.blob], `${r.id}-processed.jpg`, { type: 'image/jpeg' });
+      const f = new File([out.blob], `${r.id}-processed.png`, { type: 'image/png' });
       await uploadPhoto(r.id, f);
       if (!out.faceDetected) {
         alert('⚠ לא זוהו פנים בתמונה - בוצע חיתוך מרכזי כברירת מחדל.');
