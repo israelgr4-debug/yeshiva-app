@@ -103,55 +103,6 @@ function fallbackCrop(iw: number, ih: number) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
-/** Auto color enhancement on an alpha-transparent canvas (analyzes ONLY the
- *  foreground pixels so the background fill doesn't skew the histogram).
- *  Conservative: 5%-95% percentile stretch, gentle 1.08 saturation lift.
- */
-function autoEnhance(canvas: HTMLCanvasElement) {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const { width, height } = canvas;
-  const img = ctx.getImageData(0, 0, width, height);
-  const data = img.data;
-
-  // Histogram of luminance over OPAQUE foreground pixels only
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 128) continue; // exclude transparent + soft edges
-    const lum = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
-    hist[lum]++;
-  }
-  const totalOpaque = hist.reduce((a, b) => a + b, 0);
-  if (totalOpaque === 0) return;
-  // Wider percentile cuts → less aggressive (5-95 instead of 1-99)
-  const loCut = totalOpaque * 0.05;
-  const hiCut = totalOpaque * 0.95;
-  let acc = 0, lo = 0, hi = 255;
-  for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= loCut) { lo = i; break; } }
-  acc = 0;
-  for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= hiCut) { hi = i; break; } }
-  if (hi - lo < 50) { lo = 0; hi = 255; } // very low-contrast → don't try
-  // Clamp the stretch so we never amplify by more than ~1.4× (avoid blown-out highlights / saturated skin)
-  let scale = 255 / (hi - lo);
-  if (scale > 1.4) scale = 1.4;
-
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] === 0) continue;
-    let r = (data[i] - lo) * scale;
-    let g = (data[i + 1] - lo) * scale;
-    let b = (data[i + 2] - lo) * scale;
-    // Gentle saturation: ×1.08
-    const gray = r * 0.299 + g * 0.587 + b * 0.114;
-    const sat = 1.08;
-    r = gray + (r - gray) * sat;
-    g = gray + (g - gray) * sat;
-    b = gray + (b - gray) * sat;
-    data[i]     = Math.max(0, Math.min(255, r));
-    data[i + 1] = Math.max(0, Math.min(255, g));
-    data[i + 2] = Math.max(0, Math.min(255, b));
-  }
-  ctx.putImageData(img, 0, 0);
-}
 
 function loadImage(blob: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -228,10 +179,9 @@ export async function processStudentPhoto(
   const fgCtx = fg.getContext('2d');
   if (!fgCtx) throw new Error('Canvas context unavailable');
   fgCtx.drawImage(finalImg, 0, 0);
-  // No matte manipulation - trust the model's mask. Earlier attempts
-  // (erodeAlpha / killWhiteBleed) were too destructive (chewed into
-  // shoulders). Just color-enhance the foreground.
-  autoEnhance(fg);
+  // No matte manipulation and no color tweaks - the histogram stretch
+  // crushed dark navy fabric down to ~black/gray (lost the blue tint of
+  // suits). The model's original output is colorimetrically correct.
 
   // Composite enhanced foreground over a soft photo-studio gray
   const out = document.createElement('canvas');
