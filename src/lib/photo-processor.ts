@@ -13,7 +13,18 @@
  */
 
 import * as faceapi from '@vladmandic/face-api';
-import { removeBackground } from '@imgly/background-removal';
+
+// @imgly/background-removal ships an onnxruntime-web .mjs that Next.js's
+// Terser pass chokes on at build time. We load it from a CDN at runtime
+// instead - same package, same behavior, but never enters our bundle.
+const IMGLY_CDN = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs';
+let imglyModulePromise: Promise<any> | null = null;
+async function loadImgly(): Promise<any> {
+  if (!imglyModulePromise) {
+    imglyModulePromise = import(/* webpackIgnore: true */ IMGLY_CDN);
+  }
+  return imglyModulePromise;
+}
 
 const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model';
 
@@ -187,9 +198,10 @@ export async function processStudentPhoto(
     c.toBlob((b) => resolve(b!), 'image/png')
   );
 
-  // 3. Remove background
+  // 3. Remove background (lib loaded from CDN at runtime)
   log('מסיר רקע (עשוי לקחת כמה שניות)...');
-  const noBg = await removeBackground(croppedBlob, {
+  const imgly = await loadImgly();
+  const noBg = await imgly.removeBackground(croppedBlob, {
     output: { format: 'image/png', quality: 0.95 },
   });
 

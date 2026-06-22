@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { useRegistrations } from '@/hooks/useRegistrations';
 import * as XLSX from 'xlsx';
-import { processStudentPhoto } from '@/lib/photo-processor';
 
 interface Props {
   registrations: Registration[];
@@ -63,8 +62,11 @@ export function TestDayReportTab({ registrations, onChanged }: Props) {
       `יכול לקחת 15-30 שניות. התמונה הישנה תוחלף.`
     )) return;
     setProcessingId(r.id);
-    setProcessingStep('מתחיל...');
+    setProcessingStep('טוען מודלים...');
     try {
+      // Dynamic import: keeps face-api + background-removal out of the
+      // server bundle entirely (they're browser-only and have native deps).
+      const { processStudentPhoto } = await import('@/lib/photo-processor');
       const res = await fetch(r.photo_url);
       const orig = await res.blob();
       const out = await processStudentPhoto(orig, setProcessingStep);
