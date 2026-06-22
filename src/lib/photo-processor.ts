@@ -16,8 +16,10 @@ import * as faceapi from '@vladmandic/face-api';
 
 // @imgly/background-removal ships an onnxruntime-web .mjs that Next.js's
 // Terser pass chokes on at build time. We load it from a CDN at runtime
-// instead - same package, same behavior, but never enters our bundle.
-const IMGLY_CDN = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs';
+// instead. Use esm.sh because it rewrites bare specifiers (like
+// 'onnxruntime-web') into resolvable URLs - jsdelivr serves the raw npm
+// file which fails with 'Failed to resolve module specifier'.
+const IMGLY_CDN = 'https://esm.sh/@imgly/background-removal@1.7.0?bundle';
 let imglyModulePromise: Promise<any> | null = null;
 async function loadImgly(): Promise<any> {
   if (!imglyModulePromise) {
