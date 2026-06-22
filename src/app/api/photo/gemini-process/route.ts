@@ -16,12 +16,14 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Only image-EDIT capable models. Other Gemini flash models accept image
-// input but can't return image output. Order matters - first available wins.
+// Image-EDIT capable models, newest first. Confirmed available on user's
+// account via /api/photo/gemini-models.
 const CANDIDATE_MODELS = [
-  'gemini-2.5-flash-image',
-  'gemini-2.5-flash-image-preview',
-  'gemini-2.0-flash-preview-image-generation',
+  'gemini-3.1-flash-image',       // Nano Banana 2 (best image-edit quality)
+  'gemini-3.1-flash-image-preview',
+  'gemini-3-pro-image',           // Nano Banana Pro (slower but very high quality)
+  'gemini-3-pro-image-preview',
+  'gemini-2.5-flash-image',       // Original Nano Banana
 ];
 const urlFor = (m: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`;
