@@ -16,8 +16,15 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const MODEL = 'gemini-2.5-flash-image-preview';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+// Model name has changed a few times. Try them in order until one works.
+const CANDIDATE_MODELS = [
+  'gemini-2.5-flash-image',
+  'gemini-2.5-flash-image-preview',
+  'gemini-2.0-flash-preview-image-generation',
+  'gemini-2.0-flash-exp',
+];
+const urlFor = (m: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`;
 
 const PROMPT = `
 תפקיד: עורך תמונות לכרטיסי תלמיד ישיבה.
@@ -68,27 +75,43 @@ export async function POST(req: NextRequest) {
     },
   };
 
-  let res: Response;
-  try {
-    res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(geminiReq),
-    });
-  } catch (e: any) {
+  // Try each candidate model until one works (model IDs change occasionally).
+  let res: Response | null = null;
+  let lastError = '';
+  let modelUsed = '';
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const attempt = await fetch(`${urlFor(model)}?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geminiReq),
+      });
+      if (attempt.ok) {
+        res = attempt;
+        modelUsed = model;
+        break;
+      }
+      // 404 = wrong model name - try the next one. Any other error = stop.
+      if (attempt.status === 404) {
+        lastError = `${model}: 404 not found`;
+        continue;
+      }
+      const text = await attempt.text().catch(() => '');
+      return NextResponse.json(
+        { error: `Gemini ${attempt.status} (${model}): ${text.slice(0, 400)}` },
+        { status: attempt.status }
+      );
+    } catch (e: any) {
+      lastError = `${model}: ${e?.message || e}`;
+    }
+  }
+  if (!res) {
     return NextResponse.json(
-      { error: 'רשת: לא הצלחתי להתחבר ל-Gemini: ' + (e?.message || e) },
+      { error: 'אף מודל של Gemini לא זמין בחשבון שלך. נסיתי: ' + CANDIDATE_MODELS.join(', ') + '. שגיאה אחרונה: ' + lastError },
       { status: 502 }
     );
   }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    return NextResponse.json(
-      { error: `Gemini ${res.status}: ${text.slice(0, 400)}` },
-      { status: res.status }
-    );
-  }
+  void modelUsed; // could be returned in headers for debugging
 
   const json = await res.json().catch(() => null);
   // Locate the first inline_data part with an image mime type
