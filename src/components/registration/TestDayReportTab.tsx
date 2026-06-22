@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { useRegistrations } from '@/hooks/useRegistrations';
 import * as XLSX from 'xlsx';
+import { processStudentPhoto } from '@/lib/photo-processor';
 
 interface Props {
   registrations: Registration[];
@@ -18,6 +19,8 @@ export function TestDayReportTab({ registrations, onChanged }: Props) {
   const { uploadPhoto, update, setStatus } = useRegistrations();
   const [groupBy, setGroupBy] = useState<GroupBy>('date');
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [processingStep, setProcessingStep] = useState<string>('');
 
   const withTest = useMemo(
     () => registrations.filter((r) => r.test_date),
@@ -48,6 +51,34 @@ export function TestDayReportTab({ registrations, onChanged }: Props) {
       alert('שגיאה בהעלאת תמונה: ' + (e?.message || e));
     } finally {
       setUploadingId(null);
+    }
+  };
+
+  /** Pull the existing photo, run the pipeline, upload the result. */
+  const handleProcessPhoto = async (r: Registration) => {
+    if (!r.photo_url) return;
+    if (!confirm(
+      `לעבד את התמונה של ${r.last_name} ${r.first_name}?\n\n` +
+      `יבוצע: זיהוי פנים → חיתוך 3:4 → הסרת רקע → שיפור צבעים.\n` +
+      `יכול לקחת 15-30 שניות. התמונה הישנה תוחלף.`
+    )) return;
+    setProcessingId(r.id);
+    setProcessingStep('מתחיל...');
+    try {
+      const res = await fetch(r.photo_url);
+      const orig = await res.blob();
+      const out = await processStudentPhoto(orig, setProcessingStep);
+      const f = new File([out.blob], `${r.id}-processed.jpg`, { type: 'image/jpeg' });
+      await uploadPhoto(r.id, f);
+      if (!out.faceDetected) {
+        alert('⚠ לא זוהו פנים בתמונה - בוצע חיתוך מרכזי כברירת מחדל.');
+      }
+      onChanged();
+    } catch (e: any) {
+      alert('שגיאה בעיבוד התמונה: ' + (e?.message || e));
+    } finally {
+      setProcessingId(null);
+      setProcessingStep('');
     }
   };
 
@@ -138,8 +169,20 @@ export function TestDayReportTab({ registrations, onChanged }: Props) {
                       ) : (
                         <span className="text-4xl text-slate-300">👤</span>
                       )}
-                      <label className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex items-center justify-center text-xs no-print">
-                        {uploadingId === r.id ? '⏳ מעלה...' : '📷 העלה תמונה'}
+                      <label className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex flex-col items-center justify-center gap-1 text-xs no-print">
+                        <span>
+                          {uploadingId === r.id ? '⏳ מעלה...' : '📷 העלה תמונה'}
+                        </span>
+                        {r.photo_url && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleProcessPhoto(r); }}
+                            disabled={processingId !== null}
+                            className="bg-purple-600 hover:bg-purple-700 px-2 py-1 rounded text-white text-[11px] disabled:opacity-60"
+                          >
+                            {processingId === r.id ? `⏳ ${processingStep || 'מעבד...'}` : '🪄 עבד תמונה'}
+                          </button>
+                        )}
                         <input
                           type="file"
                           accept="image/*"
