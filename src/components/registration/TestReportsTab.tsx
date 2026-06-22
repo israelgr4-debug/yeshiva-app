@@ -13,6 +13,42 @@ type ReportType = 'examinees' | 'examiner' | 'photos';
 
 type PhotosSort = 'name' | 'yeshiva';
 
+// --- Hebrew gematria helpers ---
+// Day 1-30 → אותיות (e.g. 8→ח׳, 15→ט"ו, 28→כ"ח, 30→ל׳)
+function hebrewDay(n: number): string {
+  if (n < 1 || n > 30) return String(n);
+  // Special cases for 15 and 16 (avoid spelling out God's name)
+  if (n === 15) return 'ט״ו';
+  if (n === 16) return 'ט״ז';
+  const tens = Math.floor(n / 10);
+  const ones = n % 10;
+  const TEN: Record<number, string> = { 1: 'י', 2: 'כ', 3: 'ל' };
+  const ONE: Record<number, string> = { 1: 'א', 2: 'ב', 3: 'ג', 4: 'ד', 5: 'ה', 6: 'ו', 7: 'ז', 8: 'ח', 9: 'ט' };
+  if (tens === 0) return `${ONE[ones]}׳`;
+  if (ones === 0) return `${TEN[tens]}׳`;
+  return `${TEN[tens]}״${ONE[ones]}`;
+}
+
+// Year 5786 → תשפ"ו (drops the leading "ה" thousand prefix)
+function hebrewYear(n: number): string {
+  // Strip the millennium digit (5xxx → xxx)
+  const within = n % 1000;
+  const hundreds = Math.floor(within / 100);
+  const tensDigit = Math.floor((within % 100) / 10);
+  const onesDigit = within % 10;
+  const HUNDREDS: Record<number, string> = { 0: '', 1: 'ק', 2: 'ר', 3: 'ש', 4: 'ת', 5: 'תק', 6: 'תר', 7: 'תש', 8: 'תת', 9: 'תתק' };
+  const TENS: Record<number, string> = { 0: '', 1: 'י', 2: 'כ', 3: 'ל', 4: 'מ', 5: 'נ', 6: 'ס', 7: 'ע', 8: 'פ', 9: 'צ' };
+  const ONES: Record<number, string> = { 0: '', 1: 'א', 2: 'ב', 3: 'ג', 4: 'ד', 5: 'ה', 6: 'ו', 7: 'ז', 8: 'ח', 9: 'ט' };
+  let combo = (TENS[tensDigit] || '') + (ONES[onesDigit] || '');
+  // Avoid forbidden combinations
+  if (combo === 'יה') combo = 'טו';
+  if (combo === 'יו') combo = 'טז';
+  const letters = (HUNDREDS[hundreds] || '') + combo;
+  if (letters.length === 0) return '';
+  if (letters.length === 1) return `${letters}׳`;
+  return `${letters.slice(0, -1)}״${letters.slice(-1)}`;
+}
+
 export function TestReportsTab({ registrations }: Props) {
   const [reportType, setReportType] = useState<ReportType>('examinees');
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
@@ -73,17 +109,23 @@ export function TestReportsTab({ registrations }: Props) {
     setSelectedDates(next);
   };
 
-  /** Format YYYY-MM-DD as Hebrew calendar date (e.g. "ב' אדר תשפ"ו"), no Gregorian. */
+  /** Format YYYY-MM-DD as Hebrew calendar date in gematria letters,
+   *  e.g. "יום שלישי · ח׳ תמוז תשפ״ו" - no Gregorian. */
   const fmtDate = (d: string) => {
     try {
       const dt = new Date(d);
       const weekday = dt.toLocaleDateString('he-IL', { weekday: 'long' });
-      const hebrew = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
+      const parts = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
-      }).format(dt);
-      return `יום ${weekday} · ${hebrew}`;
+      }).formatToParts(dt);
+      const numDay = Number(parts.find((p) => p.type === 'day')?.value || 0);
+      const month = parts.find((p) => p.type === 'month')?.value || '';
+      const numYear = Number(parts.find((p) => p.type === 'year')?.value || 0);
+      const dayGem = hebrewDay(numDay);
+      const yearGem = hebrewYear(numYear);
+      return `${weekday} · ${dayGem} ${month} ${yearGem}`;
     } catch { return d; }
   };
 
