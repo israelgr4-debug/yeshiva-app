@@ -101,14 +101,43 @@ function fallbackCrop(iw: number, ih: number) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
-/** Suppress white "bleed" from the original photo's background that the
- *  model left along the silhouette edge (thin strips where the model said
- *  "background" but the alpha drop is gradual).
- *
- *  Algorithm: any pixel that is BOTH near-white AND has soft (non-full)
- *  alpha is most likely background bleed. Make those fully transparent.
- *  Pure-white inside the face is rare; even sun highlights have some
- *  color tint, and the foreground at the face center has alpha=255.
+/** Erode the alpha mask uniformly by `radius` pixels (4-neighbor min).
+ *  Trims edge bleed at ALL silhouette boundaries - face, hair, suit, neck.
+ *  Lose ~1-2px of true edge but the matte becomes clean of background
+ *  mixing. Particularly important on dark fabric (suit) where the bleed
+ *  shows as mid-lightness pixels that no color-based filter can catch.
+ */
+function erodeAlpha(canvas: HTMLCanvasElement, radius: number) {
+  if (radius <= 0) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const { width, height } = canvas;
+  const img = ctx.getImageData(0, 0, width, height);
+  const data = img.data;
+  const N = width * height;
+  const alpha = new Uint8ClampedArray(N);
+  for (let i = 0, j = 0; i < data.length; i += 4, j++) alpha[j] = data[i + 3];
+
+  for (let r = 0; r < radius; r++) {
+    const next = new Uint8ClampedArray(alpha);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let m = alpha[y * width + x];
+        if (y > 0)         m = Math.min(m, alpha[(y - 1) * width + x]);
+        if (y < height-1)  m = Math.min(m, alpha[(y + 1) * width + x]);
+        if (x > 0)         m = Math.min(m, alpha[y * width + (x - 1)]);
+        if (x < width-1)   m = Math.min(m, alpha[y * width + (x + 1)]);
+        next[y * width + x] = m;
+      }
+    }
+    alpha.set(next);
+  }
+  for (let i = 0, j = 0; i < data.length; i += 4, j++) data[i + 3] = alpha[j];
+  ctx.putImageData(img, 0, 0);
+}
+
+/** Suppress near-white pixels with soft alpha (catches whatever bleed
+ *  remained after erosion - sun glare on glasses, etc).
  */
 function killWhiteBleed(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext('2d');
@@ -118,16 +147,13 @@ function killWhiteBleed(canvas: HTMLCanvasElement) {
   const data = img.data;
   for (let i = 0; i < data.length; i += 4) {
     const a = data[i + 3];
-    if (a === 0 || a === 255) continue; // already fully decided
+    if (a === 0 || a === 255) continue;
     const r = data[i], g = data[i + 1], b = data[i + 2];
-    // "near white" = high lightness + very low saturation
     const minC = Math.min(r, g, b);
     const maxC = Math.max(r, g, b);
     const light = (maxC + minC) / 2;
-    const sat = maxC === 0 ? 0 : (maxC - minC);
-    if (light > 220 && sat < 25) {
-      data[i + 3] = 0; // strip it
-    }
+    const sat = maxC - minC;
+    if (light > 220 && sat < 25) data[i + 3] = 0;
   }
   ctx.putImageData(img, 0, 0);
 }
@@ -337,13 +363,18 @@ export async function processStudentPhoto(
   const fgCtx = fg.getContext('2d');
   if (!fgCtx) throw new Error('Canvas context unavailable');
   fgCtx.drawImage(finalImg, 0, 0);
-  // Two-step matte cleanup:
-  //  1) killWhiteBleed strips near-white pixels with soft alpha (those are
-  //     the edge strips of the original studio background bleeding through).
-  //  2) fillAlphaHoles then patches any internal holes left in the face.
+  // Matte cleanup, in order:
+  //  1) erodeAlpha(2): uniformly shrink the silhouette by 2px - removes
+  //     edge bleed at ALL boundaries (face, hair, suit, neck). Cheap fix
+  //     for the white strips along dark fabric where the model's soft
+  //     alpha left mid-lightness pixels mixing fg + bg.
+  //  2) killWhiteBleed: any remaining semi-transparent near-white pixels
+  //     (e.g. sun glare on glasses) → fully transparent.
+  //  3) fillAlphaHoles: patch any internal holes inside the silhouette.
+  erodeAlpha(fg, 2);
   killWhiteBleed(fg);
   fillAlphaHoles(fg);
-  autoEnhance(fg); // analyzes opaque pixels only, alpha preserved
+  autoEnhance(fg);
 
   // Composite enhanced foreground over a soft photo-studio gray
   const out = document.createElement('canvas');
