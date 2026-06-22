@@ -16,6 +16,21 @@ type GroupBy = 'date' | 'yeshiva';
 
 export function TestDayReportTab({ registrations, onChanged }: Props) {
   const { uploadPhoto, update, setStatus } = useRegistrations();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDeletePhoto = async (r: Registration) => {
+    if (!r.photo_url) return;
+    if (!confirm(`למחוק את התמונה של ${r.last_name} ${r.first_name}?`)) return;
+    setDeletingId(r.id);
+    try {
+      await update(r.id, { photo_url: null } as any);
+      onChanged();
+    } catch (e: any) {
+      alert('שגיאה במחיקת התמונה: ' + (e?.message || e));
+    } finally {
+      setDeletingId(null);
+    }
+  };
   const [groupBy, setGroupBy] = useState<GroupBy>('date');
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -176,14 +191,24 @@ export function TestDayReportTab({ registrations, onChanged }: Props) {
                           {uploadingId === r.id ? '⏳ מעלה...' : '📷 העלה תמונה'}
                         </span>
                         {r.photo_url && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleProcessPhoto(r); }}
-                            disabled={processingId !== null}
-                            className="bg-purple-600 hover:bg-purple-700 px-2 py-1 rounded text-white text-[11px] disabled:opacity-60"
-                          >
-                            {processingId === r.id ? `⏳ ${processingStep || 'מעבד...'}` : '🪄 עבד תמונה'}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleProcessPhoto(r); }}
+                              disabled={processingId !== null}
+                              className="bg-purple-600 hover:bg-purple-700 px-2 py-1 rounded text-white text-[11px] disabled:opacity-60"
+                            >
+                              {processingId === r.id ? `⏳ ${processingStep || 'מעבד...'}` : '🪄 עבד תמונה'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeletePhoto(r); }}
+                              disabled={deletingId !== null || processingId !== null}
+                              className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white text-[11px] disabled:opacity-60"
+                            >
+                              {deletingId === r.id ? '⏳ מוחק...' : '🗑️ מחק תמונה'}
+                            </button>
+                          </>
                         )}
                         <input
                           type="file"
