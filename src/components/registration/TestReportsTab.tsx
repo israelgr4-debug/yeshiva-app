@@ -338,8 +338,14 @@ export function TestReportsTab({ registrations }: Props) {
           <h1 className="text-2xl font-bold" style={{ fontFamily: "'Frank Ruhl Libre', serif" }}>
             ישיבת מיר מודיעין עילית
           </h1>
-          <h2 className="text-lg font-semibold text-slate-700 mt-1">{titleForReport()}</h2>
-          <p className="text-sm text-slate-500">{dateLabel()} · {filtered.length} נבחנים</p>
+          {/* For photos report, suppress the sub-title and the date/count line
+              in PRINT so 4 rows fit per page. Hidden via class below. */}
+          <h2 className={`text-lg font-semibold text-slate-700 mt-1 ${reportType === 'photos' ? 'photos-hide-print' : ''}`}>
+            {titleForReport()}
+          </h2>
+          <p className={`text-sm text-slate-500 ${reportType === 'photos' ? 'photos-hide-print' : ''}`}>
+            {dateLabel()} · {filtered.length} נבחנים
+          </p>
         </div>
 
         {filtered.length === 0 ? (
@@ -358,20 +364,21 @@ export function TestReportsTab({ registrations }: Props) {
 
       <style jsx global>{`
         @media print {
-          @page { size: A4; margin: 6mm 8mm; }
+          @page { size: A4; margin: 4mm 6mm; }
           body * { visibility: hidden; }
           .print-area, .print-area * { visibility: visible; }
           .print-area { position: absolute; inset: 0; padding: 0; border: none; box-shadow: none; }
           .no-print { display: none !important; }
           .examiner-row td { border-bottom: 1px solid #888 !important; }
           .examiner-row { page-break-inside: avoid; }
-          /* Photos report - compact header so 4 rows × 4 columns fit per A4 */
-          .print-area .print-header {
-            margin-bottom: 4px !important;
-          }
+          /* Compact print header so the page is mostly content */
+          .print-area .print-header { margin-bottom: 2px !important; }
           .print-area .print-header h1 { font-size: 13pt !important; margin: 0 !important; }
           .print-area .print-header h2 { font-size: 10pt !important; margin: 1px 0 0 0 !important; }
           .print-area .print-header p  { font-size: 8pt !important; margin: 1px 0 0 0 !important; }
+          /* Photos report: hide the sub-title + date/count line entirely so
+             the page header is just 'ישיבת מיר מודיעין עילית' and 4 rows fit. */
+          .print-area .photos-hide-print { display: none !important; }
         }
         .report-table { width: 100%; border-collapse: collapse; direction: rtl; font-size: 13px; }
         .report-table th {
