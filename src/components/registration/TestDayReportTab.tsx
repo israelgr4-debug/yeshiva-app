@@ -179,7 +179,7 @@ export function TestDayReportTab({ registrations, onChanged }: Props) {
                 .sort((a, b) => (a.test_time || '').localeCompare(b.test_time || ''))
                 .map((r) => (
                   <div key={r.id} className="border border-slate-200 rounded-xl overflow-hidden bg-white hover:elevation-2 transition-all">
-                    <div className="aspect-square bg-slate-100 flex items-center justify-center relative group">
+                    <div className="aspect-[4/5] bg-slate-100 flex items-center justify-center relative group">
                       {r.photo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={r.photo_url} alt={`${r.first_name} ${r.last_name}`} className="w-full h-full object-cover" />

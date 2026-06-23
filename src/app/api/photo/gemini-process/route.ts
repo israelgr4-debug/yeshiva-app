@@ -34,12 +34,19 @@ const urlFor = (m: string) =>
 const PROMPT = `
 Edit this portrait photo of a person into a clean ID-card style headshot:
 
-1. CROP to a 4:5 portrait of head and shoulders. The face should fill roughly
-   40-50% of the frame height. CRITICAL: there MUST be visible empty space
-   above the top of the head (approximately 8-12% of the frame height as
-   headroom). The top of the head, hair, kippah, and hat must NEVER touch
-   or be clipped by the top edge of the frame. If needed, zoom out so the
-   head sits clearly below the top edge with breathing room above it.
+1. CROP to a 4:5 portrait of head and shoulders.
+   STRICT FRAMING RULES (apply identically to every photo for consistency):
+     - Headroom: leave a SMALL gap of exactly 5% of the frame height between
+       the top of the head/hair/kippah/hat and the top edge of the frame.
+       Not more, not less. The head must NEVER be clipped, but the gap
+       above it must also be tight - just enough to "breathe".
+     - Face size: zoom in so the face (chin to top of forehead) occupies
+       roughly 45-55% of the frame height.
+     - Bottom: cut roughly mid-chest, showing collar and a hint of suit
+       shoulders.
+     - Horizontal: center the face horizontally in the frame.
+   These framing numbers must be consistent across different photos - the
+   result should look like a uniform set of ID cards, not a variable batch.
 2. REPLACE the original background with a clean, uniform light-gray studio
    backdrop (hex color #E5E7EB). Make sure no traces of the original
    background remain - especially along hair, collar, and shoulders.
