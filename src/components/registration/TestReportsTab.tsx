@@ -358,13 +358,20 @@ export function TestReportsTab({ registrations }: Props) {
 
       <style jsx global>{`
         @media print {
-          @page { size: A4; margin: 12mm 10mm; }
+          @page { size: A4; margin: 6mm 8mm; }
           body * { visibility: hidden; }
           .print-area, .print-area * { visibility: visible; }
           .print-area { position: absolute; inset: 0; padding: 0; border: none; box-shadow: none; }
           .no-print { display: none !important; }
           .examiner-row td { border-bottom: 1px solid #888 !important; }
           .examiner-row { page-break-inside: avoid; }
+          /* Photos report - compact header so 4 rows × 4 columns fit per A4 */
+          .print-area .print-header {
+            margin-bottom: 4px !important;
+          }
+          .print-area .print-header h1 { font-size: 13pt !important; margin: 0 !important; }
+          .print-area .print-header h2 { font-size: 10pt !important; margin: 1px 0 0 0 !important; }
+          .print-area .print-header p  { font-size: 8pt !important; margin: 1px 0 0 0 !important; }
         }
         .report-table { width: 100%; border-collapse: collapse; direction: rtl; font-size: 13px; }
         .report-table th {
@@ -386,13 +393,13 @@ export function TestReportsTab({ registrations }: Props) {
         .photos-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 10px;
+          gap: 5px;
           direction: rtl;
         }
         .photo-card {
           border: 1px solid #cbd5e1;
-          border-radius: 8px;
-          padding: 6px;
+          border-radius: 6px;
+          padding: 3px;
           text-align: center;
           background: #fff;
           break-inside: avoid;
@@ -400,19 +407,19 @@ export function TestReportsTab({ registrations }: Props) {
         }
         .photo-frame {
           width: 100%;
-          aspect-ratio: 3 / 4;
+          aspect-ratio: 4 / 5;
           background: #f1f5f9;
           border: 1px solid #94a3b8;
           display: flex;
           align-items: center;
           justify-content: center;
           overflow: hidden;
-          margin-bottom: 5px;
+          margin-bottom: 2px;
         }
         .photo-frame img { width: 100%; height: 100%; object-fit: cover; }
-        .photo-placeholder { color: #94a3b8; font-size: 10pt; }
-        .photo-name { font-size: 11pt; font-weight: 700; line-height: 1.2; }
-        .photo-yeshiva { font-size: 9pt; color: #475569; margin-top: 2px; line-height: 1.2; }
+        .photo-placeholder { color: #94a3b8; font-size: 9pt; }
+        .photo-name { font-size: 10pt; font-weight: 700; line-height: 1.1; }
+        .photo-yeshiva { font-size: 8pt; color: #475569; margin-top: 0; line-height: 1.1; }
       `}</style>
     </div>
   );
