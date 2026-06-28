@@ -389,11 +389,13 @@ export function TestReportsTab({ registrations }: Props) {
 
       {/* Landscape page orientation - injected ONLY while the extended report
        *  is the active selection. @page is global, so we mount the rule
-       *  conditionally instead of using named pages (which Chrome ignores). */}
+       *  conditionally instead of using named pages (which Chrome ignores).
+       *  Uses a plain <style> tag (not styled-jsx) because the styled-jsx
+       *  Rust parser panics on nested @page-inside-@media. */}
       {reportType === 'extended' && (
-        <style jsx global>{`
-          @media print { @page { size: A4 landscape; margin: 8mm; } }
-        `}</style>
+        <style dangerouslySetInnerHTML={{ __html:
+          '@media print { @page { size: A4 landscape; margin: 8mm; } }'
+        }} />
       )}
 
       <style jsx global>{`
