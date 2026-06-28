@@ -9,7 +9,7 @@ interface Props {
   registrations: Registration[];
 }
 
-type ReportType = 'examinees' | 'examiner' | 'photos';
+type ReportType = 'examinees' | 'examiner' | 'photos' | 'extended';
 
 type PhotosSort = 'name' | 'yeshiva';
 
@@ -92,6 +92,16 @@ export function TestReportsTab({ registrations }: Props) {
         if (l !== 0) return l;
         return (a.prev_yeshiva_name || '').localeCompare(b.prev_yeshiva_name || '', 'he');
       });
+    } else if (reportType === 'extended') {
+      // Sort: test_time → prev_yeshiva → last_name. Same as examinees, but
+      // the render groups by (time, yeshiva, material) and merges those cells.
+      rows = [...rows].sort((a, b) => {
+        const t = (a.test_time || '').localeCompare(b.test_time || '');
+        if (t !== 0) return t;
+        const y = (a.prev_yeshiva_name || '').localeCompare(b.prev_yeshiva_name || '', 'he');
+        if (y !== 0) return y;
+        return (a.last_name || '').localeCompare(b.last_name || '', 'he');
+      });
     } else {
       // examiner: Sort: prev_yeshiva → last_name
       rows = [...rows].sort((a, b) => {
@@ -143,6 +153,7 @@ export function TestReportsTab({ registrations }: Props) {
   const titleForReport = () => {
     if (reportType === 'examinees') return 'יום בחינה - רשימת נבחנים';
     if (reportType === 'photos')    return 'יום בחינה - דוח תמונות';
+    if (reportType === 'extended')  return 'יום בחינה - דוח מורחב';
     return 'דוח לבוחן - גיליון ציונים';
   };
 
@@ -197,7 +208,7 @@ export function TestReportsTab({ registrations }: Props) {
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">
             סוג הדוח
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <button
               type="button"
               onClick={() => setReportType('examinees')}
@@ -233,6 +244,18 @@ export function TestReportsTab({ registrations }: Props) {
             >
               <div className="font-semibold text-slate-900">📸 דוח תמונות (4 בשורה)</div>
               <div className="text-xs text-slate-500 mt-1">תמונה + שם + ישיבה קטנה</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setReportType('extended')}
+              className={`text-right p-3 rounded-xl border-2 transition-all ${
+                reportType === 'extended'
+                  ? 'border-amber-500 bg-amber-50'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <div className="font-semibold text-slate-900">📑 דוח מורחב (A4 לרוחב)</div>
+              <div className="text-xs text-slate-500 mt-1">שעה+ישיבה+חומר ממוזגים, עמודות ריקות לכשרון/התרשמות/הערות</div>
             </button>
           </div>
         </div>
@@ -357,6 +380,8 @@ export function TestReportsTab({ registrations }: Props) {
           <ExamineesTable rows={filtered} fmtMaterial={fmtMaterial} fmtDate={fmtDate} showDate={selectedDates.size !== 1} />
         ) : reportType === 'photos' ? (
           <PhotosGrid rows={filtered} />
+        ) : reportType === 'extended' ? (
+          <ExtendedTable rows={filtered} fmtMaterial={fmtMaterial} />
         ) : (
           <ExaminerTable rows={filtered} />
         )}
@@ -380,6 +405,15 @@ export function TestReportsTab({ registrations }: Props) {
              the page header is just 'ישיבת מיר מודיעין עילית' and 4 rows fit. */
           .print-area .photos-hide-print { display: none !important; }
         }
+        /* Extended report - print A4 LANDSCAPE so all 9 columns fit comfortably. */
+        @media print {
+          .extended-print-page  { display: block; }
+        }
+        .extended-print-page .extended-page-marker {
+          /* Forces landscape only when the extended report is printed */
+        }
+        @page extendedLandscape { size: A4 landscape; margin: 8mm; }
+        .extended-print-page { page: extendedLandscape; }
         .report-table { width: 100%; border-collapse: collapse; direction: rtl; font-size: 13px; }
         .report-table th {
           background: #f1f5f9; color: #475569; text-align: right; padding: 8px 10px;
@@ -396,6 +430,50 @@ export function TestReportsTab({ registrations }: Props) {
           padding: 14px 8px;
           border-bottom: 1px dashed #94a3b8;
           vertical-align: top;
+        }
+        /* Extended report: airy table for handwritten notes */
+        .extended-table {
+          width: 100%;
+          border-collapse: collapse;
+          direction: rtl;
+          font-size: 12pt;
+          table-layout: fixed;
+        }
+        .extended-table th {
+          background: #f1f5f9;
+          color: #111827;
+          text-align: center;
+          padding: 8px 6px;
+          border: 1px solid #475569;
+          font-weight: 700;
+          font-size: 11pt;
+        }
+        .extended-table td {
+          padding: 18px 8px;        /* airy - room for handwriting */
+          border: 1px solid #cbd5e1;
+          vertical-align: middle;
+          text-align: right;
+        }
+        /* Merged cells (time / yeshiva / material) styling */
+        .extended-table td.ext-merged {
+          background: #f8fafc;
+          font-weight: 600;
+          vertical-align: middle;
+        }
+        /* A thick separator between yeshiva groups so the eye can find a line easily */
+        .extended-table tr.ext-group-start td {
+          border-top: 2.5px solid #1e293b !important;
+        }
+        /* Empty cells (כשרון / התרשמות / הערות) - give them a faint baseline */
+        .extended-table td.ext-blank {
+          height: 50px;
+        }
+        /* On print, ensure each row stays on one page */
+        @media print {
+          .extended-table { font-size: 11pt; }
+          .extended-table td { padding: 14px 6px; }
+          .extended-table tr { page-break-inside: avoid; }
+          .extended-table tr.ext-group-start td { border-top: 2.5px solid #000 !important; }
         }
         .photos-grid {
           display: grid;
@@ -428,6 +506,87 @@ export function TestReportsTab({ registrations }: Props) {
         .photo-name { font-size: 10pt; font-weight: 700; line-height: 1.1; }
         .photo-yeshiva { font-size: 8pt; color: #475569; margin-top: 0; line-height: 1.1; }
       `}</style>
+    </div>
+  );
+}
+
+function ExtendedTable({
+  rows, fmtMaterial,
+}: {
+  rows: Registration[];
+  fmtMaterial: (r: Registration) => string;
+}) {
+  // Group rows by (test_time, prev_yeshiva_name, material) so the merged
+  // cells span correctly. Each group's first row carries a rowSpan on the
+  // first 3 columns; subsequent rows have those cells omitted.
+  type Group = { time: string; yeshiva: string; material: string; rows: Registration[] };
+  const groups: Group[] = [];
+  let current: Group | null = null;
+  for (const r of rows) {
+    const time = r.test_time || '';
+    const yeshiva = r.prev_yeshiva_name || '—';
+    const material = fmtMaterial(r);
+    if (!current || current.time !== time || current.yeshiva !== yeshiva || current.material !== material) {
+      current = { time, yeshiva, material, rows: [r] };
+      groups.push(current);
+    } else {
+      current.rows.push(r);
+    }
+  }
+
+  return (
+    <div className="extended-print-page">
+      <table className="extended-table">
+        <colgroup>
+          <col style={{ width: '7%' }} />   {/* שעה */}
+          <col style={{ width: '12%' }} />  {/* ישיבה קטנה */}
+          <col style={{ width: '16%' }} />  {/* חומר */}
+          <col style={{ width: '11%' }} />  {/* שם משפחה */}
+          <col style={{ width: '9%' }} />   {/* שם פרטי */}
+          <col style={{ width: '9%' }} />   {/* שם האב */}
+          <col style={{ width: '8%' }} />   {/* כשרון */}
+          <col style={{ width: '12%' }} />  {/* התרשמות אישית */}
+          <col style={{ width: '16%' }} />  {/* הערות */}
+        </colgroup>
+        <thead>
+          <tr>
+            <th>שעה</th>
+            <th>ישיבה קטנה</th>
+            <th>חומר הנבחן</th>
+            <th>שם משפחה</th>
+            <th>שם פרטי</th>
+            <th>שם האב</th>
+            <th>כשרון</th>
+            <th>התרשמות אישית</th>
+            <th>הערות</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((g, gi) => (
+            g.rows.map((r, ri) => {
+              const isFirst = ri === 0;
+              const rowClass = isFirst && gi > 0 ? 'ext-group-start' : '';
+              return (
+                <tr key={r.id} className={rowClass}>
+                  {isFirst && (
+                    <>
+                      <td className="ext-merged" rowSpan={g.rows.length}>{g.time}</td>
+                      <td className="ext-merged" rowSpan={g.rows.length}>{g.yeshiva}</td>
+                      <td className="ext-merged" rowSpan={g.rows.length}>{g.material}</td>
+                    </>
+                  )}
+                  <td>{r.last_name}</td>
+                  <td>{r.first_name}</td>
+                  <td>{r.father_name || ''}</td>
+                  <td className="ext-blank"></td>
+                  <td className="ext-blank"></td>
+                  <td className="ext-blank"></td>
+                </tr>
+              );
+            })
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
