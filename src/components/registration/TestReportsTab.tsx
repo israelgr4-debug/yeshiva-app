@@ -387,6 +387,15 @@ export function TestReportsTab({ registrations }: Props) {
         )}
       </div>
 
+      {/* Landscape page orientation - injected ONLY while the extended report
+       *  is the active selection. @page is global, so we mount the rule
+       *  conditionally instead of using named pages (which Chrome ignores). */}
+      {reportType === 'extended' && (
+        <style jsx global>{`
+          @media print { @page { size: A4 landscape; margin: 8mm; } }
+        `}</style>
+      )}
+
       <style jsx global>{`
         @media print {
           @page { size: A4; margin: 4mm 6mm; }
@@ -405,15 +414,9 @@ export function TestReportsTab({ registrations }: Props) {
              the page header is just 'ישיבת מיר מודיעין עילית' and 4 rows fit. */
           .print-area .photos-hide-print { display: none !important; }
         }
-        /* Extended report - print A4 LANDSCAPE so all 9 columns fit comfortably. */
-        @media print {
-          .extended-print-page  { display: block; }
-        }
-        .extended-print-page .extended-page-marker {
-          /* Forces landscape only when the extended report is printed */
-        }
-        @page extendedLandscape { size: A4 landscape; margin: 8mm; }
-        .extended-print-page { page: extendedLandscape; }
+        /* Extended report - landscape forced via a conditional <style> tag
+         * rendered only when reportType === 'extended' (see below). The named
+         * @page rule didn't reliably switch orientation in Chrome. */
         .report-table { width: 100%; border-collapse: collapse; direction: rtl; font-size: 13px; }
         .report-table th {
           background: #f1f5f9; color: #475569; text-align: right; padding: 8px 10px;
