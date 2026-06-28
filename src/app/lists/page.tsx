@@ -20,6 +20,7 @@ import { RamReport } from '@/components/lists/RamReport';
 import { PhotosReport } from '@/components/lists/PhotosReport';
 import { EligibleReport } from '@/components/lists/EligibleReport';
 import { CustomReportBuilder } from '@/components/lists/CustomReportBuilder';
+import * as XLSX from 'xlsx';
 
 export default function ListsPage() {
   const { fetchData } = useSupabase();
@@ -94,6 +95,69 @@ export default function ListsPage() {
     : '';
 
   const handlePrint = () => window.print();
+
+  /** Generic Excel export - works for every built-in report (general/tests/
+   *  multi_details/details/ram/photos/eligible). One row per filtered student,
+   *  with the most useful set of columns. The 'custom' report has its own
+   *  in-builder export and is skipped here.
+   */
+  const handleExportExcel = () => {
+    if (filteredStudents.length === 0) {
+      alert('אין תלמידים לייצוא');
+      return;
+    }
+    const sorted = [...filteredStudents].sort((a, b) => {
+      const s = (a.shiur || '').localeCompare(b.shiur || '', 'he');
+      if (s !== 0) return s;
+      return (a.last_name || '').localeCompare(b.last_name || '', 'he');
+    });
+    const headers = [
+      '#', 'שיעור', 'שם משפחה', 'שם פרטי', 'ת״ז', 'תאריך לידה',
+      'טלפון תלמיד', 'אימייל תלמיד', 'מוסד', 'מחזור',
+      'שם אב', 'טלפון אב', 'שם אם', 'טלפון אם',
+      'כתובת', 'עיר', 'טלפון בית', 'סטטוס',
+    ];
+    const STATUS_LABEL: Record<string, string> = {
+      active: 'פעיל', chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים',
+    };
+    const rows: any[][] = [headers];
+    sorted.forEach((s, i) => {
+      const fam = s.family_id ? families[s.family_id] : null;
+      const mach = s.machzor_id ? machzorot[s.machzor_id] : null;
+      rows.push([
+        i + 1,
+        s.shiur || '',
+        s.last_name || '',
+        s.first_name || '',
+        s.id_number || s.passport_number || '',
+        s.date_of_birth || '',
+        s.phone || '',
+        s.email || '',
+        s.institution_name || '',
+        mach?.name || '',
+        fam?.father_name || '',
+        fam?.father_phone || '',
+        fam?.mother_name || '',
+        fam?.mother_phone || '',
+        fam?.address || '',
+        fam?.city || '',
+        fam?.home_phone || '',
+        STATUS_LABEL[s.status] || s.status,
+      ]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 4 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 12 },
+      { wch: 13 }, { wch: 22 }, { wch: 10 }, { wch: 8 },
+      { wch: 16 }, { wch: 13 }, { wch: 16 }, { wch: 13 },
+      { wch: 22 }, { wch: 14 }, { wch: 13 }, { wch: 10 },
+    ];
+    if (!ws['!sheetView']) (ws as any)['!sheetView'] = [{ rightToLeft: true }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'תלמידים');
+    const fn = `students_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fn);
+  };
 
   const renderReport = () => {
     if (loading) {
@@ -294,6 +358,15 @@ export default function ListsPage() {
                 <Button onClick={handlePrint} className="w-full mt-4">
                   הדפס / שמור PDF
                 </Button>
+                {selectedReport !== 'custom' && (
+                  <Button
+                    variant="secondary"
+                    onClick={handleExportExcel}
+                    className="w-full mt-2"
+                  >
+                    📥 ייצא לאקסל
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </div>
