@@ -524,11 +524,17 @@ function ExtendedTable({
   // Group rows by (test_time, prev_yeshiva_name, material) so the merged
   // cells span correctly. Each group's first row carries a rowSpan on the
   // first 3 columns; subsequent rows have those cells omitted.
+  // Time comes from Postgres as HH:MM:SS - trim to HH:MM for the report.
+  const fmtTime = (t: string | null | undefined): string => {
+    if (!t) return '';
+    const m = String(t).match(/^(\d{1,2}:\d{2})/);
+    return m ? m[1] : String(t);
+  };
   type Group = { time: string; yeshiva: string; material: string; rows: Registration[] };
   const groups: Group[] = [];
   let current: Group | null = null;
   for (const r of rows) {
-    const time = r.test_time || '';
+    const time = fmtTime(r.test_time);
     const yeshiva = r.prev_yeshiva_name || '—';
     const material = fmtMaterial(r);
     if (!current || current.time !== time || current.yeshiva !== yeshiva || current.material !== material) {
