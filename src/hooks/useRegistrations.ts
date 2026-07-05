@@ -144,12 +144,14 @@ export function useRegistrations() {
       familyId = (famNew as any).id;
     }
 
-    // Create student in שיעור 0
+    // Create student in שיעור 0.
+    // Note: date_of_birth is a DATE column - Postgres rejects '', must be null.
+    // Same for any other date/time/uuid fields that might be nullable.
     const studentInput: Partial<Student> = {
       first_name: r.first_name,
       last_name: r.last_name,
       id_number: r.id_number || '',
-      date_of_birth: r.date_of_birth || '',
+      date_of_birth: (r.date_of_birth || null) as any,
       phone: r.phone || '',
       email: r.email || '',
       shiur: 'שיעור 0',
