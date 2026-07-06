@@ -13,6 +13,7 @@ import { TestReportsTab } from '@/components/registration/TestReportsTab';
 import { AcceptanceTab } from '@/components/registration/AcceptanceTab';
 import { RegistrationFormDialog } from '@/components/registration/RegistrationFormDialog';
 import { RegistrationImportButtons } from '@/components/registration/RegistrationImportButtons';
+import { SendRegistrationFormsDialog } from '@/components/registration/SendRegistrationFormsDialog';
 
 type TabId = 'list' | 'tests' | 'testday' | 'reports' | 'acceptance';
 
@@ -33,6 +34,7 @@ export default function RegistrationPage() {
   const [tab, setTab] = useState<TabId>('list');
   const [editing, setEditing] = useState<Registration | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [showSendForms, setShowSendForms] = useState(false);
 
   const reload = async () => {
     setLoading(true);
@@ -74,6 +76,7 @@ export default function RegistrationPage() {
           permissions.canWrite ? (
             <div className="flex gap-2 flex-wrap">
               <RegistrationImportButtons onImported={reload} />
+              <Button size="sm" variant="secondary" onClick={() => setShowSendForms(true)}>📧 שלח טפסי רישום</Button>
               <Button size="sm" onClick={handleAdd}>＋ רישום חדש</Button>
             </div>
           ) : undefined
@@ -148,6 +151,13 @@ export default function RegistrationPage() {
           registration={editing}
           onClose={() => { setShowNew(false); setEditing(null); }}
           onSaved={async () => { setShowNew(false); setEditing(null); await reload(); }}
+        />
+      )}
+
+      {showSendForms && (
+        <SendRegistrationFormsDialog
+          registrations={registrations}
+          onClose={() => setShowSendForms(false)}
         />
       )}
     </>

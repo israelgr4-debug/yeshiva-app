@@ -33,6 +33,20 @@ const DEFAULT_REMINDER_BODY = `שלום ר' {{first_name}},
 בברכה,
 {{from_name}}`;
 
+// Registration-forms email (sent to parents of candidates) - keep in sync with
+// src/app/api/registration/send-forms/route.ts
+const DEFAULT_REG_SUBJECT = 'טפסי רישום - ישיבת מיר מודיעין עילית';
+const DEFAULT_REG_BODY = `שלום רב,
+
+מצורפים בזאת טפסי הרישום לישיבת מיר מודיעין עילית עבור בנכם {{first_name}}.
+
+נא למלא את הטפסים המצורפים ולהחזירם להנהלת הישיבה בהקדם.
+
+לכל שאלה ניתן להשיב למייל זה.
+
+בברכה,
+{{from_name}}`;
+
 export function EmailSettings() {
   const { getSetting, setSetting } = useSystemSettings();
 
@@ -52,6 +66,13 @@ export function EmailSettings() {
   const [gradReminderBody, setGradReminderBody] = useState('');
   const [savingGrad, setSavingGrad] = useState(false);
   const [gradStatus, setGradStatus] = useState<string | null>(null);
+  // Registration-forms email (PDFs + template)
+  const [regFiles, setRegFiles] = useState<{ path: string; filename: string }[]>([]);
+  const [regSubj, setRegSubj] = useState('');
+  const [regBody, setRegBody] = useState('');
+  const [uploadingReg, setUploadingReg] = useState(false);
+  const [savingReg, setSavingReg] = useState(false);
+  const [regStatus, setRegStatus] = useState<string | null>(null);
   const [uploadingSig, setUploadingSig] = useState(false);
   const [uploadingSigC, setUploadingSigC] = useState(false);
   const [uploadingLH, setUploadingLH] = useState(false);
@@ -72,6 +93,9 @@ export function EmailSettings() {
     setGradBody(await getSetting<string>('grad_update_email_body', DEFAULT_GRAD_BODY));
     setGradReminderSubj(await getSetting<string>('grad_update_reminder_subject', DEFAULT_REMINDER_SUBJECT));
     setGradReminderBody(await getSetting<string>('grad_update_reminder_body', DEFAULT_REMINDER_BODY));
+    setRegFiles(await getSetting<{ path: string; filename: string }[]>('reg_forms_files', []));
+    setRegSubj(await getSetting<string>('reg_forms_email_subject', DEFAULT_REG_SUBJECT));
+    setRegBody(await getSetting<string>('reg_forms_email_body', DEFAULT_REG_BODY));
   }, [getSetting]);
 
   const handleSaveGradTemplates = async () => {
@@ -93,6 +117,60 @@ export function EmailSettings() {
     setGradBody(DEFAULT_GRAD_BODY);
     setGradReminderSubj(DEFAULT_REMINDER_SUBJECT);
     setGradReminderBody(DEFAULT_REMINDER_BODY);
+  };
+
+  const handleRegFormUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      alert('יש להעלות קובץ PDF בלבד');
+      e.target.value = '';
+      return;
+    }
+    setUploadingReg(true);
+    try {
+      const safe = file.name.replace(/[^\w.\-]+/g, '_');
+      const path = `form-${Date.now()}-${safe}`;
+      const { error: upErr } = await supabase.storage
+        .from('registration-forms')
+        .upload(path, file, { upsert: true, contentType: 'application/pdf' });
+      if (upErr) throw upErr;
+      const next = [...regFiles, { path, filename: file.name }];
+      await setSetting('reg_forms_files', next);
+      setRegFiles(next);
+    } catch (err: any) {
+      alert('שגיאה בהעלאה: ' + (err?.message || err));
+    } finally {
+      setUploadingReg(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveRegFile = async (path: string) => {
+    if (!confirm('להסיר את הטופס?')) return;
+    try {
+      await supabase.storage.from('registration-forms').remove([path]);
+    } catch { /* ignore storage error - still drop from list */ }
+    const next = regFiles.filter((f) => f.path !== path);
+    await setSetting('reg_forms_files', next);
+    setRegFiles(next);
+  };
+
+  const handleSaveRegTemplates = async () => {
+    setSavingReg(true);
+    setRegStatus(null);
+    const ok = (await Promise.all([
+      setSetting('reg_forms_email_subject', regSubj.trim()),
+      setSetting('reg_forms_email_body', regBody),
+    ])).every(Boolean);
+    setRegStatus(ok ? '✅ נשמר' : '❌ שגיאה בשמירה');
+    setSavingReg(false);
+  };
+
+  const resetRegDefaults = () => {
+    if (!confirm('לאפס לטקסט המקורי?')) return;
+    setRegSubj(DEFAULT_REG_SUBJECT);
+    setRegBody(DEFAULT_REG_BODY);
   };
 
   useEffect(() => {
@@ -547,6 +625,94 @@ export function EmailSettings() {
               <Button onClick={handleSaveGradTemplates} disabled={savingGrad}>
                 {savingGrad ? 'שומר...' : 'שמור תבניות'}
               </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Registration forms email */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h4 className="text-md font-semibold mb-2">📄 טפסי רישום להורי הנרשמים</h4>
+          <p className="text-sm text-gray-600 mb-4">
+            העלה כאן את קובצי ה-PDF של טפסי הרישום (אחד או יותר). הם יצורפו אוטומטית לכל מייל שיישלח
+            מעמוד <strong>רישום → שלח טפסי רישום</strong>. כל מייל נשלח בנפרד לכתובת אחת (אב, ואם אין - המועמד).
+          </p>
+
+          {/* Uploaded PDFs */}
+          <div className="space-y-2 mb-4">
+            {regFiles.length === 0 ? (
+              <div className="w-full border-2 border-dashed border-gray-300 rounded-lg py-6 text-center text-gray-400 text-sm">
+                לא הועלו טפסים עדיין
+              </div>
+            ) : (
+              regFiles.map((f) => (
+                <div
+                  key={f.path}
+                  className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2"
+                >
+                  <span className="text-sm text-gray-700 flex items-center gap-2 truncate">
+                    <span>📎</span>
+                    <span className="truncate">{f.filename}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveRegFile(f.path)}
+                    className="text-sm text-red-600 hover:text-red-800 underline shrink-0 mr-2"
+                  >
+                    הסר
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <label className="inline-block cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium border border-blue-200 text-center">
+            {uploadingReg ? 'מעלה...' : '＋ הוסף טופס PDF'}
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={handleRegFormUpload}
+              disabled={uploadingReg}
+              className="hidden"
+            />
+          </label>
+
+          {/* Template */}
+          <div className="mt-6">
+            <p className="text-sm text-gray-600 mb-2">
+              נוסח המייל. שדות שיוחלפו אוטומטית:
+              <code className="mx-1 bg-gray-100 px-1.5 py-0.5 rounded text-xs">{'{{first_name}}'}</code>
+              <code className="mx-1 bg-gray-100 px-1.5 py-0.5 rounded text-xs">{'{{last_name}}'}</code>
+              <code className="mx-1 bg-gray-100 px-1.5 py-0.5 rounded text-xs">{'{{father_name}}'}</code>
+              <code className="mx-1 bg-gray-100 px-1.5 py-0.5 rounded text-xs">{'{{from_name}}'}</code>
+            </p>
+            <Input
+              label="כותרת המייל"
+              value={regSubj}
+              onChange={(e) => setRegSubj(e.target.value)}
+            />
+            <label className="block text-sm font-medium text-gray-700 mt-3 mb-1">תוכן המייל</label>
+            <textarea
+              value={regBody}
+              onChange={(e) => setRegBody(e.target.value)}
+              rows={10}
+              dir="rtl"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm leading-relaxed"
+              style={{ fontFamily: 'Heebo, system-ui, sans-serif' }}
+            />
+            <div className="flex justify-between items-center mt-4">
+              <button
+                type="button"
+                onClick={resetRegDefaults}
+                className="text-sm text-slate-500 hover:text-slate-700 underline"
+              >
+                שחזר ברירת מחדל
+              </button>
+              <div className="flex items-center gap-3">
+                {regStatus && <span className="text-sm">{regStatus}</span>}
+                <Button onClick={handleSaveRegTemplates} disabled={savingReg}>
+                  {savingReg ? 'שומר...' : 'שמור נוסח'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
