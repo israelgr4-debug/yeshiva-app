@@ -202,8 +202,9 @@ The Sidebar hides `/settings` from non-admins.
    by `institution_name='כולל'`.
 9. **Registration**: photos report (4×4 per A4), extended report
    (A4 landscape with merged time/yeshiva/material per group, blank
-   columns for handwritten scores), Excel imports report with row-by-row
-   errors, "מחק הכל" with typed confirmation, sortable column headers.
+   columns for handwritten scores; time displayed HH:MM without seconds
+   via `fmtTime()`), Excel imports report with row-by-row errors,
+   "מחק הכל" with typed confirmation, sortable column headers.
 10. **Photo processor**: client uploads → server proxy to **Gemini 2.5
    Flash Image / Nano Banana 2** (`gemini-3.1-flash-image`). Does
    crop + bg removal + lighting normalization + studio look in ONE call.
@@ -280,6 +281,20 @@ npx tsc --noEmit
   then their RLS policies applied via migration
 - **Vercel body limit 4.5MB**: client-side downscale required for image
   uploads (see `photo-processor.ts`)
+- **styled-jsx Rust parser panics on nested `@page` inside `@media`**:
+  Error `styled_jsx-*/src/visitor.rs:597:44: called Option::unwrap() on a
+  None value`. Workaround: use plain `<style dangerouslySetInnerHTML>`
+  (not `<style jsx global>`) for any conditional `@page` rules — see
+  landscape logic in `TestReportsTab.tsx` extended report.
+- **date_of_birth `''` breaks `acceptAndConvert`**: the DATE column
+  rejects empty strings. `useRegistrations.ts` coerces `date_of_birth`
+  (and other nullable date/time/uuid fields) to `null` via `sanitize()`
+  before insert — do the same in any new insert path.
+- **Reverting accepted candidates**: use
+  `scripts/revert_shiur0_to_registration.py` (dry-run by default; pass
+  `--apply` and optionally `--delete-orphan-families`). Deletes the
+  שיעור 0 student, resets the registration to `accepted`, and optionally
+  cleans up families with no remaining students.
 - **Date.now() / Math.random() forbidden in Workflow scripts** — pass
   timestamps via args.
 - **Manager UX subtlety**: the secretary's name and email show as
