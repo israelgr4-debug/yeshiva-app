@@ -299,6 +299,18 @@ npx tsc --noEmit
   timestamps via args.
 - **Manager UX subtlety**: the secretary's name and email show as
   `user_email` in audit_log; secretary-activity page joins this nicely.
+- **Bulk email cadence + limits** (registration forms + graduate updates):
+  server paces sends at `sleep(1200)` = ~50/min. Real ceilings, not the
+  pacing: (1) **Gmail daily cap** — free @gmail.com ~500 recipients/day,
+  Workspace ~2,000/day; exceeding → ~24h block + spam-reputation hit.
+  (2) **Vercel function timeout per request** — Pro `maxDuration=300` →
+  ~250 emails/click; Hobby 60s → ~45-50/click, rest silently unsent.
+  Mitigation: `SendRegistrationFormsDialog` batches **client-side** (default
+  50/send, sorted by name); on success it drops the sent ones from the
+  selection and keeps failures selected for retry. Advise the user to wait
+  ~1 min between batches. A `535-5.7.8 BadCredentials` SMTP error = wrong/
+  expired Gmail **app password** in Settings→Email (needs 2FA + a 16-char
+  app password), NOT a code bug.
 
 ## Verification policy
 

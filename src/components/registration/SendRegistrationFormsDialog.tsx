@@ -44,6 +44,7 @@ export function SendRegistrationFormsDialog({ registrations, onClose }: Props) {
   const [view, setView] = useState<'send' | 'history'>('send');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchLimit, setBatchLimit] = useState(50);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<
@@ -99,19 +100,30 @@ export function SendRegistrationFormsDialog({ registrations, onClose }: Props) {
     });
   }, [candidates, search]);
 
-  // Selected registrations → unique recipient emails (what actually gets sent)
+  // Selected registrations, sorted by name → the current batch is the first N.
+  const orderedSelected = useMemo(() => {
+    return candidates
+      .filter((r) => selected.has(r.id))
+      .sort((a, b) =>
+        (a.last_name || '').localeCompare(b.last_name || '', 'he') ||
+        (a.first_name || '').localeCompare(b.first_name || '', 'he')
+      );
+  }, [candidates, selected]);
+
+  const batch = useMemo(() => orderedSelected.slice(0, batchLimit), [orderedSelected, batchLimit]);
+  const remaining = Math.max(0, orderedSelected.length - batch.length);
+
+  // Unique recipient emails within THIS batch (what actually gets sent now)
   const willSend = useMemo(() => {
     const emails = new Set<string>();
     let withoutEmail = 0;
-    for (const id of selected) {
-      const r = candidates.find((x) => x.id === id);
-      if (!r) continue;
+    for (const r of batch) {
       const rec = resolveRecipient(r);
       if (!rec) { withoutEmail++; continue; }
       emails.add(rec.email.toLowerCase());
     }
     return { unique: emails.size, withoutEmail };
-  }, [selected, candidates]);
+  }, [batch]);
 
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -128,12 +140,14 @@ export function SendRegistrationFormsDialog({ registrations, onClose }: Props) {
   const clearAll = () => setSelected(new Set());
 
   const handleSend = async () => {
-    if (sending || selected.size === 0) return;
+    if (sending || batch.length === 0) return;
     if (!confirm(
       `לשלוח את טפסי הרישום ל-${willSend.unique} נמענים?` +
-      (willSend.withoutEmail > 0 ? `\n(${willSend.withoutEmail} נרשמים ללא כתובת מייל ידולגו)` : '')
+      (remaining > 0 ? `\n(מנה זו בלבד; ${remaining} נותרו לשליחה הבאה)` : '') +
+      (willSend.withoutEmail > 0 ? `\n(${willSend.withoutEmail} ללא כתובת מייל - ידולגו)` : '')
     )) return;
 
+    const batchIds = batch.map((r) => r.id);
     setSending(true);
     setError(null);
     setResult(null);
@@ -151,14 +165,20 @@ export function SendRegistrationFormsDialog({ registrations, onClose }: Props) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ registrationIds: Array.from(selected) }),
+        body: JSON.stringify({ registrationIds: batchIds }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || 'השליחה נכשלה');
       } else {
         setResult(data);
-        setSelected(new Set());
+        // Remove processed ones from the selection; keep failures for a retry.
+        const failedIds = new Set<string>((data.errors || []).map((e: any) => e.registration_id));
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const id of batchIds) if (!failedIds.has(id)) next.delete(id);
+          return next;
+        });
         setHistoryLoaded(false); // force refresh next time history is opened
       }
     } catch (e: any) {
@@ -213,10 +233,23 @@ export function SendRegistrationFormsDialog({ registrations, onClose }: Props) {
         {view === 'send' && (
           <>
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-2 mb-5 text-center text-sm">
+            <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
               <Stat label="נבחרו" value={selected.size} tint="bg-slate-50 text-slate-700" />
-              <Stat label="ישלחו" value={willSend.unique} tint="bg-emerald-50 text-emerald-700" />
-              <Stat label="ללא מייל" value={willSend.withoutEmail} tint="bg-amber-50 text-amber-700" />
+              <Stat label="ישלחו במנה זו" value={willSend.unique} tint="bg-emerald-50 text-emerald-700" />
+              <Stat label="נותרו למנה הבאה" value={remaining} tint="bg-amber-50 text-amber-700" />
+            </div>
+
+            {/* Batch limit */}
+            <div className="flex items-center justify-between gap-3 mb-4 bg-slate-50 rounded-xl px-3 py-2">
+              <label className="text-sm text-slate-700 font-medium">מקסימום נמענים בשליחה אחת</label>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={batchLimit}
+                onChange={(e) => setBatchLimit(Math.max(1, Math.min(200, Number(e.target.value) || 1)))}
+                className="w-24 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-center"
+              />
             </div>
 
             {/* Search + bulk actions */}
@@ -273,7 +306,8 @@ export function SendRegistrationFormsDialog({ registrations, onClose }: Props) {
             <div className="text-xs text-slate-500 mb-4 leading-relaxed">
               <p>• הטפסים והנוסח מוגדרים ב<b>הגדרות → אימייל → טפסי רישום</b>.</p>
               <p>• נמען = כתובת האב, ואם אין - מייל המועמד (👤). כתובת שחוזרת נשלחת פעם אחת.</p>
-              <p>• השליחה דרך Gmail עם השהיה קצרה בין מיילים - השארת החלון פתוח עד סיום.</p>
+              <p>• שולחים <b>מנה</b> בכל פעם (ברירת מחדל 50) כדי לא ליפול לספאם. Gmail רגיל מוגבל ל-~500 ליום.</p>
+              <p>• אחרי כל מנה - הנשלחים יורדו מהבחירה. חכה כדקה, ואז לחץ שוב למנה הבאה.</p>
             </div>
 
             {error && <div className="bg-red-50 text-red-700 rounded-lg p-3 text-sm mb-4">{error}</div>}
@@ -300,7 +334,7 @@ export function SendRegistrationFormsDialog({ registrations, onClose }: Props) {
 
             <div className="flex gap-2 justify-end">
               <Button variant="secondary" onClick={onClose} disabled={sending}>סגור</Button>
-              <Button onClick={handleSend} disabled={sending || willSend.unique === 0}>
+              <Button onClick={handleSend} disabled={sending || batch.length === 0}>
                 {sending ? 'שולח...' : `📨 שלח ל-${willSend.unique}`}
               </Button>
             </div>
