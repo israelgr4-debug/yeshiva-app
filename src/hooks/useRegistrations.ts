@@ -202,6 +202,19 @@ export function useRegistrations() {
     return { studentId };
   }, []);
 
+  // Toggle one of the registration document-checklist booleans.
+  const setDoc = useCallback(
+    async (
+      id: string,
+      field: 'doc_student_id' | 'doc_parent_id' | 'doc_credit' | 'doc_standing_order' | 'doc_medical',
+      value: boolean
+    ): Promise<void> => {
+      const { error } = await supabase.from('registrations').update({ [field]: value }).eq('id', id);
+      if (error) throw error;
+    },
+    []
+  );
+
   const setStatus = useCallback(async (id: string, status: RegistrationStatus): Promise<void> => {
     const patch: any = { status };
     if (status === 'accepted' || status === 'rejected') {
@@ -225,5 +238,5 @@ export function useRegistrations() {
     return url;
   }, []);
 
-  return { list, create, update, remove, applyTestSlotToYeshiva, acceptAndConvert, setStatus, uploadPhoto };
+  return { list, create, update, remove, applyTestSlotToYeshiva, acceptAndConvert, setStatus, setDoc, uploadPhoto };
 }

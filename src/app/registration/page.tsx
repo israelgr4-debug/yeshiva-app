@@ -142,6 +142,7 @@ export default function RegistrationPage() {
             registrations={registrations}
             onChanged={reload}
             canDecide={!!permissions.canManageUsers || !!(permissions as any).isAdmin}
+            canWrite={!!permissions.canWrite}
           />
         )}
       </div>

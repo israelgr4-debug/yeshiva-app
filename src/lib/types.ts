@@ -180,6 +180,12 @@ export interface Registration {
   test_grade: string | null;
   // Photo
   photo_url: string | null;
+  // Registration document checklist (5 attachments to bring)
+  doc_student_id: boolean;
+  doc_parent_id: boolean;
+  doc_credit: boolean;
+  doc_standing_order: boolean;
+  doc_medical: boolean;
   // Decision
   status: RegistrationStatus;
   decided_at: string | null;
