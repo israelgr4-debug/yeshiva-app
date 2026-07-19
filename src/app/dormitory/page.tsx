@@ -26,7 +26,7 @@ export default function DormitoryPage() {
   const [activeTab, setActiveTab] = useState<TabId>('shiurim');
   const [customLayout, setCustomLayout] = useState<LayoutSection[] | null>(null);
   const [blankPrint, setBlankPrint] = useState(false);
-  const [shiurFilter, setShiurFilter] = useState('');
+  const [selectedShiurim, setSelectedShiurim] = useState<Set<string>>(new Set());
   const { fetchData } = useSupabase();
   const { getSetting } = useSystemSettings();
 
@@ -44,11 +44,21 @@ export default function DormitoryPage() {
     load();
   }, [fetchData, getSetting]);
 
-  // Optional shiur filter (e.g. print only שיעור ג). '' = all shiurim.
+  // Optional multi-shiur filter (e.g. print only שיעור ג + ד). Empty = all.
   const filteredStudents = useMemo(
-    () => (shiurFilter ? students.filter((s) => s.shiur === shiurFilter) : students),
-    [students, shiurFilter]
+    () => (selectedShiurim.size ? students.filter((s) => s.shiur && selectedShiurim.has(s.shiur)) : students),
+    [students, selectedShiurim]
   );
+
+  const shiurOptions = useMemo(() => getShiurFilterOptions().filter((o) => o.value), []);
+  const orderedSelectedLabels = shiurOptions.filter((o) => selectedShiurim.has(o.value)).map((o) => o.label);
+
+  const toggleShiur = (v: string) =>
+    setSelectedShiurim((prev) => {
+      const n = new Set(prev);
+      if (n.has(v)) n.delete(v); else n.add(v);
+      return n;
+    });
 
   // Build room → students map
   const roomMap = useMemo(() => {
@@ -173,32 +183,50 @@ export default function DormitoryPage() {
             🛠️ ניהול שיבוצים
           </Link>
 
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">שיעור:</label>
-            <select
-              value={shiurFilter}
-              onChange={(e) => setShiurFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-            >
-              {getShiurFilterOptions().map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
           <span className="text-sm text-gray-500 ms-auto">
             {loading
               ? 'טוען...'
-              : shiurFilter
-              ? `${filteredStudents.length} תלמידים ב${shiurFilter}`
+              : selectedShiurim.size
+              ? `${filteredStudents.length} תלמידים ב-${selectedShiurim.size} שיעורים`
               : `${students.length} תלמידים פעילים עם חדר`}
           </span>
+        </div>
+
+        {/* Multi-shiur filter chips */}
+        <div className="no-print flex flex-wrap items-center gap-2 mb-6 -mt-2">
+          <span className="text-sm text-gray-600 font-medium">סינון שיעורים:</span>
+          {shiurOptions.map((o) => {
+            const on = selectedShiurim.has(o.value);
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => toggleShiur(o.value)}
+                className={`px-2.5 py-1 rounded-lg text-sm font-medium border transition-colors ${
+                  on
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+          {selectedShiurim.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedShiurim(new Set())}
+              className="text-sm text-gray-500 hover:underline ms-1"
+            >
+              נקה בחירה
+            </button>
+          )}
         </div>
 
         {/* Print-only single concise title */}
         <h1 className="hidden print:block dorm-print-title text-center font-bold mb-1">
           {activeTab === 'shiurim' ? 'פנימיות שיעורים' : 'פנימיות קיבוץ'}
-          {shiurFilter ? ` — ${shiurFilter}` : ''}
+          {orderedSelectedLabels.length ? ` — ${orderedSelectedLabels.join(', ')}` : ''}
           {blankPrint ? ' — מפה ריקה' : ''}
         </h1>
 
