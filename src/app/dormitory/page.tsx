@@ -37,7 +37,7 @@ export default function DormitoryPage() {
         fetchData<Student>('students', { status: 'active' }),
         getSetting<LayoutSection[] | null>(SETTING_KEY, null),
       ]);
-      setStudents(data.filter((s) => s.room_number));
+      setStudents(data); // keep ALL active (assigned + unassigned) for the counters
       if (layout && Array.isArray(layout) && layout.length > 0) setCustomLayout(layout);
       setLoading(false);
     }
@@ -59,6 +59,22 @@ export default function DormitoryPage() {
       if (n.has(v)) n.delete(v); else n.add(v);
       return n;
     });
+
+  // Assigned / unassigned counters. Yeshiva only (exclude כולל), respecting the
+  // active shiur filter.
+  const dormCounts = useMemo(() => {
+    const isYeshiva = (s: Student) => !((s.institution_name || '').includes('כולל'));
+    const base = students.filter(isYeshiva);
+    const scoped = selectedShiurim.size
+      ? base.filter((s) => s.shiur && selectedShiurim.has(s.shiur))
+      : base;
+    let assigned = 0;
+    let unassigned = 0;
+    for (const s of scoped) {
+      if (s.room_number) assigned++; else unassigned++;
+    }
+    return { assigned, unassigned };
+  }, [students, selectedShiurim]);
 
   // Build room → students map
   const roomMap = useMemo(() => {
@@ -183,12 +199,16 @@ export default function DormitoryPage() {
             🛠️ ניהול שיבוצים
           </Link>
 
-          <span className="text-sm text-gray-500 ms-auto">
-            {loading
-              ? 'טוען...'
-              : selectedShiurim.size
-              ? `${filteredStudents.length} תלמידים ב-${selectedShiurim.size} שיעורים`
-              : `${students.length} תלמידים פעילים עם חדר`}
+          <span className="text-sm ms-auto flex items-center gap-3" title="תלמידי ישיבה בלבד (ללא כולל)">
+            {loading ? (
+              <span className="text-gray-500">טוען...</span>
+            ) : (
+              <>
+                <span className="text-emerald-700 font-medium">{dormCounts.assigned} פעילים משובצים</span>
+                <span className="text-gray-300">·</span>
+                <span className="text-amber-700 font-medium">{dormCounts.unassigned} פעילים לא משובצים</span>
+              </>
+            )}
           </span>
         </div>
 
