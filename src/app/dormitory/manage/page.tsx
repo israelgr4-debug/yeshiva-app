@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { PageGuard } from '@/components/ui/PageGuard';
@@ -9,6 +9,7 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { supabase } from '@/lib/supabase';
 import { Student } from '@/lib/types';
 import { SHIURIM } from '@/lib/shiurim';
+import { exportRosterXlsx, parseRosterFile, rosterNameKey } from '@/lib/dorm-roster';
 
 type SortKey = 'last_name' | 'first_name' | 'current_room' | 'new_room' | 'shiur';
 type SortDir = 'asc' | 'desc';
@@ -23,6 +24,135 @@ export default function DormitoryManagePage() {
   const [onlyWithChanges, setOnlyWithChanges] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('current_room');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [busyOp, setBusyOp] = useState<null | 'clear' | 'import'>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+
+  // --- Annual reshuffle: download backup / template ---
+  const handleDownloadRoster = () => {
+    if (students.length === 0) { alert('אין תלמידים להורדה'); return; }
+    exportRosterXlsx(students, `שיבוץ_פנימייה_${todayStr()}.xlsx`);
+  };
+
+  // --- Clear the whole dorm (with an automatic backup download first) ---
+  const handleClearDorm = async () => {
+    const withRooms = students.filter((s) => s.room_number);
+    if (withRooms.length === 0) { alert('אין שיבוצים לרוקן'); return; }
+    const typed = prompt(
+      `⚠️ ריקון פנימייה\n\nפעולה זו תמחק את שיבוצי החדרים של ${withRooms.length} תלמידים פעילים.\n` +
+      `לפני הריקון יירד אוטומטית קובץ גיבוי אקסל עם השיבוץ הנוכחי.\n\n` +
+      `לאישור הקלד את המילה: רוקן`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== 'רוקן') { alert('הפעולה בוטלה — לא הוקלד "רוקן".'); return; }
+
+    setBusyOp('clear');
+    try {
+      // 1) Backup download (current assignments)
+      exportRosterXlsx(students, `גיבוי_פנימייה_${todayStr()}.xlsx`);
+      // 2) Bulk clear active students' rooms
+      const { data, error } = await supabase
+        .from('students')
+        .update({ room_number: null })
+        .eq('status', 'active')
+        .not('room_number', 'is', null)
+        .select('id');
+      if (error) throw error;
+      alert(`הפנימייה רוקנה. ${data?.length ?? 0} תלמידים אופסו.\nקובץ הגיבוי ירד למחשב.`);
+      setNewRooms({});
+      await loadStudents();
+    } catch (e: any) {
+      alert('שגיאה בריקון: ' + (e?.message || e));
+    } finally {
+      setBusyOp(null);
+    }
+  };
+
+  // --- Import assignments from an Excel/CSV roster ---
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+
+    setBusyOp('import');
+    try {
+      const rows = await parseRosterFile(file);
+      if (rows.length === 0) { alert('הקובץ ריק או לא בפורמט מוכר (צריך עמודות שם/חדר).'); return; }
+
+      // Match against ALL students (any status) for robust restore.
+      const all: any[] = [];
+      for (let p = 0; p < 20; p++) {
+        const { data } = await supabase
+          .from('students')
+          .select('id,first_name,last_name,shiur,room_number')
+          .range(p * 1000, p * 1000 + 999);
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < 1000) break;
+      }
+      const byId = new Map(all.map((s) => [s.id, s]));
+      const byName = new Map<string, any>();
+      for (const s of all) {
+        const k = rosterNameKey(s.last_name, s.first_name, s.shiur);
+        byName.set(k, byName.has(k) ? 'DUP' : s);
+      }
+
+      const updates: { id: string; room: number | null }[] = [];
+      let unmatched = 0, ambiguous = 0, badRoom = 0;
+      const unmatchedNames: string[] = [];
+      for (const row of rows) {
+        let target: any = row.id ? byId.get(row.id) : undefined;
+        if (!target) {
+          const m = byName.get(rosterNameKey(row.last_name, row.first_name, row.shiur));
+          if (m === 'DUP') { ambiguous++; continue; }
+          target = m;
+        }
+        if (!target) {
+          unmatched++;
+          if (unmatchedNames.length < 8) unmatchedNames.push(`${row.last_name} ${row.first_name}`.trim());
+          continue;
+        }
+        let newRoom: number | null = null;
+        if (row.room !== '') {
+          const n = parseInt(row.room, 10);
+          if (!n || isNaN(n)) { badRoom++; continue; }
+          newRoom = n;
+        }
+        const cur = target.room_number ?? null;
+        if (cur !== newRoom) updates.push({ id: target.id, room: newRoom });
+      }
+
+      const clears = updates.filter((u) => u.room === null).length;
+      if (updates.length === 0) {
+        alert(
+          `לא נמצאו שינויים לביצוע.\nשורות בקובץ: ${rows.length}\n` +
+          `ללא התאמה: ${unmatched}${ambiguous ? `\nכפילות שם: ${ambiguous}` : ''}${badRoom ? `\nחדר לא תקין: ${badRoom}` : ''}`
+        );
+        return;
+      }
+      const proceed = confirm(
+        `לעדכן ${updates.length} תלמידים לפי הקובץ?\n` +
+        (clears ? `(מתוכם ${clears} יאופסו/יתרוקנו)\n` : '') +
+        `\nללא התאמה: ${unmatched}${unmatchedNames.length ? ` (${unmatchedNames.join(', ')}${unmatched > unmatchedNames.length ? '…' : ''})` : ''}` +
+        `${ambiguous ? `\nכפילות שם (דלג): ${ambiguous}` : ''}${badRoom ? `\nחדר לא תקין (דלג): ${badRoom}` : ''}`
+      );
+      if (!proceed) return;
+
+      let ok = 0, err = 0;
+      for (const u of updates) {
+        const { error } = await supabase.from('students').update({ room_number: u.room }).eq('id', u.id);
+        if (error) err++; else ok++;
+      }
+      alert(`ייבוא הושלם.\nעודכנו: ${ok}${err ? `\nשגיאות: ${err}` : ''}${unmatched ? `\nללא התאמה: ${unmatched}` : ''}`);
+      setNewRooms({});
+      await loadStudents();
+    } catch (e: any) {
+      alert('שגיאה בייבוא: ' + (e?.message || e));
+    } finally {
+      setBusyOp(null);
+    }
+  };
 
   const loadStudents = async () => {
     setLoading(true);
@@ -188,6 +318,34 @@ export default function DormitoryManagePage() {
           <Link href="/dormitory/edit" className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
             ערוך מפה
           </Link>
+        </div>
+
+        {/* Annual reshuffle: backup / import / clear */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h3 className="font-bold text-amber-900 mb-1">🔁 שיבוץ שנתי</h3>
+          <p className="text-sm text-amber-800 mb-3">
+            הורד גיבוי/תבנית → ערוך את עמודת <strong>חדר</strong> באקסל → ייבא בחזרה. הריקון מוריד גיבוי אוטומטית לפני המחיקה.
+            <br />
+            <span className="text-xs">עמודת <strong>מזהה</strong> משמשת לשיוך מדויק — אל תמחק אותה. חדר ריק בקובץ = איפוס שיבוץ לאותו תלמיד.</span>
+          </p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleImportFile}
+            className="hidden"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={handleDownloadRoster} disabled={busyOp !== null || loading}>
+              📥 הורד גיבוי / תבנית
+            </Button>
+            <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={busyOp !== null || loading}>
+              {busyOp === 'import' ? 'מייבא...' : '📤 ייבוא מאקסל'}
+            </Button>
+            <Button variant="danger" onClick={handleClearDorm} disabled={busyOp !== null || loading}>
+              {busyOp === 'clear' ? 'מרוקן...' : '🗑️ ריקון פנימייה'}
+            </Button>
+          </div>
         </div>
 
         {/* Filters + summary */}
