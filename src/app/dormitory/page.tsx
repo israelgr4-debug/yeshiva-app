@@ -24,6 +24,7 @@ export default function DormitoryPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('shiurim');
   const [customLayout, setCustomLayout] = useState<LayoutSection[] | null>(null);
+  const [blankPrint, setBlankPrint] = useState(false);
   const { fetchData } = useSupabase();
   const { getSetting } = useSystemSettings();
 
@@ -53,6 +54,21 @@ export default function DormitoryPage() {
   }, [students]);
 
   const handlePrint = () => window.print();
+
+  // Print an EMPTY map (room numbers only, no assignments): flip to blank mode,
+  // let React commit the empty-roomMap render, then print, then restore.
+  useEffect(() => {
+    if (!blankPrint) return;
+    const restore = () => setBlankPrint(false);
+    window.addEventListener('afterprint', restore, { once: true });
+    window.print();
+    return () => window.removeEventListener('afterprint', restore);
+  }, [blankPrint]);
+
+  const handlePrintBlank = () => setBlankPrint(true);
+
+  // When printing a blank map, hide all occupants by using an empty map.
+  const effectiveRoomMap = blankPrint ? {} : roomMap;
 
   // Use saved layout if exists, else fall back to defaults
   const sections = useMemo(() => {
@@ -127,6 +143,14 @@ export default function DormitoryPage() {
             🖨️ הדפס / שמור PDF
           </button>
 
+          <button
+            type="button"
+            onClick={handlePrintBlank}
+            className="px-4 py-2 bg-white text-gray-800 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+          >
+            🗒️ הדפס מפה ריקה
+          </button>
+
           <Link
             href="/dormitory/edit"
             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
@@ -149,12 +173,13 @@ export default function DormitoryPage() {
         {/* Print-only single concise title */}
         <h1 className="hidden print:block dorm-print-title text-center font-bold mb-1">
           {activeTab === 'shiurim' ? 'פנימיות שיעורים' : 'פנימיות קיבוץ'}
+          {blankPrint ? ' — מפה ריקה' : ''}
         </h1>
 
         {/* Sections - 2-column flow in print so all fit on one A4 landscape page */}
         <div className="space-y-6 dorm-sections">
           {sections.map((section) => (
-            <SectionBox key={section.id} section={section} roomMap={roomMap} />
+            <SectionBox key={section.id} section={section} roomMap={effectiveRoomMap} />
           ))}
         </div>
       </div>
