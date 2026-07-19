@@ -7,6 +7,7 @@ import { useSupabase } from '@/hooks/useSupabase';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { Student } from '@/lib/types';
 import { SHIURIM_SECTIONS, KIBBUTZ_SECTIONS, shortStudentName, DormSection } from '@/lib/dorm-map';
+import { getShiurFilterOptions } from '@/lib/list-reports';
 
 type TabId = 'shiurim' | 'kibbutz';
 
@@ -25,6 +26,7 @@ export default function DormitoryPage() {
   const [activeTab, setActiveTab] = useState<TabId>('shiurim');
   const [customLayout, setCustomLayout] = useState<LayoutSection[] | null>(null);
   const [blankPrint, setBlankPrint] = useState(false);
+  const [shiurFilter, setShiurFilter] = useState('');
   const { fetchData } = useSupabase();
   const { getSetting } = useSystemSettings();
 
@@ -42,16 +44,22 @@ export default function DormitoryPage() {
     load();
   }, [fetchData, getSetting]);
 
+  // Optional shiur filter (e.g. print only שיעור ג). '' = all shiurim.
+  const filteredStudents = useMemo(
+    () => (shiurFilter ? students.filter((s) => s.shiur === shiurFilter) : students),
+    [students, shiurFilter]
+  );
+
   // Build room → students map
   const roomMap = useMemo(() => {
     const m: Record<number, Student[]> = {};
-    for (const s of students) {
+    for (const s of filteredStudents) {
       if (!s.room_number) continue;
       if (!m[s.room_number]) m[s.room_number] = [];
       m[s.room_number].push(s);
     }
     return m;
-  }, [students]);
+  }, [filteredStudents]);
 
   const handlePrint = () => window.print();
 
@@ -165,14 +173,32 @@ export default function DormitoryPage() {
             🛠️ ניהול שיבוצים
           </Link>
 
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">שיעור:</label>
+            <select
+              value={shiurFilter}
+              onChange={(e) => setShiurFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            >
+              {getShiurFilterOptions().map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
           <span className="text-sm text-gray-500 ms-auto">
-            {loading ? 'טוען...' : `${students.length} תלמידים פעילים עם חדר`}
+            {loading
+              ? 'טוען...'
+              : shiurFilter
+              ? `${filteredStudents.length} תלמידים ב${shiurFilter}`
+              : `${students.length} תלמידים פעילים עם חדר`}
           </span>
         </div>
 
         {/* Print-only single concise title */}
         <h1 className="hidden print:block dorm-print-title text-center font-bold mb-1">
           {activeTab === 'shiurim' ? 'פנימיות שיעורים' : 'פנימיות קיבוץ'}
+          {shiurFilter ? ` — ${shiurFilter}` : ''}
           {blankPrint ? ' — מפה ריקה' : ''}
         </h1>
 
