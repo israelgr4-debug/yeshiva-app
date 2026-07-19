@@ -27,6 +27,7 @@ const DOC_SHORT: Record<string, string> = {
   doc_credit: 'אשראי',
   doc_standing_order: 'הו"ק',
   doc_medical: 'רפואי',
+  doc_declaration: 'הצהרה',
 };
 
 type ExportScope = 'accepted' | 'examinees' | 'all';
@@ -37,7 +38,7 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
   const [scope, setScope] = useState<ExportScope>('accepted');
 
   // Local overlay of the 5 doc booleans so checkbox toggles are instant.
-  const [docs, setDocs] = useState<Record<string, Pick<Registration, 'doc_student_id' | 'doc_parent_id' | 'doc_credit' | 'doc_standing_order' | 'doc_medical'>>>({});
+  const [docs, setDocs] = useState<Record<string, Pick<Registration, 'doc_student_id' | 'doc_parent_id' | 'doc_credit' | 'doc_standing_order' | 'doc_medical' | 'doc_declaration'>>>({});
 
   useEffect(() => {
     const map: typeof docs = {};
@@ -48,6 +49,7 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
         doc_credit: !!r.doc_credit,
         doc_standing_order: !!r.doc_standing_order,
         doc_medical: !!r.doc_medical,
+        doc_declaration: !!r.doc_declaration,
       };
     }
     setDocs(map);

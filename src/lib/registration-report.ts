@@ -11,6 +11,7 @@ export const DOC_FIELDS: { key: keyof Registration; label: string }[] = [
   { key: 'doc_credit', label: 'אשראי' },
   { key: 'doc_standing_order', label: 'הו"ק' },
   { key: 'doc_medical', label: 'אישור רפואי לפנימיה' },
+  { key: 'doc_declaration', label: 'הצהרה' },
 ];
 
 const STATUS_LABEL: Record<string, string> = {

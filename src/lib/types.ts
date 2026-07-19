@@ -186,6 +186,7 @@ export interface Registration {
   doc_credit: boolean;
   doc_standing_order: boolean;
   doc_medical: boolean;
+  doc_declaration: boolean;
   // Decision
   status: RegistrationStatus;
   decided_at: string | null;

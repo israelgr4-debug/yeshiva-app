@@ -206,7 +206,7 @@ export function useRegistrations() {
   const setDoc = useCallback(
     async (
       id: string,
-      field: 'doc_student_id' | 'doc_parent_id' | 'doc_credit' | 'doc_standing_order' | 'doc_medical',
+      field: 'doc_student_id' | 'doc_parent_id' | 'doc_credit' | 'doc_standing_order' | 'doc_medical' | 'doc_declaration',
       value: boolean
     ): Promise<void> => {
       const { error } = await supabase.from('registrations').update({ [field]: value }).eq('id', id);
