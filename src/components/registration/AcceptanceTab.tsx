@@ -36,6 +36,7 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
   const { setStatus, acceptAndConvert, setDoc } = useRegistrations();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [scope, setScope] = useState<ExportScope>('accepted');
+  const [search, setSearch] = useState('');
 
   // Local overlay of the 5 doc booleans so checkbox toggles are instant.
   const [docs, setDocs] = useState<Record<string, Pick<Registration, 'doc_student_id' | 'doc_parent_id' | 'doc_credit' | 'doc_standing_order' | 'doc_medical' | 'doc_declaration'>>>({});
@@ -71,6 +72,15 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
     () => registrations.filter((r) => r.status === 'converted'),
     [registrations]
   );
+
+  // Free-text search over student name + father name.
+  const matchesSearch = (r: Registration) => {
+    const q = search.trim();
+    if (!q) return true;
+    return `${r.first_name || ''} ${r.last_name || ''} ${r.father_name || ''}`.includes(q);
+  };
+  const filteredCandidates = useMemo(() => candidates.filter(matchesSearch), [candidates, search]);
+  const filteredConverted = useMemo(() => converted.filter(matchesSearch), [converted, search]);
 
   // Merge the local doc overlay into a registration for export/render.
   const withDocs = (r: Registration): Registration => ({ ...r, ...(docs[r.id] || {}) });
@@ -199,21 +209,37 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
         </div>
       </div>
 
+      {/* Search */}
+      {(candidates.length > 0 || converted.length > 0) && (
+        <input
+          type="text"
+          placeholder="🔍 חיפוש לפי שם תלמיד / אב..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600"
+        />
+      )}
+
       {candidates.length === 0 && converted.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
           <p className="text-5xl mb-3 opacity-40">✓</p>
           <p className="text-slate-500 text-base font-medium">אין רישומים בהמתנה לקבלה</p>
         </div>
+      ) : filteredCandidates.length === 0 && filteredConverted.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
+          <p className="text-5xl mb-3 opacity-40">🔍</p>
+          <p className="text-slate-500 text-base font-medium">אין תוצאות לחיפוש "{search}"</p>
+        </div>
       ) : (
         <>
           {/* Accepted candidates that haven't been converted yet */}
-          {candidates.length > 0 && (
+          {filteredCandidates.length > 0 && (
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden elevation-1">
               <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-l from-emerald-50 to-white">
                 <h3 className="font-bold text-slate-900" style={{ fontFamily: "'Frank Ruhl Libre', serif" }}>
                   ממתינים להחלטה / קבלה
                 </h3>
-                <p className="text-xs text-slate-500">{candidates.length} נבחנים · סמן ✓ ליד כל צרופה שהתלמיד הביא</p>
+                <p className="text-xs text-slate-500">{filteredCandidates.length} נבחנים · סמן ✓ ליד כל צרופה שהתלמיד הביא</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -232,7 +258,7 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
                     </tr>
                   </thead>
                   <tbody>
-                    {candidates.map((r) => (
+                    {filteredCandidates.map((r) => (
                       <tr key={r.id} className="border-b border-slate-100 last:border-b-0 hover:bg-blue-50/40">
                         <td className="px-3 py-2 font-medium whitespace-nowrap">
                           {r.last_name} {r.first_name}
@@ -291,13 +317,13 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
           )}
 
           {/* Already converted */}
-          {converted.length > 0 && (
+          {filteredConverted.length > 0 && (
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden elevation-1">
               <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-l from-violet-50 to-white">
                 <h3 className="font-bold text-slate-900" style={{ fontFamily: "'Frank Ruhl Libre', serif" }}>
                   הומרו לתלמידים (שיעור 0)
                 </h3>
-                <p className="text-xs text-slate-500">{converted.length} תלמידים · סמן ✓ ליד כל צרופה שהתלמיד הביא</p>
+                <p className="text-xs text-slate-500">{filteredConverted.length} תלמידים · סמן ✓ ליד כל צרופה שהתלמיד הביא</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -315,7 +341,7 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
                     </tr>
                   </thead>
                   <tbody>
-                    {converted.map((r) => (
+                    {filteredConverted.map((r) => (
                       <tr key={r.id} className="border-b border-slate-100 last:border-b-0 hover:bg-blue-50/40">
                         <td className="px-3 py-2 font-medium whitespace-nowrap">{r.last_name} {r.first_name}</td>
                         <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{r.father_name || '—'}</td>
