@@ -13,6 +13,9 @@ type TabId = 'shiurim' | 'kibbutz';
 
 const SETTING_KEY = 'dormitory_layout';
 
+// Max students per room. More than this is a data error the manager must fix.
+const ROOM_CAPACITY = 5;
+
 interface LayoutSection {
   id: string;
   title: string;
@@ -27,6 +30,7 @@ export default function DormitoryPage() {
   const [customLayout, setCustomLayout] = useState<LayoutSection[] | null>(null);
   const [blankPrint, setBlankPrint] = useState(false);
   const [selectedShiurim, setSelectedShiurim] = useState<Set<string>>(new Set());
+  const [showOverloaded, setShowOverloaded] = useState(false);
   const { fetchData } = useSupabase();
   const { getSetting } = useSystemSettings();
 
@@ -59,6 +63,21 @@ export default function DormitoryPage() {
       if (n.has(v)) n.delete(v); else n.add(v);
       return n;
     });
+
+  // Rooms holding more than ROOM_CAPACITY students - a data error to fix.
+  // Scans ALL active students (ignores the shiur filter) so nothing is missed.
+  const overloadedRooms = useMemo(() => {
+    const m: Record<number, Student[]> = {};
+    for (const s of students) {
+      if (!s.room_number) continue;
+      if (!m[s.room_number]) m[s.room_number] = [];
+      m[s.room_number].push(s);
+    }
+    return Object.entries(m)
+      .map(([room, list]) => ({ room: Number(room), students: list }))
+      .filter((r) => r.students.length > ROOM_CAPACITY)
+      .sort((a, b) => b.students.length - a.students.length || a.room - b.room);
+  }, [students]);
 
   // Assigned / unassigned counters. Yeshiva only (exclude כולל), respecting the
   // active shiur filter.
@@ -199,6 +218,18 @@ export default function DormitoryPage() {
             🛠️ ניהול שיבוצים
           </Link>
 
+          <button
+            type="button"
+            onClick={() => setShowOverloaded((v) => !v)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium border ${
+              overloadedRooms.length > 0
+                ? 'bg-red-600 text-white border-red-600 hover:bg-red-700'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            ⚠️ חדרים חורגים ({overloadedRooms.length})
+          </button>
+
           <span className="text-sm ms-auto flex items-center gap-3" title="תלמידי ישיבה בלבד (ללא כולל)">
             {loading ? (
               <span className="text-gray-500">טוען...</span>
@@ -211,6 +242,60 @@ export default function DormitoryPage() {
             )}
           </span>
         </div>
+
+        {/* Overloaded rooms panel */}
+        {showOverloaded && (
+          <div className="no-print bg-white border border-red-200 rounded-xl p-4 mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-bold text-red-800">
+                ⚠️ חדרים עם יותר מ-{ROOM_CAPACITY} תלמידים
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowOverloaded(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            {overloadedRooms.length === 0 ? (
+              <p className="text-sm text-emerald-700">
+                ✓ אין חדרים חורגים — כל החדרים עם {ROOM_CAPACITY} תלמידים או פחות.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500 mb-3">
+                  סורק את כל התלמידים הפעילים (ללא תלות בסינון). לחץ על שם כדי לפתוח את כרטיס התלמיד ולשנות חדר.
+                </p>
+                <div className="space-y-3">
+                  {overloadedRooms.map(({ room, students: list }) => (
+                    <div key={room} className="border border-red-100 bg-red-50/50 rounded-lg p-3">
+                      <div className="font-semibold text-red-900 mb-1">
+                        חדר {room} — {list.length} תלמידים
+                        <span className="text-xs font-normal text-red-700 ms-2">
+                          (עודף {list.length - ROOM_CAPACITY})
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                        {list.map((s) => (
+                          <Link
+                            key={s.id}
+                            href={`/students/${s.id}`}
+                            className="text-blue-700 hover:underline"
+                            title={s.shiur || ''}
+                          >
+                            {s.last_name} {s.first_name}
+                            {s.shiur && <span className="text-gray-500 text-xs"> ({s.shiur})</span>}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Multi-shiur filter chips */}
         <div className="no-print flex flex-wrap items-center gap-2 mb-6 -mt-2">
@@ -331,9 +416,10 @@ export default function DormitoryPage() {
           .room-cell .room-occupants {
             gap: 0 !important;
           }
+          /* 5.6pt so a full 5-occupant room still fits inside the 13mm cell */
           .room-cell .room-occupants a,
           .room-cell .room-occupants span {
-            font-size: 6pt !important;
+            font-size: 5.6pt !important;
             line-height: 1 !important;
           }
           .room-cell.empty-placeholder {
@@ -401,18 +487,19 @@ function RoomCell({
   }
 
   const occupants = roomMap[cell] || [];
+  const overloaded = occupants.length > ROOM_CAPACITY;
 
   return (
     <div
-      className={`room-cell w-20 md:w-28 h-24 md:h-28 border border-gray-400 bg-white flex flex-col p-1 rounded ${
-        isExtra ? 'bg-gray-50' : ''
-      }`}
+      className={`room-cell w-20 md:w-28 h-24 md:h-28 border bg-white flex flex-col p-1 rounded ${
+        overloaded ? 'border-red-500 ring-1 ring-red-400' : 'border-gray-400'
+      } ${isExtra ? 'bg-gray-50' : ''}`}
     >
       <div className="room-num text-xs text-gray-500 text-center border-b border-gray-200 pb-0.5 mb-0.5">
         {cell}
       </div>
       <div className="room-occupants flex-1 flex flex-col gap-0.5 overflow-hidden">
-        {occupants.slice(0, 4).map((s) => (
+        {occupants.slice(0, ROOM_CAPACITY).map((s) => (
           <Link
             key={s.id}
             href={`/students/${s.id}`}
@@ -422,8 +509,8 @@ function RoomCell({
             {shortStudentName(s.last_name, s.first_name)}
           </Link>
         ))}
-        {occupants.length > 4 && (
-          <span className="text-[9px] text-gray-400">+{occupants.length - 4}</span>
+        {occupants.length > ROOM_CAPACITY && (
+          <span className="text-[9px] text-red-500 font-bold">+{occupants.length - ROOM_CAPACITY}</span>
         )}
       </div>
     </div>
