@@ -86,25 +86,29 @@ export function exportBedsReportXlsx(sections: BedsSection[], filename: string) 
   XLSX.writeFile(wb, filename);
 }
 
+/** Print the beds report, TWO wings per A4 page (דרום+צפון, then מזרח+מזרח החדש). */
 export function printBedsReport(sections: BedsSection[]) {
   const esc = (s: string) =>
     String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const blocks = sections
-    .map((s) => {
-      const total = s.rooms.reduce((a, b) => a + b.beds, 0);
-      const body = s.rooms
-        .map((r) => `<tr><td>${r.room}</td><td style="text-align:center">${r.beds}</td></tr>`)
-        .join('');
-      return `<div class="sec">
-        <h3>${esc(s.title)}</h3>
-        <table>
-          <thead><tr><th>מספר חדר</th><th>מספר מיטות</th></tr></thead>
-          <tbody>${body}</tbody>
-          <tfoot><tr><td>סה"כ</td><td style="text-align:center">${total}</td></tr></tfoot>
-        </table>
-      </div>`;
-    })
-    .join('');
+
+  const wingHtml = (s: BedsSection) => {
+    const total = s.rooms.reduce((a, b) => a + b.beds, 0);
+    const rows = s.rooms
+      .map((r) => `<div class="row"><span>${r.room}</span><span class="n">${r.beds}</span></div>`)
+      .join('');
+    return `<div class="wing">
+      <h2>${esc(s.title)} <span class="tot">סה"כ ${total}</span></h2>
+      <div class="hdr"><span>חדר</span><span class="n">מיטות</span></div>
+      <div class="rooms">${rows}</div>
+    </div>`;
+  };
+
+  // Chunk into pages of two wings each.
+  const pages: string[] = [];
+  for (let i = 0; i < sections.length; i += 2) {
+    const pair = sections.slice(i, i + 2).map(wingHtml).join('');
+    pages.push(`<div class="page${i > 0 ? ' brk' : ''}">${pair}</div>`);
+  }
 
   const w = window.open('', '_blank');
   if (!w) { alert('הדפדפן חסם את חלון ההדפסה. אפשר חלונות קופצים ונסה שוב.'); return; }
@@ -112,22 +116,27 @@ export function printBedsReport(sections: BedsSection[]) {
   w.document.write(`<!DOCTYPE html>
 <html dir="rtl" lang="he"><head><meta charset="utf-8"><title>דוח מיטות לפי חדר</title>
 <style>
-  @page { size: A4 portrait; margin: 10mm; }
-  body { font-family: 'Heebo','Segoe UI',Arial,sans-serif; direction: rtl; color:#0f172a; margin:0; padding:10px; }
-  h1 { font-size:17px; margin:0 0 2px; }
-  .sub { font-size:11px; color:#64748b; margin:0 0 12px; }
-  .wrap { column-count: 3; column-gap: 6mm; }
-  .sec { break-inside: avoid; page-break-inside: avoid; margin-bottom: 6mm; }
-  .sec h3 { font-size:12px; margin:0 0 3px; background:#f1f5f9; padding:3px 5px; border:1px solid #cbd5e1; border-bottom:none; }
-  table { width:100%; border-collapse:collapse; }
-  th,td { border:1px solid #cbd5e1; padding:2px 5px; font-size:10.5px; text-align:right; }
-  thead th { background:#f8fafc; font-weight:700; }
-  tfoot td { background:#f1f5f9; font-weight:700; }
+  @page { size: A4 portrait; margin: 9mm; }
+  body { font-family: 'Heebo','Segoe UI',Arial,sans-serif; direction: rtl; color:#0f172a; margin:0; padding:8px; }
+  h1 { font-size:16px; margin:0 0 1px; }
+  .sub { font-size:10.5px; color:#64748b; margin:0 0 8px; }
+  .page { display:grid; grid-template-columns:1fr 1fr; gap:6mm; align-items:start; }
+  .page.brk { page-break-before: always; break-before: page; padding-top:6mm; }
+  .wing { break-inside:auto; }
+  .wing h2 { font-size:12.5px; margin:0; background:#e2e8f0; padding:3px 6px;
+             border:1px solid #94a3b8; display:flex; justify-content:space-between; }
+  .wing h2 .tot { font-weight:400; font-size:10.5px; color:#475569; }
+  .hdr { display:flex; justify-content:space-between; font-size:9.5px; font-weight:700;
+         background:#f8fafc; border:1px solid #cbd5e1; border-top:none; padding:1.5px 6px; }
+  .rooms { column-count:2; column-gap:4mm; border:1px solid #cbd5e1; border-top:none; padding:1mm 1.5mm; }
+  .row { display:flex; justify-content:space-between; font-size:10px; padding:0.7px 4px;
+         border-bottom:1px solid #eef2f6; break-inside:avoid; }
+  .row .n { font-weight:600; }
 </style></head>
 <body>
 <h1>דוח מיטות לפי חדר</h1>
-<p class="sub">מחולק לפי פנימיות · סה"כ ${grand} מיטות מאוישות</p>
-<div class="wrap">${blocks}</div>
+<p class="sub">מחולק לפי אגפים · סה"כ ${grand} מיטות מאוישות</p>
+${pages.join('')}
 <script>window.onload=function(){setTimeout(function(){window.print();},250);};</script>
 </body></html>`);
   w.document.close();

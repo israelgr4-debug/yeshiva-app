@@ -23,6 +23,16 @@ const STATUS_LABEL: Record<string, string> = {
   active: 'פעיל', chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים',
 };
 
+// Wings are derived from the MIDDLE digit (tens) of the room number.
+// Print pairs them two per page: דרום+צפון, then מזרח+מזרח החדש.
+const WINGS: { title: string; tens: number[] }[] = [
+  { title: 'דרום', tens: [0, 1] },
+  { title: 'צפון', tens: [2, 3] },
+  { title: 'מזרח', tens: [4, 5] },
+  { title: 'מזרח החדש', tens: [6, 7] },
+];
+const OTHER_WING = 'אחר';
+
 interface LayoutSection {
   id: string;
   title: string;
@@ -75,9 +85,10 @@ export default function DormitoryPage() {
       return n;
     });
 
-  // Beds-per-room report: every section (both tabs), rooms in LAYOUT order -
-  // deliberately not sorted ascending. Counts every assigned student, ignoring
-  // the shiur filter, since this describes the rooms themselves.
+  // Beds-per-room report, grouped by WING via the room number's middle digit
+  // (tens): 0-1 דרום · 2-3 צפון · 4-5 מזרח · 6-7 מזרח החדש.
+  // Rooms keep the map's layout order (deliberately not sorted ascending).
+  // Counts every assigned student in any status, ignoring the shiur filter.
   const bedsReport = useMemo<BedsSection[]>(() => {
     const counts: Record<number, number> = {};
     for (const s of students) {
@@ -89,23 +100,32 @@ export default function DormitoryPage() {
         ? (customLayout as unknown as DormSection[])
         : [...SHIURIM_SECTIONS, ...KIBBUTZ_SECTIONS];
 
-    return allSections.map((section) => {
-      const rooms: { room: number; beds: number }[] = [];
-      const seen = new Set<number>();
-      const collect = (grid?: (number | string)[][]) => {
-        for (const row of grid || []) {
-          for (const cell of row) {
-            if (typeof cell === 'number' && !seen.has(cell)) {
-              seen.add(cell);
-              rooms.push({ room: cell, beds: counts[cell] || 0 });
-            }
-          }
+    const buckets: Record<string, { room: number; beds: number }[]> = {};
+    for (const w of WINGS) buckets[w.title] = [];
+    buckets[OTHER_WING] = [];
+
+    const seen = new Set<number>();
+    const collect = (grid?: (number | string)[][]) => {
+      for (const row of grid || []) {
+        for (const cell of row) {
+          if (typeof cell !== 'number' || seen.has(cell)) continue;
+          seen.add(cell);
+          const mid = Math.floor(cell / 10) % 10; // middle digit of a 3-digit room
+          const wing = WINGS.find((w) => w.tens.includes(mid));
+          buckets[wing ? wing.title : OTHER_WING].push({ room: cell, beds: counts[cell] || 0 });
         }
-      };
+      }
+    };
+    for (const section of allSections) {
       collect(section.rows);
       collect(section.extraRooms);
-      return { title: section.title, rooms };
-    });
+    }
+
+    const out: BedsSection[] = WINGS.map((w) => ({ title: w.title, rooms: buckets[w.title] }));
+    if (buckets[OTHER_WING].length > 0) {
+      out.push({ title: OTHER_WING, rooms: buckets[OTHER_WING] });
+    }
+    return out.filter((s) => s.rooms.length > 0);
   }, [students, customLayout]);
 
   // Rooms holding more than ROOM_CAPACITY students - a data error to fix.
@@ -328,7 +348,7 @@ export default function DormitoryPage() {
         {showBeds && (
           <div className="no-print bg-white border border-slate-200 rounded-xl p-4 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <h3 className="font-bold text-slate-900">🛏️ מספר מיטות בכל חדר — לפי פנימיות</h3>
+              <h3 className="font-bold text-slate-900">🛏️ מספר מיטות בכל חדר — לפי אגפים</h3>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -359,9 +379,12 @@ export default function DormitoryPage() {
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
+              האגף נקבע לפי הספרה האמצעית של מספר החדר: 0-1 דרום · 2-3 צפון · 4-5 מזרח · 6-7 מזרח החדש.
               סדר החדרים לפי סידור המפה (לא בסדר עולה). נספר כל תלמיד משובץ בכל סטטוס, ללא תלות בסינון השיעורים.
+              <br />
+              בהדפסה: <strong>דרום + צפון בדף הראשון</strong>, <strong>מזרח + מזרח החדש בדף השני</strong>.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {bedsReport.map((sec) => {
                 const total = sec.rooms.reduce((a, b) => a + b.beds, 0);
                 return (
