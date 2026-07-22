@@ -17,6 +17,10 @@ const SETTING_KEY = 'dormitory_layout';
 // Max students per room. More than this is a data error the manager must fix.
 const ROOM_CAPACITY = 5;
 
+const STATUS_LABEL: Record<string, string> = {
+  active: 'פעיל', chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים',
+};
+
 interface LayoutSection {
   id: string;
   title: string;
@@ -39,10 +43,13 @@ export default function DormitoryPage() {
     async function load() {
       setLoading(true);
       const [data, layout] = await Promise.all([
-        fetchData<Student>('students', { status: 'active' }),
+        // Every status - the map must show whoever actually holds a room,
+        // including chizuk / inactive assigned ahead of next year.
+        // כולל students are excluded: the dorm belongs to the ישיבה only.
+        fetchData<Student>('students'),
         getSetting<LayoutSection[] | null>(SETTING_KEY, null),
       ]);
-      setStudents(data); // keep ALL active (assigned + unassigned) for the counters
+      setStudents(data.filter(isYeshivaStudent));
       if (layout && Array.isArray(layout) && layout.length > 0) setCustomLayout(layout);
       setLoading(false);
     }
@@ -82,9 +89,11 @@ export default function DormitoryPage() {
 
   // Assigned / unassigned counters. Yeshiva only (exclude כולל), respecting the
   // active shiur filter.
-  // Yeshiva-only students in the current shiur selection (כולל excluded).
-  const scopedYeshiva = useMemo(() => {
-    const base = students.filter(isYeshivaStudent);
+  // ACTIVE students in the current shiur selection. The counters and the
+  // unassigned export intentionally cover active students only - the map itself
+  // still renders every assigned student regardless of status.
+  const scopedActive = useMemo(() => {
+    const base = students.filter((s) => s.status === 'active');
     return selectedShiurim.size
       ? base.filter((s) => s.shiur && selectedShiurim.has(s.shiur))
       : base;
@@ -93,14 +102,14 @@ export default function DormitoryPage() {
   const dormCounts = useMemo(() => {
     let assigned = 0;
     let unassigned = 0;
-    for (const s of scopedYeshiva) {
+    for (const s of scopedActive) {
       if (s.room_number) assigned++; else unassigned++;
     }
     return { assigned, unassigned };
-  }, [scopedYeshiva]);
+  }, [scopedActive]);
 
   const handleExportUnassigned = () => {
-    const list = scopedYeshiva.filter((s) => !s.room_number);
+    const list = scopedActive.filter((s) => !s.room_number);
     if (list.length === 0) { alert('אין תלמידים פעילים לא משובצים בסינון הנוכחי'); return; }
     exportUnassignedXlsx(list, `פעילים_לא_משובצים_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
@@ -523,7 +532,9 @@ function RoomCell({
             key={s.id}
             href={`/students/${s.id}`}
             className="text-[10px] md:text-xs leading-tight text-gray-800 hover:text-blue-600 truncate block"
-            title={`${s.first_name} ${s.last_name} (${s.shiur || ''})`}
+            title={`${s.first_name} ${s.last_name} (${s.shiur || ''}${
+              s.status !== 'active' ? ` · ${STATUS_LABEL[s.status] || s.status}` : ''
+            })`}
           >
             {shortStudentName(s.last_name, s.first_name)}
           </Link>
