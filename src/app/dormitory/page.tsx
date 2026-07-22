@@ -114,13 +114,21 @@ export default function DormitoryPage() {
     exportUnassignedXlsx(list, `פעילים_לא_משובצים_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  // Build room → students map
+  // Build room → students map. Occupants are sorted alphabetically (Hebrew) by
+  // last name then first name, matching how the cell renders them.
   const roomMap = useMemo(() => {
     const m: Record<number, Student[]> = {};
     for (const s of filteredStudents) {
       if (!s.room_number) continue;
       if (!m[s.room_number]) m[s.room_number] = [];
       m[s.room_number].push(s);
+    }
+    for (const room of Object.keys(m)) {
+      m[Number(room)].sort(
+        (a, b) =>
+          (a.last_name || '').localeCompare(b.last_name || '', 'he') ||
+          (a.first_name || '').localeCompare(b.first_name || '', 'he')
+      );
     }
     return m;
   }, [filteredStudents]);
