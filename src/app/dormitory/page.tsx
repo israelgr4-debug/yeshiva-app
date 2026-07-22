@@ -8,7 +8,9 @@ import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { Student } from '@/lib/types';
 import { SHIURIM_SECTIONS, KIBBUTZ_SECTIONS, shortStudentName, DormSection } from '@/lib/dorm-map';
 import { getShiurFilterOptions } from '@/lib/list-reports';
-import { isYeshivaStudent, exportUnassignedXlsx } from '@/lib/dorm-roster';
+import {
+  isYeshivaStudent, exportUnassignedXlsx, exportBedsReportXlsx, printBedsReport, BedsSection,
+} from '@/lib/dorm-roster';
 
 type TabId = 'shiurim' | 'kibbutz';
 
@@ -36,6 +38,7 @@ export default function DormitoryPage() {
   const [blankPrint, setBlankPrint] = useState(false);
   const [selectedShiurim, setSelectedShiurim] = useState<Set<string>>(new Set());
   const [showOverloaded, setShowOverloaded] = useState(false);
+  const [showBeds, setShowBeds] = useState(false);
   const { fetchData } = useSupabase();
   const { getSetting } = useSystemSettings();
 
@@ -71,6 +74,39 @@ export default function DormitoryPage() {
       if (n.has(v)) n.delete(v); else n.add(v);
       return n;
     });
+
+  // Beds-per-room report: every section (both tabs), rooms in LAYOUT order -
+  // deliberately not sorted ascending. Counts every assigned student, ignoring
+  // the shiur filter, since this describes the rooms themselves.
+  const bedsReport = useMemo<BedsSection[]>(() => {
+    const counts: Record<number, number> = {};
+    for (const s of students) {
+      if (!s.room_number) continue;
+      counts[s.room_number] = (counts[s.room_number] || 0) + 1;
+    }
+    const allSections: DormSection[] =
+      customLayout && customLayout.length > 0
+        ? (customLayout as unknown as DormSection[])
+        : [...SHIURIM_SECTIONS, ...KIBBUTZ_SECTIONS];
+
+    return allSections.map((section) => {
+      const rooms: { room: number; beds: number }[] = [];
+      const seen = new Set<number>();
+      const collect = (grid?: (number | string)[][]) => {
+        for (const row of grid || []) {
+          for (const cell of row) {
+            if (typeof cell === 'number' && !seen.has(cell)) {
+              seen.add(cell);
+              rooms.push({ room: cell, beds: counts[cell] || 0 });
+            }
+          }
+        }
+      };
+      collect(section.rows);
+      collect(section.extraRooms);
+      return { title: section.title, rooms };
+    });
+  }, [students, customLayout]);
 
   // Rooms holding more than ROOM_CAPACITY students - a data error to fix.
   // Scans ALL active students (ignores the shiur filter) so nothing is missed.
@@ -266,6 +302,15 @@ export default function DormitoryPage() {
             📊 ייצא לא משובצים ({dormCounts.unassigned})
           </button>
 
+          <button
+            type="button"
+            onClick={() => setShowBeds((v) => !v)}
+            className="px-4 py-2 bg-white text-gray-800 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+            title="מספר מיטות מאוישות בכל חדר, מחולק לפי פנימיות"
+          >
+            🛏️ דוח מיטות
+          </button>
+
           <span className="text-sm ms-auto flex items-center gap-3" title="תלמידי ישיבה בלבד (ללא כולל)">
             {loading ? (
               <span className="text-gray-500">טוען...</span>
@@ -278,6 +323,79 @@ export default function DormitoryPage() {
             )}
           </span>
         </div>
+
+        {/* Beds-per-room report */}
+        {showBeds && (
+          <div className="no-print bg-white border border-slate-200 rounded-xl p-4 mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 className="font-bold text-slate-900">🛏️ מספר מיטות בכל חדר — לפי פנימיות</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => printBedsReport(bedsReport)}
+                  className="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900"
+                >
+                  🖨️ הדפס
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    exportBedsReportXlsx(
+                      bedsReport,
+                      `דוח_מיטות_${new Date().toISOString().slice(0, 10)}.xlsx`
+                    )
+                  }
+                  className="px-3 py-1.5 bg-white text-gray-800 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+                >
+                  📊 אקסל
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBeds(false)}
+                  className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              סדר החדרים לפי סידור המפה (לא בסדר עולה). נספר כל תלמיד משובץ בכל סטטוס, ללא תלות בסינון השיעורים.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {bedsReport.map((sec) => {
+                const total = sec.rooms.reduce((a, b) => a + b.beds, 0);
+                return (
+                  <div key={sec.title} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-100 px-3 py-1.5 font-semibold text-sm text-slate-800 flex justify-between">
+                      <span>{sec.title}</span>
+                      <span className="text-slate-500">{total}</span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {sec.rooms.map((r) => (
+                          <tr key={r.room} className="border-t border-slate-100">
+                            <td className="px-3 py-1 text-slate-700">{r.room}</td>
+                            <td
+                              className={`px-3 py-1 text-center font-medium ${
+                                r.beds > ROOM_CAPACITY
+                                  ? 'text-red-600'
+                                  : r.beds === 0
+                                  ? 'text-slate-300'
+                                  : 'text-slate-900'
+                              }`}
+                            >
+                              {r.beds}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Overloaded rooms panel */}
         {showOverloaded && (

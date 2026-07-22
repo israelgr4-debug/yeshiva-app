@@ -63,6 +63,76 @@ export function exportUnassignedXlsx(students: Student[], filename: string) {
   XLSX.writeFile(wb, filename);
 }
 
+/** Beds-per-room report, grouped by dormitory section (layout order kept). */
+export interface BedsSection {
+  title: string;
+  rooms: { room: number; beds: number }[];
+}
+
+export function exportBedsReportXlsx(sections: BedsSection[], filename: string) {
+  const rows: (string | number)[][] = [];
+  for (const s of sections) {
+    rows.push([s.title, '']);
+    rows.push(['מספר חדר', 'מספר מיטות']);
+    for (const r of s.rooms) rows.push([r.room, r.beds]);
+    rows.push(['סה"כ', s.rooms.reduce((a, b) => a + b.beds, 0)]);
+    rows.push(['', '']);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 26 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new();
+  wb.Workbook = { Views: [{ RTL: true }] };
+  XLSX.utils.book_append_sheet(wb, ws, 'מיטות לפי חדר');
+  XLSX.writeFile(wb, filename);
+}
+
+export function printBedsReport(sections: BedsSection[]) {
+  const esc = (s: string) =>
+    String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const blocks = sections
+    .map((s) => {
+      const total = s.rooms.reduce((a, b) => a + b.beds, 0);
+      const body = s.rooms
+        .map((r) => `<tr><td>${r.room}</td><td style="text-align:center">${r.beds}</td></tr>`)
+        .join('');
+      return `<div class="sec">
+        <h3>${esc(s.title)}</h3>
+        <table>
+          <thead><tr><th>מספר חדר</th><th>מספר מיטות</th></tr></thead>
+          <tbody>${body}</tbody>
+          <tfoot><tr><td>סה"כ</td><td style="text-align:center">${total}</td></tr></tfoot>
+        </table>
+      </div>`;
+    })
+    .join('');
+
+  const w = window.open('', '_blank');
+  if (!w) { alert('הדפדפן חסם את חלון ההדפסה. אפשר חלונות קופצים ונסה שוב.'); return; }
+  const grand = sections.reduce((a, s) => a + s.rooms.reduce((x, r) => x + r.beds, 0), 0);
+  w.document.write(`<!DOCTYPE html>
+<html dir="rtl" lang="he"><head><meta charset="utf-8"><title>דוח מיטות לפי חדר</title>
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+  body { font-family: 'Heebo','Segoe UI',Arial,sans-serif; direction: rtl; color:#0f172a; margin:0; padding:10px; }
+  h1 { font-size:17px; margin:0 0 2px; }
+  .sub { font-size:11px; color:#64748b; margin:0 0 12px; }
+  .wrap { column-count: 3; column-gap: 6mm; }
+  .sec { break-inside: avoid; page-break-inside: avoid; margin-bottom: 6mm; }
+  .sec h3 { font-size:12px; margin:0 0 3px; background:#f1f5f9; padding:3px 5px; border:1px solid #cbd5e1; border-bottom:none; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { border:1px solid #cbd5e1; padding:2px 5px; font-size:10.5px; text-align:right; }
+  thead th { background:#f8fafc; font-weight:700; }
+  tfoot td { background:#f1f5f9; font-weight:700; }
+</style></head>
+<body>
+<h1>דוח מיטות לפי חדר</h1>
+<p class="sub">מחולק לפי פנימיות · סה"כ ${grand} מיטות מאוישות</p>
+<div class="wrap">${blocks}</div>
+<script>window.onload=function(){setTimeout(function(){window.print();},250);};</script>
+</body></html>`);
+  w.document.close();
+}
+
 export interface RosterRow {
   id: string;
   last_name: string;
