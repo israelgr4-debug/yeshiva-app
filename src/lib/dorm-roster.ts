@@ -8,6 +8,11 @@ import { SHIURIM } from './shiurim';
 
 export const ROSTER_HEADERS = ['מזהה', 'שם משפחה', 'שם פרטי', 'שיעור', 'חדר'];
 
+/** The dormitory belongs to the ישיבה only - כולל students are never housed. */
+export function isYeshivaStudent(s: { institution_name?: string | null }): boolean {
+  return !((s.institution_name || '').includes('כולל'));
+}
+
 const SHIUR_ORDER: Record<string, number> = Object.fromEntries(
   SHIURIM.map((s, i) => [s.name, i])
 );
@@ -41,6 +46,20 @@ export function exportRosterXlsx(students: Student[], filename: string) {
   const wb = XLSX.utils.book_new();
   wb.Workbook = { Views: [{ RTL: true }] };
   XLSX.utils.book_append_sheet(wb, ws, 'שיבוץ פנימייה');
+  XLSX.writeFile(wb, filename);
+}
+
+/** Download a plain list of unassigned students: last name, first name, shiur. */
+export function exportUnassignedXlsx(students: Student[], filename: string) {
+  const rows: (string | number)[][] = [['שם משפחה', 'שם פרטי', 'שיעור']];
+  for (const s of sortForRoster(students)) {
+    rows.push([s.last_name || '', s.first_name || '', s.shiur || '']);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 20 }, { wch: 18 }, { wch: 12 }];
+  const wb = XLSX.utils.book_new();
+  wb.Workbook = { Views: [{ RTL: true }] };
+  XLSX.utils.book_append_sheet(wb, ws, 'לא משובצים');
   XLSX.writeFile(wb, filename);
 }
 

@@ -9,10 +9,22 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { supabase } from '@/lib/supabase';
 import { Student } from '@/lib/types';
 import { SHIURIM } from '@/lib/shiurim';
-import { exportRosterXlsx, parseRosterFile, rosterNameKey } from '@/lib/dorm-roster';
+import { exportRosterXlsx, parseRosterFile, rosterNameKey, isYeshivaStudent } from '@/lib/dorm-roster';
 
 type SortKey = 'last_name' | 'first_name' | 'current_room' | 'new_room' | 'shiur';
 type SortDir = 'asc' | 'desc';
+type StatusFilter = 'active' | 'active_chizuk' | 'inactive' | 'all';
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: 'active', label: 'פעילים בלבד' },
+  { value: 'active_chizuk', label: 'פעילים + חיזוק' },
+  { value: 'inactive', label: 'לא פעילים' },
+  { value: 'all', label: 'כל הסטטוסים' },
+];
+
+const STATUS_LABEL: Record<string, string> = {
+  active: 'פעיל', chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים',
+};
 
 export default function DormitoryManagePage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -20,6 +32,7 @@ export default function DormitoryManagePage() {
   const [saving, setSaving] = useState(false);
   const [newRooms, setNewRooms] = useState<Record<string, string>>({});
   const [shiurFilter, setShiurFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [onlyWithChanges, setOnlyWithChanges] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('current_room');
@@ -31,8 +44,8 @@ export default function DormitoryManagePage() {
 
   // --- Annual reshuffle: download backup / template ---
   const handleDownloadRoster = () => {
-    if (students.length === 0) { alert('אין תלמידים להורדה'); return; }
-    exportRosterXlsx(students, `שיבוץ_פנימייה_${todayStr()}.xlsx`);
+    if (statusScoped.length === 0) { alert('אין תלמידים להורדה בסינון הנוכחי'); return; }
+    exportRosterXlsx(statusScoped, `שיבוץ_פנימייה_${todayStr()}.xlsx`);
   };
 
   // --- Clear the whole dorm (with an automatic backup download first) ---
@@ -41,47 +54,53 @@ export default function DormitoryManagePage() {
     try {
       // Every student that currently holds a room - ANY status (active, chizuk,
       // inactive, graduated). This is exactly what gets backed up and cleared.
-      const withRooms: any[] = [];
+      const rawWithRooms: any[] = [];
       for (let p = 0; p < 20; p++) {
         const { data } = await supabase
           .from('students')
-          .select('id,first_name,last_name,shiur,room_number,status')
+          .select('id,first_name,last_name,shiur,room_number,status,institution_name')
           .not('room_number', 'is', null)
           .range(p * 1000, p * 1000 + 999);
         if (!data || data.length === 0) break;
-        withRooms.push(...data);
+        rawWithRooms.push(...data);
         if (data.length < 1000) break;
       }
+      // Dorm = ישיבה only. Never back up or clear כולל students.
+      const withRooms = rawWithRooms.filter(isYeshivaStudent);
+      const skippedKollel = rawWithRooms.length - withRooms.length;
       if (withRooms.length === 0) { alert('אין שיבוצים לרוקן'); return; }
 
       const byStatus: Record<string, number> = {};
       for (const s of withRooms) byStatus[s.status] = (byStatus[s.status] || 0) + 1;
-      const statusLabel: Record<string, string> = {
-        active: 'פעיל', chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים',
-      };
       const breakdown = Object.entries(byStatus)
-        .map(([k, v]) => `${statusLabel[k] || k}: ${v}`)
+        .map(([k, v]) => `${STATUS_LABEL[k] || k}: ${v}`)
         .join(' · ');
 
       const typed = prompt(
-        `⚠️ ריקון פנימייה\n\nפעולה זו תמחק את שיבוצי החדרים של ${withRooms.length} תלמידים — בכל הסטטוסים.\n` +
-        `(${breakdown})\n\n` +
-        `לפני הריקון יירד אוטומטית קובץ גיבוי אקסל עם השיבוץ הנוכחי.\n\n` +
+        `⚠️ ריקון פנימייה\n\nפעולה זו תמחק את שיבוצי החדרים של ${withRooms.length} תלמידי ישיבה — בכל הסטטוסים.\n` +
+        `(${breakdown})\n` +
+        (skippedKollel > 0 ? `\nלא ייגעו ${skippedKollel} תלמידי כולל.\n` : '') +
+        `\nלפני הריקון יירד אוטומטית קובץ גיבוי אקסל עם השיבוץ הנוכחי.\n\n` +
         `לאישור הקלד את המילה: רוקן`
       );
       if (typed === null) return;
       if (typed.trim() !== 'רוקן') { alert('הפעולה בוטלה — לא הוקלד "רוקן".'); return; }
 
-      // 1) Backup download (everyone who currently has a room)
+      // 1) Backup download (every ישיבה student who currently has a room)
       exportRosterXlsx(withRooms as Student[], `גיבוי_פנימייה_${todayStr()}.xlsx`);
-      // 2) Bulk clear - ALL statuses
-      const { data, error } = await supabase
-        .from('students')
-        .update({ room_number: null })
-        .not('room_number', 'is', null)
-        .select('id');
-      if (error) throw error;
-      alert(`הפנימייה רוקנה. ${data?.length ?? 0} תלמידים אופסו.\nקובץ הגיבוי ירד למחשב.`);
+      // 2) Clear by id, in chunks - so כולל students are never touched
+      const ids = withRooms.map((s) => s.id);
+      let cleared = 0;
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data, error } = await supabase
+          .from('students')
+          .update({ room_number: null })
+          .in('id', ids.slice(i, i + 200))
+          .select('id');
+        if (error) throw error;
+        cleared += data?.length ?? 0;
+      }
+      alert(`הפנימייה רוקנה. ${cleared} תלמידים אופסו.\nקובץ הגיבוי ירד למחשב.`);
       setNewRooms({});
       await loadStudents();
     } catch (e: any) {
@@ -178,21 +197,21 @@ export default function DormitoryManagePage() {
 
   const loadStudents = async () => {
     setLoading(true);
-    // Load all active students (paginated)
+    // Load students of EVERY status (paginated) so inactive/chizuk can also be
+    // assigned for next year. כולל students are excluded - the dorm is ישיבה only.
     const all: Student[] = [];
     for (let p = 0; p < 20; p++) {
       const from = p * 1000;
       const to = from + 999;
       const { data } = await supabase
         .from('students')
-        .select('id,first_name,last_name,shiur,room_number,status,id_number')
-        .eq('status', 'active')
+        .select('id,first_name,last_name,shiur,room_number,status,id_number,institution_name')
         .range(from, to);
       if (!data || data.length === 0) break;
       all.push(...(data as Student[]));
       if (data.length < 1000) break;
     }
-    setStudents(all);
+    setStudents(all.filter(isYeshivaStudent));
     setLoading(false);
   };
 
@@ -208,8 +227,19 @@ export default function DormitoryManagePage() {
     }
   };
 
+  // Status scope - default shows only active; other statuses are opt-in so they
+  // can be assigned ahead of next year without cluttering the default view.
+  const statusScoped = useMemo(() => {
+    switch (statusFilter) {
+      case 'active': return students.filter((s) => s.status === 'active');
+      case 'active_chizuk': return students.filter((s) => s.status === 'active' || s.status === 'chizuk');
+      case 'inactive': return students.filter((s) => s.status === 'inactive');
+      default: return students;
+    }
+  }, [students, statusFilter]);
+
   const filtered = useMemo(() => {
-    let result = students;
+    let result = statusScoped;
     if (shiurFilter) result = result.filter((s) => s.shiur === shiurFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -253,7 +283,7 @@ export default function DormitoryManagePage() {
     });
 
     return sorted;
-  }, [students, shiurFilter, searchQuery, onlyWithChanges, sortKey, sortDir, newRooms]);
+  }, [statusScoped, shiurFilter, searchQuery, onlyWithChanges, sortKey, sortDir, newRooms]);
 
   const handleChangeRoom = (id: string, value: string) => {
     setNewRooms((prev) => {
@@ -371,10 +401,20 @@ export default function DormitoryManagePage() {
         </div>
 
         {/* Filters + summary */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <SearchInput placeholder="חיפוש לפי שם, ת.ז., חדר..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
           <select value={shiurFilter} onChange={(e) => setShiurFilter(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg">
             {shiurOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className="px-4 py-2 border border-gray-300 rounded-lg"
+            title="ברירת מחדל: פעילים. שנה כדי לשבץ גם חיזוק / לא פעילים לשנה הבאה"
+          >
+            {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
@@ -412,6 +452,7 @@ export default function DormitoryManagePage() {
                 <th className="px-3 py-2 text-start"><SortHeader label="שם משפחה" sortK="last_name" /></th>
                 <th className="px-3 py-2 text-start"><SortHeader label="שם פרטי" sortK="first_name" /></th>
                 <th className="px-3 py-2 text-start"><SortHeader label="שיעור" sortK="shiur" /></th>
+                <th className="px-3 py-2 text-start font-semibold">סטטוס</th>
                 <th className="px-3 py-2 text-start"><SortHeader label="חדר נוכחי" sortK="current_room" /></th>
                 <th className="px-3 py-2 text-start"><SortHeader label="חדר חדש" sortK="new_room" /></th>
               </tr>
@@ -430,6 +471,19 @@ export default function DormitoryManagePage() {
                     </td>
                     <td className="px-3 py-2">{s.first_name}</td>
                     <td className="px-3 py-2 text-gray-600">{s.shiur || '-'}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                          s.status === 'active'
+                            ? 'bg-emerald-50 text-emerald-800'
+                            : s.status === 'chizuk'
+                            ? 'bg-amber-50 text-amber-900'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {STATUS_LABEL[s.status] || s.status}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 font-medium">{currentVal || <span className="text-gray-400">-</span>}</td>
                     <td className="px-3 py-2">
                       <input

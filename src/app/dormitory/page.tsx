@@ -8,6 +8,7 @@ import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { Student } from '@/lib/types';
 import { SHIURIM_SECTIONS, KIBBUTZ_SECTIONS, shortStudentName, DormSection } from '@/lib/dorm-map';
 import { getShiurFilterOptions } from '@/lib/list-reports';
+import { isYeshivaStudent, exportUnassignedXlsx } from '@/lib/dorm-roster';
 
 type TabId = 'shiurim' | 'kibbutz';
 
@@ -81,19 +82,28 @@ export default function DormitoryPage() {
 
   // Assigned / unassigned counters. Yeshiva only (exclude כולל), respecting the
   // active shiur filter.
-  const dormCounts = useMemo(() => {
-    const isYeshiva = (s: Student) => !((s.institution_name || '').includes('כולל'));
-    const base = students.filter(isYeshiva);
-    const scoped = selectedShiurim.size
+  // Yeshiva-only students in the current shiur selection (כולל excluded).
+  const scopedYeshiva = useMemo(() => {
+    const base = students.filter(isYeshivaStudent);
+    return selectedShiurim.size
       ? base.filter((s) => s.shiur && selectedShiurim.has(s.shiur))
       : base;
+  }, [students, selectedShiurim]);
+
+  const dormCounts = useMemo(() => {
     let assigned = 0;
     let unassigned = 0;
-    for (const s of scoped) {
+    for (const s of scopedYeshiva) {
       if (s.room_number) assigned++; else unassigned++;
     }
     return { assigned, unassigned };
-  }, [students, selectedShiurim]);
+  }, [scopedYeshiva]);
+
+  const handleExportUnassigned = () => {
+    const list = scopedYeshiva.filter((s) => !s.room_number);
+    if (list.length === 0) { alert('אין תלמידים פעילים לא משובצים בסינון הנוכחי'); return; }
+    exportUnassignedXlsx(list, `פעילים_לא_משובצים_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
 
   // Build room → students map
   const roomMap = useMemo(() => {
@@ -228,6 +238,15 @@ export default function DormitoryPage() {
             }`}
           >
             ⚠️ חדרים חורגים ({overloadedRooms.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportUnassigned}
+            className="px-4 py-2 bg-white text-gray-800 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+            title="מייצא לאקסל את הפעילים ללא חדר, לפי הסינון הנוכחי (ישיבה בלבד)"
+          >
+            📊 ייצא לא משובצים ({dormCounts.unassigned})
           </button>
 
           <span className="text-sm ms-auto flex items-center gap-3" title="תלמידי ישיבה בלבד (ללא כולל)">
