@@ -37,25 +37,47 @@ export default function DormitoryManagePage() {
 
   // --- Clear the whole dorm (with an automatic backup download first) ---
   const handleClearDorm = async () => {
-    const withRooms = students.filter((s) => s.room_number);
-    if (withRooms.length === 0) { alert('אין שיבוצים לרוקן'); return; }
-    const typed = prompt(
-      `⚠️ ריקון פנימייה\n\nפעולה זו תמחק את שיבוצי החדרים של ${withRooms.length} תלמידים פעילים.\n` +
-      `לפני הריקון יירד אוטומטית קובץ גיבוי אקסל עם השיבוץ הנוכחי.\n\n` +
-      `לאישור הקלד את המילה: רוקן`
-    );
-    if (typed === null) return;
-    if (typed.trim() !== 'רוקן') { alert('הפעולה בוטלה — לא הוקלד "רוקן".'); return; }
-
     setBusyOp('clear');
     try {
-      // 1) Backup download (current assignments)
-      exportRosterXlsx(students, `גיבוי_פנימייה_${todayStr()}.xlsx`);
-      // 2) Bulk clear active students' rooms
+      // Every student that currently holds a room - ANY status (active, chizuk,
+      // inactive, graduated). This is exactly what gets backed up and cleared.
+      const withRooms: any[] = [];
+      for (let p = 0; p < 20; p++) {
+        const { data } = await supabase
+          .from('students')
+          .select('id,first_name,last_name,shiur,room_number,status')
+          .not('room_number', 'is', null)
+          .range(p * 1000, p * 1000 + 999);
+        if (!data || data.length === 0) break;
+        withRooms.push(...data);
+        if (data.length < 1000) break;
+      }
+      if (withRooms.length === 0) { alert('אין שיבוצים לרוקן'); return; }
+
+      const byStatus: Record<string, number> = {};
+      for (const s of withRooms) byStatus[s.status] = (byStatus[s.status] || 0) + 1;
+      const statusLabel: Record<string, string> = {
+        active: 'פעיל', chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים',
+      };
+      const breakdown = Object.entries(byStatus)
+        .map(([k, v]) => `${statusLabel[k] || k}: ${v}`)
+        .join(' · ');
+
+      const typed = prompt(
+        `⚠️ ריקון פנימייה\n\nפעולה זו תמחק את שיבוצי החדרים של ${withRooms.length} תלמידים — בכל הסטטוסים.\n` +
+        `(${breakdown})\n\n` +
+        `לפני הריקון יירד אוטומטית קובץ גיבוי אקסל עם השיבוץ הנוכחי.\n\n` +
+        `לאישור הקלד את המילה: רוקן`
+      );
+      if (typed === null) return;
+      if (typed.trim() !== 'רוקן') { alert('הפעולה בוטלה — לא הוקלד "רוקן".'); return; }
+
+      // 1) Backup download (everyone who currently has a room)
+      exportRosterXlsx(withRooms as Student[], `גיבוי_פנימייה_${todayStr()}.xlsx`);
+      // 2) Bulk clear - ALL statuses
       const { data, error } = await supabase
         .from('students')
         .update({ room_number: null })
-        .eq('status', 'active')
         .not('room_number', 'is', null)
         .select('id');
       if (error) throw error;
