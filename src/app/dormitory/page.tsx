@@ -87,7 +87,7 @@ export default function DormitoryPage() {
 
   // Beds-per-room report, grouped by WING via the room number's middle digit
   // (tens): 0-1 דרום · 2-3 צפון · 4-5 מזרח · 6-7 מזרח החדש.
-  // Rooms keep the map's layout order (deliberately not sorted ascending).
+  // Rooms are listed in ascending room number inside each wing.
   // Counts every assigned student in any status, ignoring the shiur filter.
   const bedsReport = useMemo<BedsSection[]>(() => {
     const counts: Record<number, number> = {};
@@ -119,6 +119,11 @@ export default function DormitoryPage() {
     for (const section of allSections) {
       collect(section.rows);
       collect(section.extraRooms);
+    }
+
+    // Inside each wing the rooms are listed in ascending room number.
+    for (const key of Object.keys(buckets)) {
+      buckets[key].sort((a, b) => a.room - b.room);
     }
 
     const out: BedsSection[] = WINGS.map((w) => ({ title: w.title, rooms: buckets[w.title] }));
@@ -380,7 +385,7 @@ export default function DormitoryPage() {
             </div>
             <p className="text-xs text-gray-500 mb-3">
               האגף נקבע לפי הספרה האמצעית של מספר החדר: 0-1 דרום · 2-3 צפון · 4-5 מזרח · 6-7 מזרח החדש.
-              סדר החדרים לפי סידור המפה (לא בסדר עולה). נספר כל תלמיד משובץ בכל סטטוס, ללא תלות בסינון השיעורים.
+              בתוך כל אגף החדרים מסודרים בסדר עולה. נספר כל תלמיד משובץ בכל סטטוס, ללא תלות בסינון השיעורים.
               <br />
               בהדפסה: <strong>דרום + צפון בדף הראשון</strong>, <strong>מזרח + מזרח החדש בדף השני</strong>.
             </p>
