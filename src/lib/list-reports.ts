@@ -16,7 +16,8 @@ export type ListReportId =
   | 'ram' // דוח ר"מ - 2 columns with 3 lines
   | 'photos' // דוח תמונות - names and photos
   | 'eligible' // דוח זכאים (משרד הדתות) - shiur/last/first/phone
-  | 'custom'; // מחולל דוחות - choose fields + export to Excel
+  | 'custom' // מחולל דוחות - choose fields + export to Excel
+  | 'bulk_update'; // ייצוא/ייבוא אקסל לפי שיעור לעדכון נתונים
 
 export interface ListReportDef {
   id: ListReportId;
@@ -73,6 +74,12 @@ export const LIST_REPORTS: ListReportDef[] = [
     name: 'מחולל דוחות',
     description: 'בחר שדות + סינון וייצא לאקסל',
     icon: '⚙️',
+  },
+  {
+    id: 'bulk_update',
+    name: 'עדכון לפי שיעור (אקסל)',
+    description: 'ייצא שיעור, מלא פרטים באקסל, והעלה לעדכון המערכת',
+    icon: '📤',
   },
 ];
 

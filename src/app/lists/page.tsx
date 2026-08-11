@@ -20,6 +20,7 @@ import { RamReport } from '@/components/lists/RamReport';
 import { PhotosReport } from '@/components/lists/PhotosReport';
 import { EligibleReport } from '@/components/lists/EligibleReport';
 import { CustomReportBuilder } from '@/components/lists/CustomReportBuilder';
+import { BulkShiurUpdate } from '@/components/lists/BulkShiurUpdate';
 import * as XLSX from 'xlsx';
 
 export default function ListsPage() {
@@ -172,6 +173,17 @@ export default function ListsPage() {
           families={families}
           machzorot={machzorot}
           education={education}
+        />
+      );
+    }
+
+    // Bulk per-shiur export/import - uses the sidebar filters for the export set
+    if (selectedReport === 'bulk_update') {
+      return (
+        <BulkShiurUpdate
+          students={filteredStudents}
+          families={families}
+          machzorot={machzorot}
         />
       );
     }
@@ -355,17 +367,19 @@ export default function ListsPage() {
                   </div>
                 </div>
 
-                <Button onClick={handlePrint} className="w-full mt-4">
-                  הדפס / שמור PDF
-                </Button>
-                {selectedReport !== 'custom' && (
-                  <Button
-                    variant="secondary"
-                    onClick={handleExportExcel}
-                    className="w-full mt-2"
-                  >
-                    📥 ייצא לאקסל
-                  </Button>
+                {selectedReport !== 'custom' && selectedReport !== 'bulk_update' && (
+                  <>
+                    <Button onClick={handlePrint} className="w-full mt-4">
+                      הדפס / שמור PDF
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={handleExportExcel}
+                      className="w-full mt-2"
+                    >
+                      📥 ייצא לאקסל
+                    </Button>
+                  </>
                 )}
               </CardContent>
             </Card>
