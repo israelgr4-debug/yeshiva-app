@@ -10,8 +10,9 @@ import { ChinuchTab } from '@/components/actions/ChinuchTab';
 import { OlamHaTorahTab } from '@/components/actions/OlamHaTorahTab';
 import { MinistryCompareTab } from '@/components/actions/MinistryCompareTab';
 import { NeighborhoodsTab } from '@/components/actions/NeighborhoodsTab';
+import { DuplicateFamiliesTab } from '@/components/actions/DuplicateFamiliesTab';
 
-type TabId = 'machzor' | 'equivalent' | 'chinuch' | 'ministry' | 'olam' | 'neighborhoods' | 'banks';
+type TabId = 'machzor' | 'equivalent' | 'chinuch' | 'ministry' | 'olam' | 'neighborhoods' | 'banks' | 'dupfamilies';
 
 interface TabDef {
   id: TabId;
@@ -27,6 +28,7 @@ const TABS: TabDef[] = [
   { id: 'olam', label: 'עולם התורה', icon: '📚' },
   { id: 'neighborhoods', label: 'שכונות', icon: '🗺️' },
   { id: 'banks', label: 'בנקים וסניפים', icon: '🏦' },
+  { id: 'dupfamilies', label: 'משפחות כפולות', icon: '🔎' },
 ];
 
 export default function ActionsPage() {
@@ -77,6 +79,7 @@ export default function ActionsPage() {
         {activeTab === 'olam' && <OlamHaTorahTab />}
         {activeTab === 'neighborhoods' && <NeighborhoodsTab />}
         {activeTab === 'banks' && <BanksTab />}
+        {activeTab === 'dupfamilies' && <DuplicateFamiliesTab />}
       </div>
     </>
   );
