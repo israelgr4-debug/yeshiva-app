@@ -134,6 +134,45 @@ export function groupStudentsByShiur(students: Student[]): Array<{ shiur: string
   return result;
 }
 
+// The "מקבילה" (parallel class) of a student: equivalent_number, falling back
+// to equivalent_year. '' when the student has none.
+export function makbilaOf(s: Student): string {
+  const v = (s as any).equivalent_number ?? (s as any).equivalent_year;
+  return v === null || v === undefined || v === '' ? '' : String(v);
+}
+
+// Group by shiur (canonical order) then by מקבילה (numeric-ish sort, blank last).
+// Each entry is one printable page: {shiur, makbila, label, students}.
+export function groupByShiurThenMakbila(
+  students: Student[]
+): { shiur: string; makbila: string; label: string; students: Student[] }[] {
+  const out: { shiur: string; makbila: string; label: string; students: Student[] }[] = [];
+  for (const grp of groupStudentsByShiur(students)) {
+    const byMak: Record<string, Student[]> = {};
+    for (const s of grp.students) {
+      const m = makbilaOf(s);
+      (byMak[m] ||= []).push(s);
+    }
+    const keys = Object.keys(byMak).sort((a, b) => {
+      if (a === '' && b !== '') return 1;
+      if (b === '' && a !== '') return -1;
+      const na = parseInt(a, 10);
+      const nb = parseInt(b, 10);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.localeCompare(b, 'he');
+    });
+    for (const m of keys) {
+      out.push({
+        shiur: grp.shiur,
+        makbila: m,
+        label: m ? `${grp.shiur} - מקבילה ${m}` : grp.shiur,
+        students: sortStudentsByName(byMak[m]),
+      });
+    }
+  }
+  return out;
+}
+
 // Get short letter for a shiur (e.g., 'שיעור א' → 'א', 'קיבוץ' → 'ק')
 export function getShiurLetter(shiurName: string): string {
   const shiur = getShiurByName(shiurName);

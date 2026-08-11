@@ -10,6 +10,7 @@ import { Student, Family, Machzor, EducationHistory } from '@/lib/types';
 import {
   LIST_REPORTS,
   ListReportId,
+  groupByShiurThenMakbila,
 } from '@/lib/list-reports';
 import { SHIURIM } from '@/lib/shiurim';
 import { GeneralListReport } from '@/components/lists/GeneralListReport';
@@ -22,6 +23,11 @@ import { EligibleReport } from '@/components/lists/EligibleReport';
 import { CustomReportBuilder } from '@/components/lists/CustomReportBuilder';
 import { BulkShiurUpdate } from '@/components/lists/BulkShiurUpdate';
 import * as XLSX from 'xlsx';
+
+// Reports that page by shiur and therefore support the מקבילה split.
+const MAKBILA_SPLIT_REPORTS = new Set<ListReportId>([
+  'general', 'tests', 'multi_details', 'details', 'ram', 'photos',
+]);
 
 export default function ListsPage() {
   const { fetchData } = useSupabase();
@@ -39,6 +45,7 @@ export default function ListsPage() {
     () => new Set(['שיעור א'])
   );
   const [statusFilter, setStatusFilter] = useState<string>('active');
+  const [splitByMakbila, setSplitByMakbila] = useState(false);
 
   // Load data only when user picks a report (lazy). For now, preload on mount.
   const loadData = useCallback(async () => {
@@ -196,36 +203,57 @@ export default function ListsPage() {
       );
     }
 
-    switch (selectedReport) {
-      case 'general':
-        return <GeneralListReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
-      case 'tests':
-        return <TestsReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
-      case 'multi_details':
-        return (
-          <MultiDetailsReport
-            students={filteredStudents}
-            families={families}
-            shiurFilter={effectiveShiurFilter}
-          />
-        );
-      case 'details':
-        return (
-          <DetailsReport
-            students={filteredStudents}
-            families={families}
-            machzorot={machzorot}
-            education={education}
-            shiurFilter={effectiveShiurFilter}
-          />
-        );
-      case 'ram':
-        return <RamReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
-      case 'photos':
-        return <PhotosReport students={filteredStudents} shiurFilter={effectiveShiurFilter} />;
-      case 'eligible':
-        return <EligibleReport students={filteredStudents} families={families} />;
+    // Render the selected report for a given student set + page title.
+    const renderOne = (studs: Student[], label: string) => {
+      switch (selectedReport) {
+        case 'general':
+          return <GeneralListReport students={studs} shiurFilter={label} />;
+        case 'tests':
+          return <TestsReport students={studs} shiurFilter={label} />;
+        case 'multi_details':
+          return <MultiDetailsReport students={studs} families={families} shiurFilter={label} />;
+        case 'details':
+          return (
+            <DetailsReport
+              students={studs}
+              families={families}
+              machzorot={machzorot}
+              education={education}
+              shiurFilter={label}
+            />
+          );
+        case 'ram':
+          return <RamReport students={studs} shiurFilter={label} />;
+        case 'photos':
+          return <PhotosReport students={studs} shiurFilter={label} />;
+        case 'eligible':
+          return <EligibleReport students={studs} families={families} />;
+        default:
+          return null;
+      }
+    };
+
+    // Split each shiur into its מקבילה groups, one page each.
+    if (splitByMakbila && MAKBILA_SPLIT_REPORTS.has(selectedReport)) {
+      const groups = groupByShiurThenMakbila(filteredStudents);
+      if (groups.length === 0) {
+        return <div className="text-center py-12 text-gray-500">אין תלמידים</div>;
+      }
+      return (
+        <>
+          {groups.map((g, i) => (
+            <div
+              key={g.label}
+              style={i > 0 ? { breakBefore: 'page', pageBreakBefore: 'always' } : undefined}
+            >
+              {renderOne(g.students, g.label)}
+            </div>
+          ))}
+        </>
+      );
     }
+
+    return renderOne(filteredStudents, effectiveShiurFilter);
   };
 
   const toggleShiur = (name: string) => {
@@ -361,6 +389,18 @@ export default function ListsPage() {
                       <option value="graduated">סיים</option>
                     </select>
                   </div>
+
+                  {MAKBILA_SPLIT_REPORTS.has(selectedReport) && (
+                    <label className="flex items-center gap-2 text-sm cursor-pointer bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={splitByMakbila}
+                        onChange={(e) => setSplitByMakbila(e.target.checked)}
+                        className="accent-blue-600"
+                      />
+                      <span>פצל לפי מקבילה (עמוד נפרד לכל כתה)</span>
+                    </label>
+                  )}
 
                   <div className="pt-2 text-sm text-gray-600 border-t border-gray-100">
                     {filteredStudents.length} תלמידים
