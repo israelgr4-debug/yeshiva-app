@@ -114,14 +114,16 @@ export function DuplicateFamiliesTab() {
         const gfams = members.map((i) => fams[i]);
         const sbf: Record<string, Stud[]> = {};
         const gbf: Record<string, number> = {};
-        let dataCount = 0;
+        let familiesWithData = 0;
         for (const f of gfams) {
           sbf[f.id] = studentsByFamily[f.id] || [];
           gbf[f.id] = gradsByFamilyAll[f.id] || 0;
-          dataCount += sbf[f.id].length + gbf[f.id];
+          if (sbf[f.id].length > 0 || gbf[f.id] > 0) familiesWithData += 1;
         }
-        // Skip pure-orphan groups (no student and no graduate anywhere).
-        if (dataCount === 0) continue;
+        // A real merge needs ≥2 families that actually hold a student/graduate.
+        // One real family surrounded by empty records isn't a merge - those
+        // empties are cleaned up by "נקה משפחות יתומות".
+        if (familiesWithData < 2) continue;
         const ids = new Set(gfams.map((f) => normId(f.father_id_number)).filter(Boolean));
         const reason = ids.size > 0 ? 'ת"ז אב זהה' : 'טלפון + שם אב זהים';
         result.push({
@@ -281,7 +283,7 @@ export function DuplicateFamiliesTab() {
         <>
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-700">
-              נמצאו <strong>{groups.length}</strong> קבוצות כפולות (עם תלמיד/בוגר)
+              נמצאו <strong>{groups.length}</strong> כפילויות אמיתיות (2+ משפחות עם תלמיד/בוגר)
             </div>
             {canWrite && groups.length > 0 && (
               <Button variant="secondary" onClick={mergeAll} disabled={!!busyKey}>
