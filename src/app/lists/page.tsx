@@ -240,16 +240,19 @@ export default function ListsPage() {
         return <div className="text-center py-12 text-gray-500">אין תלמידים</div>;
       }
       return (
-        <>
-          {groups.map((g, i) => (
-            <div
-              key={g.label}
-              style={i > 0 ? { breakBefore: 'page', pageBreakBefore: 'always' } : undefined}
-            >
+        <div className="makbila-split">
+          {groups.map((g) => (
+            <div key={g.label} className="makbila-group">
               {renderOne(g.students, g.label)}
             </div>
           ))}
-        </>
+          <style jsx global>{`
+            .makbila-group:not(:first-child) {
+              break-before: page;
+              page-break-before: always;
+            }
+          `}</style>
+        </div>
       );
     }
 

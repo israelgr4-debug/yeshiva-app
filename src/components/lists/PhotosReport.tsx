@@ -2,6 +2,7 @@
 
 import { Student } from '@/lib/types';
 import { sortStudentsByName, groupStudentsByShiur } from '@/lib/list-reports';
+import { storageThumbUrl } from '@/lib/storage-image';
 
 interface Props {
   students: Student[];
@@ -51,7 +52,20 @@ function PhotosPage({
             <div className="photo-frame">
               {s.photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={s.photo_url} alt={`${s.first_name} ${s.last_name}`} />
+                <img
+                  src={storageThumbUrl(s.photo_url, 240, 320)}
+                  alt={`${s.first_name} ${s.last_name}`}
+                  loading="eager"
+                  decoding="async"
+                  // If image transforms aren't enabled, fall back to the original.
+                  onError={(e) => {
+                    const img = e.currentTarget;
+                    if (img.dataset.fallback !== '1' && s.photo_url) {
+                      img.dataset.fallback = '1';
+                      img.src = s.photo_url;
+                    }
+                  }}
+                />
               ) : (
                 <div className="photo-placeholder">אין תמונה</div>
               )}
