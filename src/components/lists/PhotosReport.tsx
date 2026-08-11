@@ -53,7 +53,7 @@ function PhotosPage({
               {s.photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={storageThumbUrl(s.photo_url, 240, 320)}
+                  src={storageThumbUrl(s.photo_url, 360, 480)}
                   alt={`${s.first_name} ${s.last_name}`}
                   loading="eager"
                   decoding="async"
@@ -99,15 +99,15 @@ function PhotosPage({
         }
         .photos-grid {
           display: grid;
-          grid-template-columns: repeat(5, 1fr);
-          gap: 10px;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 12px;
         }
         .photo-card {
           display: flex;
           flex-direction: column;
           align-items: center;
           border: 1px solid #ccc;
-          padding: 6px;
+          padding: 8px;
           break-inside: avoid;
           page-break-inside: avoid;
           background: white;
@@ -148,7 +148,16 @@ function PhotosPage({
             padding: 8mm;
           }
           .photos-grid {
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+          }
+          /* Fixed frame height so exactly 4 rows (16 photos) fit one A4 page */
+          .photo-frame {
+            aspect-ratio: auto;
+            height: 52mm;
+          }
+          .photo-name {
+            font-size: 10pt;
           }
         }
       `}</style>
