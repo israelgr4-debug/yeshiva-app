@@ -93,16 +93,27 @@ const ALL_FIELDS: FieldDef[] = [
 
 const DEFAULT_FIELDS = ['last_name', 'first_name', 'id_number', 'shiur', 'machzor', 'room', 'father_name', 'father_phone', 'city'];
 
-type StatusFilter = 'active' | 'inactive' | 'chizuk' | 'graduated' | 'all' | 'active_all';
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'active', label: 'פעיל' },
+  { value: 'chizuk', label: 'חיזוק' },
+  { value: 'inactive', label: 'לא פעיל' },
+  { value: 'graduated', label: 'סיים' },
+];
 
 export function CustomReportBuilder({ students, families, machzorot, education }: Props) {
-  const shiurOptions = getShiurFilterOptions();
+  const shiurOptions = getShiurFilterOptions().filter((o) => o.value);
   const { nameByCode } = useNeighborhoods();
 
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(DEFAULT_FIELDS));
-  const [shiurFilter, setShiurFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+  // Empty set = no filter (all). Statuses default to active.
+  const [selectedShiurim, setSelectedShiurim] = useState<Set<string>>(new Set());
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set(['active']));
   const [institutionFilter, setInstitutionFilter] = useState('');
+
+  const toggleShiur = (v: string) =>
+    setSelectedShiurim((p) => { const n = new Set(p); n.has(v) ? n.delete(v) : n.add(v); return n; });
+  const toggleStatus = (v: string) =>
+    setSelectedStatuses((p) => { const n = new Set(p); n.has(v) ? n.delete(v) : n.add(v); return n; });
 
   const groups = useMemo(() => {
     const g: Record<string, FieldDef[]> = {};
@@ -140,15 +151,11 @@ export function CustomReportBuilder({ students, families, machzorot, education }
 
   const filteredStudents = useMemo(() => {
     let result = students;
-    if (statusFilter === 'active_all') {
-      result = result.filter((s) => s.status === 'active' || s.status === 'chizuk');
-    } else if (statusFilter !== 'all') {
-      result = result.filter((s) => s.status === statusFilter);
-    }
-    if (shiurFilter) result = result.filter((s) => s.shiur === shiurFilter);
+    if (selectedStatuses.size > 0) result = result.filter((s) => selectedStatuses.has(s.status));
+    if (selectedShiurim.size > 0) result = result.filter((s) => s.shiur != null && selectedShiurim.has(s.shiur));
     if (institutionFilter) result = result.filter((s) => s.institution_name === institutionFilter);
     return sortStudentsByName(result);
-  }, [students, statusFilter, shiurFilter, institutionFilter]);
+  }, [students, selectedStatuses, selectedShiurim, institutionFilter]);
 
   const exportToCsv = () => {
     const fields = ALL_FIELDS.filter((f) => selectedFields.has(f.key));
@@ -195,35 +202,64 @@ export function CustomReportBuilder({ students, families, machzorot, education }
       {/* Filters */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h3 className="font-semibold text-blue-900 mb-3">שלב 1: סינון התלמידים</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="space-y-3">
+          {/* Status (multi) */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">סטטוס</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            >
-              <option value="active">פעילים בלבד</option>
-              <option value="active_all">פעילים + חיזוק</option>
-              <option value="chizuk">חיזוק</option>
-              <option value="inactive">לא פעיל</option>
-              <option value="graduated">סיים</option>
-              <option value="all">כל התלמידים</option>
-            </select>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              סטטוס <span className="text-gray-400">(ריק = הכל)</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_OPTIONS.map((o) => {
+                const on = selectedStatuses.has(o.value);
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => toggleStatus(o.value)}
+                    className={`px-2.5 py-1 rounded-lg text-sm font-medium border ${
+                      on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Shiur (multi) */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">שיעור</label>
-            <select
-              value={shiurFilter}
-              onChange={(e) => setShiurFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            >
-              {shiurOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-gray-700">
+                שיעורים <span className="text-gray-400">(ריק = הכל)</span>
+              </label>
+              <div className="flex gap-1 text-[11px]">
+                <button type="button" onClick={() => setSelectedShiurim(new Set(shiurOptions.map((o) => o.value)))} className="text-blue-600 hover:underline">הכל</button>
+                <span className="text-gray-300">|</span>
+                <button type="button" onClick={() => setSelectedShiurim(new Set())} className="text-red-600 hover:underline">נקה</button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {shiurOptions.map((o) => {
+                const on = selectedShiurim.has(o.value);
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => toggleShiur(o.value)}
+                    className={`px-2.5 py-1 rounded-lg text-sm font-medium border ${
+                      on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div>
+
+          {/* Institution (single) */}
+          <div className="max-w-xs">
             <label className="block text-xs font-medium text-gray-700 mb-1">מוסד</label>
             <select
               value={institutionFilter}
