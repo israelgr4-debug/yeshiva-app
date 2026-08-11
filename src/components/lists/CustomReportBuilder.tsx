@@ -108,12 +108,21 @@ export function CustomReportBuilder({ students, families, machzorot, education }
   // Empty set = no filter (all). Statuses default to active.
   const [selectedShiurim, setSelectedShiurim] = useState<Set<string>>(new Set());
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set(['active']));
-  const [institutionFilter, setInstitutionFilter] = useState('');
+  const [selectedInstitutions, setSelectedInstitutions] = useState<Set<string>>(new Set());
+
+  // Distinct institutions actually present in the data.
+  const institutionOptions = useMemo(
+    () => Array.from(new Set(students.map((s) => (s.institution_name || '').trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'he')),
+    [students]
+  );
 
   const toggleShiur = (v: string) =>
     setSelectedShiurim((p) => { const n = new Set(p); n.has(v) ? n.delete(v) : n.add(v); return n; });
   const toggleStatus = (v: string) =>
     setSelectedStatuses((p) => { const n = new Set(p); n.has(v) ? n.delete(v) : n.add(v); return n; });
+  const toggleInstitution = (v: string) =>
+    setSelectedInstitutions((p) => { const n = new Set(p); n.has(v) ? n.delete(v) : n.add(v); return n; });
 
   const groups = useMemo(() => {
     const g: Record<string, FieldDef[]> = {};
@@ -153,9 +162,9 @@ export function CustomReportBuilder({ students, families, machzorot, education }
     let result = students;
     if (selectedStatuses.size > 0) result = result.filter((s) => selectedStatuses.has(s.status));
     if (selectedShiurim.size > 0) result = result.filter((s) => s.shiur != null && selectedShiurim.has(s.shiur));
-    if (institutionFilter) result = result.filter((s) => s.institution_name === institutionFilter);
+    if (selectedInstitutions.size > 0) result = result.filter((s) => !!s.institution_name && selectedInstitutions.has(s.institution_name));
     return sortStudentsByName(result);
-  }, [students, selectedStatuses, selectedShiurim, institutionFilter]);
+  }, [students, selectedStatuses, selectedShiurim, selectedInstitutions]);
 
   const exportToCsv = () => {
     const fields = ALL_FIELDS.filter((f) => selectedFields.has(f.key));
@@ -258,19 +267,28 @@ export function CustomReportBuilder({ students, families, machzorot, education }
             </div>
           </div>
 
-          {/* Institution (single) */}
-          <div className="max-w-xs">
-            <label className="block text-xs font-medium text-gray-700 mb-1">מוסד</label>
-            <select
-              value={institutionFilter}
-              onChange={(e) => setInstitutionFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            >
-              <option value="">כל המוסדות</option>
-              <option value="ישיבה">ישיבה</option>
-              <option value="כולל">כולל</option>
-              <option value="כולל של ר' יצחק פינקל">כולל של ר׳ יצחק פינקל</option>
-            </select>
+          {/* Institution (multi) */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              מוסד <span className="text-gray-400">(ריק = הכל)</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {institutionOptions.map((v) => {
+                const on = selectedInstitutions.has(v);
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => toggleInstitution(v)}
+                    className={`px-2.5 py-1 rounded-lg text-sm font-medium border ${
+                      on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {v}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
         <p className="text-sm text-blue-700 mt-2">
