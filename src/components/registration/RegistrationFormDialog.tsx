@@ -11,9 +11,10 @@ interface Props {
   registration: Registration | null;
   onClose: () => void;
   onSaved: () => void;
+  defaultYear?: string; // registration_year tagged onto a NEW registration
 }
 
-export function RegistrationFormDialog({ registration, onClose, onSaved }: Props) {
+export function RegistrationFormDialog({ registration, onClose, onSaved, defaultYear }: Props) {
   const isEdit = !!registration;
   const { create, update } = useRegistrations();
   const [saving, setSaving] = useState(false);
@@ -56,7 +57,7 @@ export function RegistrationFormDialog({ registration, onClose, onSaved }: Props
       if (isEdit && registration) {
         await update(registration.id, form);
       } else {
-        await create(form);
+        await create({ ...form, registration_year: defaultYear || null });
       }
       onSaved();
     } catch (e: any) {

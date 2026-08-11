@@ -7,11 +7,13 @@ import { DEFAULT_BASE_MACHZOR } from '@/lib/shiurim';
 export interface SystemSettings {
   current_school_year: string;
   base_machzor_for_shiur_alef: number;
+  current_registration_year: string;
 }
 
 export const DEFAULT_SETTINGS: SystemSettings = {
   current_school_year: 'תשפ"ו',
   base_machzor_for_shiur_alef: DEFAULT_BASE_MACHZOR,
+  current_registration_year: 'תשפ"ז',
 };
 
 export function useSystemSettings() {
@@ -47,9 +49,14 @@ export function useSystemSettings() {
       'base_machzor_for_shiur_alef',
       DEFAULT_SETTINGS.base_machzor_for_shiur_alef
     );
+    const regYear = await getSetting<string>(
+      'current_registration_year',
+      DEFAULT_SETTINGS.current_registration_year
+    );
     return {
       current_school_year: year,
       base_machzor_for_shiur_alef: baseMachzor,
+      current_registration_year: regYear,
     };
   }, [getSetting]);
 

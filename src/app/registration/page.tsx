@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { useRegistrations } from '@/hooks/useRegistrations';
+import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { useAuth } from '@/hooks/useAuth';
 import { Registration } from '@/lib/types';
 import { RegistrationsListTab } from '@/components/registration/RegistrationsListTab';
@@ -25,9 +26,13 @@ const TABS: { id: TabId; label: string; icon: string; tint: string }[] = [
   { id: 'acceptance', label: 'קבלות', icon: '✓', tint: 'from-emerald-500 to-teal-600' },
 ];
 
+const NO_YEAR = '(ללא שנה)';
+const ALL_YEARS = '__all__';
+
 export default function RegistrationPage() {
   const { permissions } = useAuth();
   const { list } = useRegistrations();
+  const { getSetting, setSetting } = useSystemSettings();
 
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +40,8 @@ export default function RegistrationPage() {
   const [editing, setEditing] = useState<Registration | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showSendForms, setShowSendForms] = useState(false);
+  const [activeYear, setActiveYear] = useState('');   // year new registrations get
+  const [viewYear, setViewYear] = useState('');       // year currently filtered/shown
 
   const reload = async () => {
     setLoading(true);
@@ -46,21 +53,54 @@ export default function RegistrationPage() {
     }
   };
 
+  const loadYear = useCallback(async () => {
+    const y = await getSetting<string>('current_registration_year', 'תשפ"ז');
+    setActiveYear(y);
+    setViewYear((prev) => prev || y); // default the view to the active year
+  }, [getSetting]);
+
   useEffect(() => {
     reload();
+    loadYear();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // All years present in the data (+ the active year), newest-ish first.
+  const years = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of registrations) set.add((r.registration_year || '').trim() || NO_YEAR);
+    if (activeYear) set.add(activeYear);
+    const arr = Array.from(set);
+    arr.sort((a, b) => (a === NO_YEAR ? 1 : b === NO_YEAR ? -1 : b.localeCompare(a, 'he')));
+    return arr;
+  }, [registrations, activeYear]);
+
+  // Registrations filtered to the selected view year.
+  const shown = useMemo(() => {
+    if (viewYear === ALL_YEARS || !viewYear) return registrations;
+    return registrations.filter((r) => ((r.registration_year || '').trim() || NO_YEAR) === viewYear);
+  }, [registrations, viewYear]);
+
+  const changeActiveYear = async () => {
+    const next = prompt('שנת הרישום הפעילה (נרשמים חדשים יתויגו אליה):', activeYear);
+    if (next === null) return;
+    const v = next.trim();
+    if (!v || v === activeYear) return;
+    const ok = await setSetting('current_registration_year', v);
+    if (ok) { setActiveYear(v); setViewYear(v); }
+    else alert('שגיאה בשמירה');
+  };
 
   const counts = useMemo(() => {
     return {
-      list: registrations.filter((r) => r.status !== 'converted').length,
-      tests: registrations.filter((r) =>
+      list: shown.filter((r) => r.status !== 'converted').length,
+      tests: shown.filter((r) =>
         r.status === 'registered' || r.status === 'tested'
       ).length,
-      testday: registrations.filter((r) => r.test_date).length,
-      reports: registrations.filter((r) => r.test_date).length,
-      acceptance: registrations.filter((r) => r.status === 'tested' || r.status === 'accepted').length,
+      testday: shown.filter((r) => r.test_date).length,
+      reports: shown.filter((r) => r.test_date).length,
+      acceptance: shown.filter((r) => r.status === 'tested' || r.status === 'accepted').length,
     };
-  }, [registrations]);
+  }, [shown]);
 
   const handleAdd = () => {
     setEditing(null);
@@ -84,6 +124,32 @@ export default function RegistrationPage() {
       />
 
       <div className="p-4 md:p-8 space-y-4 animate-fadeIn">
+        {/* Registration-year bar */}
+        <div className="flex flex-wrap items-center gap-3 bg-white rounded-2xl border border-slate-200 px-4 py-2.5">
+          <label className="text-sm font-semibold text-slate-700">שנת רישום:</label>
+          <select
+            value={viewYear || activeYear}
+            onChange={(e) => setViewYear(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm bg-white"
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>{y}{y === activeYear ? ' · פעילה' : ''}</option>
+            ))}
+            <option value={ALL_YEARS}>כל השנים</option>
+          </select>
+          <span className="text-xs text-slate-500">{shown.length} רישומים</span>
+          {permissions.canWrite && (
+            <button
+              type="button"
+              onClick={changeActiveYear}
+              className="ms-auto text-xs text-blue-600 hover:underline"
+              title="שינוי שנת הרישום שאליה מתויגים נרשמים חדשים"
+            >
+              ⚙️ שנה פעילה: {activeYear || '—'}
+            </button>
+          )}
+        </div>
+
         {/* Tab pills */}
         <div className="flex gap-2 overflow-x-auto pb-1">
           {TABS.map((t) => {
@@ -123,23 +189,23 @@ export default function RegistrationPage() {
 
         {!loading && tab === 'list' && (
           <RegistrationsListTab
-            registrations={registrations}
+            registrations={shown}
             onEdit={(r) => { setEditing(r); setShowNew(true); }}
             onChanged={reload}
           />
         )}
         {!loading && tab === 'tests' && (
-          <TestSchedulingTab registrations={registrations} onChanged={reload} />
+          <TestSchedulingTab registrations={shown} onChanged={reload} />
         )}
         {!loading && tab === 'testday' && (
-          <TestDayReportTab registrations={registrations} onChanged={reload} />
+          <TestDayReportTab registrations={shown} onChanged={reload} />
         )}
         {!loading && tab === 'reports' && (
-          <TestReportsTab registrations={registrations} />
+          <TestReportsTab registrations={shown} />
         )}
         {!loading && tab === 'acceptance' && (
           <AcceptanceTab
-            registrations={registrations}
+            registrations={shown}
             onChanged={reload}
             canDecide={!!permissions.canManageUsers || !!(permissions as any).isAdmin}
             canWrite={!!permissions.canWrite}
@@ -150,6 +216,7 @@ export default function RegistrationPage() {
       {showNew && (
         <RegistrationFormDialog
           registration={editing}
+          defaultYear={activeYear}
           onClose={() => { setShowNew(false); setEditing(null); }}
           onSaved={async () => { setShowNew(false); setEditing(null); await reload(); }}
         />
@@ -157,7 +224,7 @@ export default function RegistrationPage() {
 
       {showSendForms && (
         <SendRegistrationFormsDialog
-          registrations={registrations}
+          registrations={shown}
           onClose={() => setShowSendForms(false)}
         />
       )}

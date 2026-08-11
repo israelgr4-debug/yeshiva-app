@@ -180,6 +180,8 @@ export interface Registration {
   test_grade: string | null;
   // Photo
   photo_url: string | null;
+  // School year this registration belongs to (e.g. תשפ"ז)
+  registration_year: string | null;
   // Registration document checklist (5 attachments to bring)
   doc_student_id: boolean;
   doc_parent_id: boolean;
