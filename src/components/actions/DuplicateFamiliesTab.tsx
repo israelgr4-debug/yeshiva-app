@@ -14,6 +14,7 @@ interface DupGroup {
   reason: string;             // מה חיבר אותן
   families: FamRow[];
   studentsByFamily: Record<string, Stud[]>;
+  gradsByFamily: Record<string, number>;
 }
 
 const digits = (s: any) => String(s || '').replace(/\D/g, '');
@@ -34,6 +35,7 @@ export function DuplicateFamiliesTab() {
   const [loading, setLoading] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [groups, setGroups] = useState<DupGroup[]>([]);
+  const [orphanCount, setOrphanCount] = useState(0);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -41,9 +43,10 @@ export function DuplicateFamiliesTab() {
     setLoading(true);
     setMsg(null);
     try {
-      // load all families + students (paginated)
+      // load all families + students + graduates (paginated)
       const fams: FamRow[] = [];
       const studs: Stud[] = [];
+      const grads: { family_id: string | null }[] = [];
       for (let p = 0; p < 40; p++) {
         const { data } = await supabase.from('families').select('*').range(p * 1000, p * 1000 + 999);
         if (!data || data.length === 0) break;
@@ -59,11 +62,25 @@ export function DuplicateFamiliesTab() {
         studs.push(...(data as Stud[]));
         if (data.length < 1000) break;
       }
+      for (let p = 0; p < 40; p++) {
+        const { data } = await supabase.from('graduates').select('family_id').range(p * 1000, p * 1000 + 999);
+        if (!data || data.length === 0) break;
+        grads.push(...(data as { family_id: string | null }[]));
+        if (data.length < 1000) break;
+      }
 
       const studentsByFamily: Record<string, Stud[]> = {};
       for (const s of studs) {
         if (s.family_id) (studentsByFamily[s.family_id] ||= []).push(s);
       }
+      const gradsByFamilyAll: Record<string, number> = {};
+      for (const g of grads) {
+        if (g.family_id) gradsByFamilyAll[g.family_id] = (gradsByFamilyAll[g.family_id] || 0) + 1;
+      }
+      // Families with no students AND no graduates = orphan clutter.
+      setOrphanCount(
+        fams.filter((f) => (studentsByFamily[f.id] || []).length === 0 && !gradsByFamilyAll[f.id]).length
+      );
 
       // Union-Find over families
       const idx = new Map(fams.map((f, i) => [f.id, i]));
@@ -95,14 +112,29 @@ export function DuplicateFamiliesTab() {
       for (const members of Object.values(comps)) {
         if (members.length < 2) continue;
         const gfams = members.map((i) => fams[i]);
+        const sbf: Record<string, Stud[]> = {};
+        const gbf: Record<string, number> = {};
+        let dataCount = 0;
+        for (const f of gfams) {
+          sbf[f.id] = studentsByFamily[f.id] || [];
+          gbf[f.id] = gradsByFamilyAll[f.id] || 0;
+          dataCount += sbf[f.id].length + gbf[f.id];
+        }
+        // Skip pure-orphan groups (no student and no graduate anywhere).
+        if (dataCount === 0) continue;
         const ids = new Set(gfams.map((f) => normId(f.father_id_number)).filter(Boolean));
         const reason = ids.size > 0 ? 'ת"ז אב זהה' : 'טלפון + שם אב זהים';
-        const sbf: Record<string, Stud[]> = {};
-        for (const f of gfams) sbf[f.id] = studentsByFamily[f.id] || [];
-        result.push({ key: gfams.map((f) => f.id).join(','), reason, families: gfams, studentsByFamily: sbf });
+        result.push({
+          key: gfams.map((f) => f.id).join(','),
+          reason,
+          families: gfams,
+          studentsByFamily: sbf,
+          gradsByFamily: gbf,
+        });
       }
-      // sort: most families first, then by total students
-      result.sort((a, b) => b.families.length - a.families.length);
+      // sort: groups with more families-holding-students first
+      const withStudents = (g: DupGroup) => g.families.filter((f) => (g.studentsByFamily[f.id] || []).length > 0).length;
+      result.sort((a, b) => withStudents(b) - withStudents(a) || b.families.length - a.families.length);
       setGroups(result);
       setScanned(true);
       void idx;
@@ -143,14 +175,18 @@ export function DuplicateFamiliesTab() {
       if (Object.keys(patch).length) {
         await supabase.from('families').update(patch).eq('id', target.id);
       }
-      // move students then delete emptied source families
+      // move students + graduates, then delete emptied source families
       for (const src of sources) {
         const kids = g.studentsByFamily[src.id] || [];
         for (const s of kids) {
           await supabase.from('students').update({ family_id: target.id }).eq('id', s.id);
         }
-        const { data: remaining } = await supabase.from('students').select('id').eq('family_id', src.id).limit(1);
-        if (!remaining || remaining.length === 0) {
+        if ((g.gradsByFamily[src.id] || 0) > 0) {
+          await supabase.from('graduates').update({ family_id: target.id }).eq('family_id', src.id);
+        }
+        const { data: remStud } = await supabase.from('students').select('id').eq('family_id', src.id).limit(1);
+        const { data: remGrad } = await supabase.from('graduates').select('id').eq('family_id', src.id).limit(1);
+        if ((!remStud || remStud.length === 0) && (!remGrad || remGrad.length === 0)) {
           await supabase.from('families').delete().eq('id', src.id);
         }
       }
@@ -193,16 +229,24 @@ export function DuplicateFamiliesTab() {
       </div>
 
       {scanned && (
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-700">
-            נמצאו <strong>{groups.length}</strong> קבוצות כפולות
+        <>
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              נמצאו <strong>{groups.length}</strong> קבוצות כפולות (עם תלמיד/בוגר)
+            </div>
+            {canWrite && groups.length > 0 && (
+              <Button variant="secondary" onClick={mergeAll} disabled={!!busyKey}>
+                מזג הכל ({groups.length})
+              </Button>
+            )}
           </div>
-          {canWrite && groups.length > 0 && (
-            <Button variant="secondary" onClick={mergeAll} disabled={!!busyKey}>
-              מזג הכל ({groups.length})
-            </Button>
+          {orphanCount > 0 && (
+            <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+              ℹ️ קיימות במערכת <strong>{orphanCount}</strong> משפחות ללא אף תלמיד או בוגר (רשומות ריקות,
+              כנראה שאריות מרישומים שבוטלו). הן לא מוצגות כאן. אם תרצה — אפשר להוסיף כלי לניקוי מרוכז שלהן.
+            </div>
           )}
-        </div>
+        </>
       )}
 
       {scanned && groups.length === 0 && (
@@ -252,8 +296,18 @@ export function DuplicateFamiliesTab() {
                           <td className="px-2 py-1" dir="ltr">{fld(f, 'father_phone')}</td>
                           <td className="px-2 py-1">{fld(f, 'city')}</td>
                           <td className="px-2 py-1">
-                            {kids.length === 0 ? <span className="text-gray-400">—</span> :
-                              kids.map((s) => `${s.last_name} ${s.first_name}${s.shiur ? ` (${s.shiur})` : ''}`).join(', ')}
+                            {kids.length === 0 && !g.gradsByFamily[f.id] ? (
+                              <span className="text-gray-400">ריקה</span>
+                            ) : (
+                              <>
+                                {kids.map((s) => `${s.last_name} ${s.first_name}${s.shiur ? ` (${s.shiur})` : ''}`).join(', ')}
+                                {g.gradsByFamily[f.id] > 0 && (
+                                  <span className="text-indigo-600 text-xs">
+                                    {kids.length ? ' · ' : ''}{g.gradsByFamily[f.id]} בוגר{g.gradsByFamily[f.id] > 1 ? 'ים' : ''}
+                                  </span>
+                                )}
+                              </>
+                            )}
                           </td>
                         </tr>
                       );
