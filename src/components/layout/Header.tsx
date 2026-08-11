@@ -8,7 +8,7 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, action }: HeaderProps) {
   return (
-    <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 md:px-8 py-4 md:py-5 sticky top-0 z-30">
+    <div className="no-print bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 md:px-8 py-4 md:py-5 sticky top-0 z-30">
       <div className="ps-12 lg:ps-0 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1

@@ -165,7 +165,7 @@ export function groupByShiurThenMakbila(
       out.push({
         shiur: grp.shiur,
         makbila: m,
-        label: m ? `${grp.shiur} - מקבילה ${m}` : grp.shiur,
+        label: m ? `${grp.shiur} ${m}` : grp.shiur,
         students: sortStudentsByName(byMak[m]),
       });
     }
