@@ -208,6 +208,55 @@ export function DuplicateFamiliesTab() {
     }
   };
 
+  // Delete every family with no students AND no graduates. Re-checks each
+  // family against the live DB before deleting (never trusts the scan count).
+  const cleanupOrphans = async () => {
+    if (!canWrite) return;
+    const typed = prompt(
+      `ניקוי משפחות יתומות\n\n` +
+      `יימחקו כל המשפחות שאין בהן אף תלמיד ואף בוגר (~${orphanCount}).\n` +
+      `הפעולה אינה הפיכה.\n\nלאישור הקלד: מחק`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== 'מחק') { alert('הפעולה בוטלה — לא הוקלד "מחק".'); return; }
+
+    setBusyKey('__orphans__');
+    setMsg(null);
+    try {
+      // fresh family/student/graduate ids
+      const famIds: string[] = [];
+      for (let p = 0; p < 40; p++) {
+        const { data } = await supabase.from('families').select('id').range(p * 1000, p * 1000 + 999);
+        if (!data || data.length === 0) break;
+        famIds.push(...data.map((f: any) => f.id));
+        if (data.length < 1000) break;
+      }
+      const used = new Set<string>();
+      for (const table of ['students', 'graduates']) {
+        for (let p = 0; p < 40; p++) {
+          const { data } = await supabase.from(table).select('family_id').not('family_id', 'is', null).range(p * 1000, p * 1000 + 999);
+          if (!data || data.length === 0) break;
+          for (const r of data as any[]) if (r.family_id) used.add(r.family_id);
+          if (data.length < 1000) break;
+        }
+      }
+      const orphanIds = famIds.filter((id) => !used.has(id));
+      let deleted = 0;
+      for (let i = 0; i < orphanIds.length; i += 100) {
+        const chunk = orphanIds.slice(i, i + 100);
+        const { error } = await supabase.from('families').delete().in('id', chunk);
+        if (!error) deleted += chunk.length;
+        setBusyKey(`__orphans__:${Math.min(i + 100, orphanIds.length)}/${orphanIds.length}`);
+      }
+      setOrphanCount(0);
+      setMsg(`✓ נמחקו ${deleted} משפחות יתומות`);
+    } catch (e: any) {
+      setMsg('שגיאה בניקוי: ' + (e?.message || e));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const fld = (f: FamRow, k: string) => String(f[k] || '').trim() || '—';
 
   return (
@@ -241,9 +290,21 @@ export function DuplicateFamiliesTab() {
             )}
           </div>
           {orphanCount > 0 && (
-            <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
-              ℹ️ קיימות במערכת <strong>{orphanCount}</strong> משפחות ללא אף תלמיד או בוגר (רשומות ריקות,
-              כנראה שאריות מרישומים שבוטלו). הן לא מוצגות כאן. אם תרצה — אפשר להוסיף כלי לניקוי מרוכז שלהן.
+            <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3">
+              <span>
+                ℹ️ קיימות במערכת <strong>{orphanCount}</strong> משפחות ללא אף תלמיד או בוגר (רשומות ריקות,
+                כנראה שאריות מרישומים שבוטלו). הן לא מוצגות כאן.
+              </span>
+              {canWrite && (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={cleanupOrphans}
+                  disabled={!!busyKey}
+                >
+                  {busyKey?.startsWith('__orphans__') ? (busyKey.split(':')[1] ? `מוחק ${busyKey.split(':')[1]}` : 'מוחק...') : '🗑️ נקה משפחות יתומות'}
+                </Button>
+              )}
             </div>
           )}
         </>
