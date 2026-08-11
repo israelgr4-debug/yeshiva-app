@@ -54,10 +54,15 @@ export function MachzorTab() {
     setExecuting(true);
     setLastResult(null);
 
-    const result = await executeAdvance();
+    // Pass the CURRENT base so 0→א students get machzor (base+1); the setting is
+    // incremented only after a successful advance.
+    const result = await executeAdvance(settings.base_machzor_for_shiur_alef);
 
     if (result.success) {
-      setLastResult(`✅ עודכנו ${result.updatedCount} תלמידים בהצלחה`);
+      const machzorNote = result.machzorAssigned
+        ? ` · הוקצה מחזור ל-${result.machzorAssigned} תלמידי שיעור א חדשים`
+        : '';
+      setLastResult(`✅ עודכנו ${result.updatedCount} תלמידים בהצלחה${machzorNote}`);
       const newBase = settings.base_machzor_for_shiur_alef + 1;
       await setSetting('base_machzor_for_shiur_alef', newBase);
       loadData();
@@ -146,8 +151,9 @@ export function MachzorTab() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-gray-600 mb-4">
-            פעולה זו מעלה את כל התלמידים הפעילים שיעור אחד קדימה.
-            שיעור יא ← קיבוץ. המחזור של כל תלמיד <strong>נשאר ללא שינוי</strong>.
+            פעולה זו מעלה את כל התלמידים ה<strong>פעילים ובחיזוק</strong> שיעור אחד קדימה.
+            שיעור יא ← קיבוץ. המחזור של תלמיד קיים <strong>נשאר ללא שינוי</strong>;
+            תלמידי <strong>שיעור 0</strong> שעולים לשיעור א יקבלו את מחזור המחזור החדש אוטומטית.
           </p>
 
           {loading ? (
