@@ -37,6 +37,7 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
   const [busyId, setBusyId] = useState<string | null>(null);
   const [scope, setScope] = useState<ExportScope>('accepted');
   const [search, setSearch] = useState('');
+  const [bulkProgress, setBulkProgress] = useState<string | null>(null);
 
   // Local overlay of the 5 doc booleans so checkbox toggles are instant.
   const [docs, setDocs] = useState<Record<string, Pick<Registration, 'doc_student_id' | 'doc_parent_id' | 'doc_credit' | 'doc_standing_order' | 'doc_medical' | 'doc_declaration'>>>({});
@@ -162,6 +163,46 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
     }
   };
 
+  // All 'accepted' registrations in the currently shown set (year-filtered by
+  // the parent page) - candidates for bulk conversion to שיעור 0 students.
+  const acceptedList = useMemo(
+    () => registrations.filter((r) => r.status === 'accepted'),
+    [registrations]
+  );
+
+  const handleConvertAll = async () => {
+    if (!canDecide) { alert('רק מנהל יכול להמיר'); return; }
+    if (acceptedList.length === 0) return;
+    const typed = prompt(
+      `המרת כל המתקבלים לתלמידים\n\n` +
+      `${acceptedList.length} מתקבלים יומרו לתלמידים בשיעור 0 (תיווצר משפחה לכל אחד אם אין).\n` +
+      `ניתן להריץ שוב בהמשך לחדשים.\n\n` +
+      `לאישור הקלד: המר`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== 'המר') { alert('הפעולה בוטלה — לא הוקלד "המר".'); return; }
+
+    let ok = 0;
+    let fail = 0;
+    const errors: string[] = [];
+    for (let i = 0; i < acceptedList.length; i++) {
+      const r = acceptedList[i];
+      setBulkProgress(`ממיר ${i + 1}/${acceptedList.length}...`);
+      try {
+        await acceptAndConvert(r.id);
+        ok++;
+      } catch (e: any) {
+        fail++;
+        if (errors.length < 8) errors.push(`${r.last_name} ${r.first_name}: ${e?.message || e}`);
+      }
+    }
+    setBulkProgress(null);
+    await onChanged();
+    alert(
+      `הומרו: ${ok}${fail ? `\nנכשלו: ${fail}\n\n${errors.join('\n')}` : ''}`
+    );
+  };
+
   const noData = () => {
     if (exportSet.length === 0) { alert('אין נרשמים בהיקף שנבחר לייצוא'); return true; }
     return false;
@@ -172,6 +213,22 @@ export function AcceptanceTab({ registrations, onChanged, canDecide, canWrite }:
       {!canDecide && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
           ⚠️ רק מנהל יכול לסמן קבלה / דחייה / להמיר רישומים לתלמידים.
+        </div>
+      )}
+
+      {/* Bulk convert */}
+      {canDecide && acceptedList.length > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[12rem]">
+            <div className="font-bold text-emerald-900">⤴ המרה קבוצתית</div>
+            <p className="text-xs text-emerald-800">
+              {acceptedList.length} מתקבלים בשנה זו מוכנים להמרה לתלמידים בשיעור 0.
+              הרץ לפני העלאת השנה.
+            </p>
+          </div>
+          <Button onClick={handleConvertAll} disabled={!!bulkProgress}>
+            {bulkProgress || `⤴ המר את כל המתקבלים (${acceptedList.length})`}
+          </Button>
         </div>
       )}
 
