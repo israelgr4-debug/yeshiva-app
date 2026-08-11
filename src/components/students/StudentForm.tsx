@@ -66,6 +66,19 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
 
   // Photo upload state
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [processingStep, setProcessingStep] = useState<string | null>(null);
+
+  // Upload a file/blob to the student-photos bucket and set photo_url.
+  const uploadStudentPhoto = async (data: File | Blob, ext: string, contentType: string) => {
+    const storagePath = `${studentData.id_number}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('student-photos')
+      .upload(storagePath, data, { upsert: true, contentType });
+    if (upErr) throw upErr;
+    const { data: pub } = supabase.storage.from('student-photos').getPublicUrl(storagePath);
+    // Cache-bust so the browser reloads the new image
+    setStudentData((prev) => ({ ...prev, photo_url: `${pub.publicUrl}?t=${Date.now()}` }));
+  };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -74,24 +87,38 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
       alert('קודם הזן תעודת זהות, אז אפשר להעלות תמונה');
       return;
     }
-
     setPhotoUploading(true);
     try {
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const storagePath = `${studentData.id_number}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from('student-photos')
-        .upload(storagePath, file, { upsert: true, contentType: file.type });
-      if (upErr) throw upErr;
-
-      const { data: pub } = supabase.storage.from('student-photos').getPublicUrl(storagePath);
-      // Cache-bust with timestamp so the browser reloads the new image
-      const url = `${pub.publicUrl}?t=${Date.now()}`;
-      setStudentData((prev) => ({ ...prev, photo_url: url }));
+      await uploadStudentPhoto(file, ext, file.type);
     } catch (err: any) {
       alert('שגיאה בהעלאת התמונה: ' + (err?.message || err));
     } finally {
       setPhotoUploading(false);
+    }
+  };
+
+  // AI-process the current photo (same pipeline as registration): crop 4:5,
+  // background removal, lighting normalization via Gemini/Nano Banana.
+  const handleProcessPhoto = async () => {
+    if (!studentData.photo_url) return;
+    if (!studentData.id_number) { alert('חסרה תעודת זהות'); return; }
+    if (!confirm(
+      'לעבד את התמונה עם AI?\n\nיבוצע: חיתוך לתעודת זהות (4:5) → הסרת רקע → נירמול תאורה.\nהתמונה הנוכחית תוחלף. הפעולה עולה קרדיטים.'
+    )) return;
+    setProcessingStep('טוען תמונה...');
+    try {
+      const { processStudentPhoto } = await import('@/lib/photo-processor');
+      const res = await fetch(studentData.photo_url);
+      if (!res.ok) throw new Error('טעינת התמונה נכשלה');
+      const orig = await res.blob();
+      const out = await processStudentPhoto(orig, setProcessingStep);
+      setProcessingStep('מעלה...');
+      await uploadStudentPhoto(out.blob, 'png', 'image/png');
+    } catch (err: any) {
+      alert('שגיאה בעיבוד התמונה: ' + (err?.message || err));
+    } finally {
+      setProcessingStep(null);
     }
   };
 
@@ -395,6 +422,17 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             {studentData.photo_url && (
               <button
                 type="button"
+                onClick={handleProcessPhoto}
+                disabled={!!processingStep || photoUploading}
+                className="ms-2 inline-block cursor-pointer bg-purple-50 hover:bg-purple-100 text-purple-700 px-4 py-2 rounded-lg text-sm font-medium border border-purple-200 transition-colors disabled:opacity-60"
+                title="חיתוך 4:5 + הסרת רקע + נירמול תאורה עם AI"
+              >
+                {processingStep ? `🪄 ${processingStep}` : '🪄 עבד תמונה'}
+              </button>
+            )}
+            {studentData.photo_url && (
+              <button
+                type="button"
                 onClick={() => setStudentData((p) => ({ ...p, photo_url: '' }))}
                 className="ms-2 text-sm text-red-600 hover:text-red-800 underline"
               >
@@ -403,6 +441,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             )}
             <p className="text-xs text-gray-500 mt-2">
               הזן קודם תעודת זהות, אז העלה תמונה. הקובץ יישמר לפי מספר התעודה.
+              אפשר לעבד תמונה קיימת עם AI (חיתוך לתעודת זהות + רקע אחיד).
             </p>
           </div>
         </div>
