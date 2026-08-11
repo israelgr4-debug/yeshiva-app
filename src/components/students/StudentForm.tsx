@@ -12,7 +12,8 @@ import { supabase } from '@/lib/supabase';
 import { SHIURIM, getMachzorForNewStudent, DEFAULT_BASE_MACHZOR } from '@/lib/shiurim';
 import { ISRAELI_BANKS } from '@/lib/israeli-banks';
 import { useNeighborhoods } from '@/hooks/useNeighborhoods';
-import { isValidIsraeliId, isValidBranch, validateBankAccountFull } from '@/lib/israeli-validators';
+import { isValidIsraeliId, isValidBranch, validateBankAccountFull, idMatchVariants } from '@/lib/israeli-validators';
+import { FamilyPicker } from '@/components/finances/FamilyPicker';
 
 interface StudentFormProps {
   student?: Student;
@@ -29,6 +30,9 @@ const statusOptions = [
 ];
 
 const shiurOptions = SHIURIM.map((s) => ({ value: s.name, label: s.name }));
+
+// Stable empty set - StudentForm has no full student list to mark active families.
+const EMPTY_ACTIVE_IDS: Set<string> = new Set();
 
 export function StudentForm({ student, initialFamily, onSubmit, isLoading }: StudentFormProps) {
   const [machzorot, setMachzorot] = useState<Machzor[]>([]);
@@ -222,11 +226,6 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     }
   }, [studentData.shiur, baseMachzor, machzorot, studentData.machzor_id, student?.id]);
 
-  const familyOptions = families.map((f) => ({
-    value: f.id,
-    label: `${f.family_name} - ${f.father_name || ''}`,
-  }));
-
   // Search for existing family by father_id_number
   const searchFamilyByFatherId = useCallback(async (fatherIdNumber: string) => {
     if (!fatherIdNumber || fatherIdNumber.length < 5) {
@@ -236,10 +235,11 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     }
     setIsSearching(true);
     try {
+      // Match ignoring leading zeros ('012345' ↔ '12345').
       const { data, error } = await supabase
         .from('families')
         .select('*')
-        .eq('father_id_number', fatherIdNumber);
+        .in('father_id_number', idMatchVariants(fatherIdNumber));
 
       if (error) throw error;
 
@@ -329,38 +329,33 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     setStudentData((prev) => ({ ...prev, family_id: '' }));
   };
 
-  // Manual family dropdown change
-  const handleManualFamilyLink = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const familyId = e.target.value;
-    if (familyId) {
-      const selected = families.find((f) => f.id === familyId);
-      if (selected) {
-        setLinkedFamilyId(selected.id);
-        setStudentData((prev) => ({ ...prev, family_id: selected.id }));
-        setFamilyData({
-          father_name: selected.father_name || '',
-          father_id_number: selected.father_id_number || '',
-          father_phone: selected.father_phone || '',
-          father_occupation: selected.father_occupation || '',
-          mother_name: selected.mother_name || '',
-          mother_id_number: selected.mother_id_number || '',
-          mother_phone: selected.mother_phone || '',
-          mother_occupation: selected.mother_occupation || '',
-          address: selected.address || '',
-          city: selected.city || '',
-          neighborhood_code: (selected as any).neighborhood_code ?? null,
-          home_phone: selected.home_phone || '',
-          bank_name: selected.bank_name || '',
-          bank_branch: selected.bank_branch || '',
-          bank_account: selected.bank_account || '',
-          billing_notes: selected.billing_notes || '',
-          yichus_code: (selected as any).yichus_code ?? null,
-          yichus_name: (selected as any).yichus_name || '',
-        });
-      }
-    } else {
-      handleUnlinkFamily();
-    }
+  // Manual family pick (from the searchable FamilyPicker)
+  const handleManualFamilyPick = (familyId: string) => {
+    if (!familyId) { handleUnlinkFamily(); return; }
+    const selected = families.find((f) => f.id === familyId);
+    if (!selected) return;
+    setLinkedFamilyId(selected.id);
+    setStudentData((prev) => ({ ...prev, family_id: selected.id }));
+    setFamilyData({
+      father_name: selected.father_name || '',
+      father_id_number: selected.father_id_number || '',
+      father_phone: selected.father_phone || '',
+      father_occupation: selected.father_occupation || '',
+      mother_name: selected.mother_name || '',
+      mother_id_number: selected.mother_id_number || '',
+      mother_phone: selected.mother_phone || '',
+      mother_occupation: selected.mother_occupation || '',
+      address: selected.address || '',
+      city: selected.city || '',
+      neighborhood_code: (selected as any).neighborhood_code ?? null,
+      home_phone: selected.home_phone || '',
+      bank_name: selected.bank_name || '',
+      bank_branch: selected.bank_branch || '',
+      bank_account: selected.bank_account || '',
+      billing_notes: selected.billing_notes || '',
+      yichus_code: (selected as any).yichus_code ?? null,
+      yichus_name: (selected as any).yichus_name || '',
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -881,15 +876,25 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
 
         {/* שיוך ידני למשפחה */}
         <div className="mt-6 pt-4 border-t border-gray-100">
-          <Select
-            label="שיוך ידני למשפחה"
-            name="manual_family_id"
-            options={familyOptions}
-            value={linkedFamilyId}
-            onChange={handleManualFamilyLink}
+          <label className="block text-sm font-medium text-gray-700 mb-2">שיוך ידני למשפחה</label>
+          <FamilyPicker
+            families={families}
+            activeFamilyIds={EMPTY_ACTIVE_IDS}
+            value={linkedFamilyId || null}
+            onChange={handleManualFamilyPick}
+            placeholder="חיפוש משפחה לפי שם / אב / ת״ז..."
           />
+          {linkedFamilyId && (
+            <button
+              type="button"
+              onClick={handleUnlinkFamily}
+              className="mt-1 text-xs text-red-600 hover:text-red-800 underline"
+            >
+              בטל שיוך
+            </button>
+          )}
           <p className="text-xs text-gray-500 mt-1">
-            אם יש אחים בישיבה, ניתן לשייך ידנית לאותה משפחה
+            אם יש אחים בישיבה, חפש ושייך ידנית לאותה משפחה
           </p>
         </div>
       </div>

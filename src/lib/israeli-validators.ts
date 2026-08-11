@@ -1,6 +1,25 @@
 // Israeli data validators: ID number, bank account, branch.
 // Pure client-side, no deps.
 
+/** Digits only, with leading zeros stripped. '012345' → '12345'. */
+export function stripIdLeadingZeros(id: string | null | undefined): string {
+  return String(id || '').replace(/\D/g, '').replace(/^0+/, '');
+}
+
+/**
+ * Candidate stored forms of an ID for matching that ignores leading zeros.
+ * Returns the stripped digits plus every zero-padded length up to 9, so a
+ * search of '12345' matches a stored '012345' / '0012345' and vice-versa.
+ * Use with PostgREST: `.in('father_id_number', idMatchVariants(x))`.
+ */
+export function idMatchVariants(id: string | null | undefined): string[] {
+  const d = stripIdLeadingZeros(id);
+  if (!d) return [];
+  const out = new Set<string>([d]);
+  for (let len = d.length; len <= 9; len++) out.add(d.padStart(len, '0'));
+  return Array.from(out);
+}
+
 /**
  * Validate Israeli ID number (תעודת זהות) using the official check-digit algorithm.
  * Accepts 5-9 digit numbers. Pads left to 9 digits, then verifies check digit.

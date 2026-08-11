@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ConfirmDelete } from '@/components/ui/ConfirmDelete';
 import { StatusChangeDialog, StatusChange } from '@/components/students/StatusChangeDialog';
 import { supabase } from '@/lib/supabase';
+import { idMatchVariants } from '@/lib/israeli-validators';
 import { Student, Machzor, Family } from '@/lib/types';
 import Link from 'next/link';
 
@@ -122,11 +123,16 @@ export default function StudentDetailPage() {
         if (hasParentData) {
           let existingFamily = null;
 
-          // Search for existing family by father_id_number
-          if (familyFormData.father_id_number) {
-            const existing = await fetchData<Family>('families', { father_id_number: familyFormData.father_id_number });
-            if (existing.length > 0) {
-              existingFamily = existing[0];
+          // Search for existing family by father_id_number (ignoring leading zeros)
+          const fatherVariants = idMatchVariants(familyFormData.father_id_number);
+          if (fatherVariants.length > 0) {
+            const { data: existing } = await supabase
+              .from('families')
+              .select('*')
+              .in('father_id_number', fatherVariants)
+              .limit(1);
+            if (existing && existing.length > 0) {
+              existingFamily = existing[0] as Family;
             }
           }
 

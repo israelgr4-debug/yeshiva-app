@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Registration, RegistrationStatus, Student, Family } from '@/lib/types';
+import { idMatchVariants } from '@/lib/israeli-validators';
 
 export function useRegistrations() {
   const list = useCallback(async (): Promise<Registration[]> => {
@@ -110,13 +111,15 @@ export function useRegistrations() {
     if (regErr) throw regErr;
     const r = regData as Registration;
 
-    // Find or create family
+    // Find or create family. Match father ID ignoring leading zeros (they're
+    // not always written), so '012345' matches a stored '12345' and vice-versa.
     let familyId: string | null = null;
-    if (r.father_id_number) {
+    const fatherVariants = idMatchVariants(r.father_id_number);
+    if (fatherVariants.length > 0) {
       const { data: fams } = await supabase
         .from('families')
         .select('id')
-        .eq('father_id_number', r.father_id_number)
+        .in('father_id_number', fatherVariants)
         .limit(1);
       if (fams && fams.length > 0) familyId = (fams[0] as any).id;
     }
@@ -156,6 +159,7 @@ export function useRegistrations() {
       email: r.email || '',
       shiur: 'שיעור 0',
       status: 'active',
+      institution_name: 'ישיבה', // dorm/reports default; was left null before
       admission_date: new Date().toISOString().slice(0, 10),
       notes: r.notes || '',
       family_id: familyId,
