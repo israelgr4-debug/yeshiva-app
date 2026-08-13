@@ -26,6 +26,12 @@ export default function FinancesPage() {
               📅 הרצת גבייה חודשית
             </Link>
             <Link
+              href="/finances/returns"
+              className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+            >
+              ↩ חזרות הו״ק
+            </Link>
+            <Link
               href="/finances/tuition/setup"
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
             >
