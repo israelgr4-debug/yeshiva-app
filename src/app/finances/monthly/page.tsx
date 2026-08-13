@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useChargeAdjustments, MonthlyRow, PayMethod } from '@/hooks/useChargeAdjustments';
+import { ChargeAdjustment } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
 
 const METHOD_LABELS: Record<PayMethod, string> = {
   bank_ho: 'הו"ק בנק',
@@ -108,6 +110,26 @@ export default function MonthlyCollectionPage() {
     else { setSortKey(k); setSortAsc(true); }
   };
 
+  // REQ7/8 credit dispatch: fire a one-time Nedarim charge (TashlumBodedNew) for one
+  // addition. Real money — always behind an explicit per-row confirm.
+  const chargeInNedarim = async (adj: ChargeAdjustment, studentName: string) => {
+    if (!confirm(`לחייב ${ils(adj.amount)} בנדרים לתלמיד ${studentName}?\n\nזהו חיוב אמיתי בכרטיס האשראי השמור בהוראת הקבע.`)) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    try {
+      const res = await fetch('/api/nedarim/charge-adjustment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ adjustment_id: adj.id }),
+      });
+      const json = await res.json();
+      if (json.ok) alert('✓ חויב בנדרים בהצלחה');
+      else alert('✗ שגיאה: ' + (json.error || 'לא ידוע'));
+    } catch (e: any) {
+      alert('✗ שגיאת תקשורת: ' + (e?.message || e));
+    }
+    reload();
+  };
+
   return (
     <PageGuard requires="write">
       <Header title="הרצת גבייה חודשית" subtitle="בסיס ± שינויים = סכום סופי לכל תלמיד" />
@@ -178,6 +200,15 @@ export default function MonthlyCollectionPage() {
                               title={a.reason || ''}>
                               {a.kind === 'override' ? `→${ils(a.amount)}` : `${a.amount >= 0 ? '+' : ''}${ils(a.amount)}`}
                               {a.reason ? ` · ${a.reason}` : ''}
+                              {r.method === 'credit_nedarim' && a.kind === 'addition' && a.amount > 0 && (
+                                a.nedarim_result === 'success'
+                                  ? <span className="text-emerald-700" title="חויב בנדרים">✓</span>
+                                  : <button onClick={() => chargeInNedarim(a, `${r.last_name} ${r.first_name}`)}
+                                      className="text-purple-700 font-medium hover:underline"
+                                      title={a.nedarim_result === 'error' ? `נכשל: ${a.nedarim_error || ''} — נסה שוב` : 'חייב בנדרים עכשיו'}>
+                                      {a.nedarim_result === 'error' ? '↻נדרים' : '₪נדרים'}
+                                    </button>
+                              )}
                               <button onClick={async () => { await cancelAdjustment(a.id); reload(); }}
                                 className="opacity-50 hover:opacity-100" aria-label="בטל">×</button>
                             </span>
