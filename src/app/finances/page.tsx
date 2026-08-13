@@ -57,8 +57,6 @@ export default function FinancesPage() {
         <section>
           <SectionTitle>הגדרות תלמידים</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <ActionCard href="/finances/tuition/setup" icon="🎓" title="הגדרת שכר לימוד"
-              desc="אופן תשלום וסכום לכל תלמיד" />
             <ActionCard href="/finances/nedarim" icon="🔗" title="נדרים — הוראות קבע"
               desc="ניהול הוראות קבע באשראי" />
             <ActionCard href="/finances/nedarim/match" icon="🧩" title="שיוך נדרים"

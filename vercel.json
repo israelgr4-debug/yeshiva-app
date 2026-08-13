@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/nedarim/cron-sync", "schedule": "0 4 * * *" }
+  ]
+}

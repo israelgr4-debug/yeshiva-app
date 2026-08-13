@@ -98,6 +98,53 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // --- Mirror successful credit charges into payment_history (unified ledger) ---
+      // So credit collection counts as "נגבה" everywhere (monthly run, gauge, history,
+      // student card). Attributed to students via student_tuition.nedarim_subscription_id;
+      // a shared HK is split by each student's monthly_amount. Idempotent on
+      // (nedarim_transaction_id, student_id).
+      try {
+        const subIds = [...new Set(rows.map((r) => r.subscription_id).filter(Boolean))] as string[];
+        if (subIds.length > 0) {
+          const { data: tuitions } = await db
+            .from('student_tuition')
+            .select('student_id, monthly_amount, nedarim_subscription_id')
+            .in('nedarim_subscription_id', subIds)
+            .eq('active', true);
+          const bySub = new Map<string, { student_id: string; amount: number }[]>();
+          for (const t of tuitions || []) {
+            const arr = bySub.get(t.nedarim_subscription_id) || [];
+            arr.push({ student_id: t.student_id, amount: Number(t.monthly_amount) || 0 });
+            bySub.set(t.nedarim_subscription_id, arr);
+          }
+          const phRows: any[] = [];
+          for (const r of rows) {
+            if (!r.subscription_id || !r.transaction_date) continue;
+            const studs = bySub.get(r.subscription_id);
+            if (!studs || studs.length === 0) continue;
+            const single = studs.length === 1;
+            for (const s of studs) {
+              phRows.push({
+                student_id: s.student_id,
+                payment_date: r.transaction_date,
+                amount_ils: single ? r.amount : s.amount,
+                status_code: 2,
+                status_name: 'נפרע (אשראי)',
+                nedarim_transaction_id: r.nedarim_transaction_id,
+              });
+            }
+          }
+          for (let i = 0; i < phRows.length; i += 500) {
+            const { error } = await db
+              .from('payment_history')
+              .upsert(phRows.slice(i, i + 500), { onConflict: 'nedarim_transaction_id,student_id', ignoreDuplicates: true });
+            if (error) summary.errors.push(`ph mirror: ${error.message}`);
+          }
+        }
+      } catch (e: any) {
+        summary.errors.push(`ph mirror: ${e?.message || e}`);
+      }
+
       if (page.length < 2000) break;
       const last = page[page.length - 1];
       if (!last?.TransactionId) break;
