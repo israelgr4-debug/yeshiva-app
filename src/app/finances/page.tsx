@@ -2,122 +2,83 @@
 
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { NedarimSummaryCard } from '@/components/finances/NedarimSummaryCard';
-import { TuitionByMethodCard } from '@/components/finances/TuitionByMethodCard';
-import { InactivePayersCard } from '@/components/finances/InactivePayersCard';
 import { MonthlyCollectionGauge } from '@/components/finances/MonthlyCollectionGauge';
-import { Forecast12MonthsCard } from '@/components/finances/Forecast12MonthsCard';
 import { OverdueDebtorsCard } from '@/components/finances/OverdueDebtorsCard';
+import { InactivePayersCard } from '@/components/finances/InactivePayersCard';
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <span className="w-1 h-5 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-full" />
+      <h3 className="text-lg font-bold text-slate-800" style={{ fontFamily: "'Frank Ruhl Libre', serif" }}>{children}</h3>
+    </div>
+  );
+}
+
+function ActionCard({ href, icon, title, desc, primary }: { href: string; icon: string; title: string; desc: string; primary?: boolean }) {
+  return (
+    <Link href={href}
+      className={`group flex items-start gap-3 rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md ${
+        primary ? 'bg-gradient-to-br from-indigo-600 to-blue-700 border-transparent text-white shadow-md'
+                 : 'bg-white border-slate-200/70 elevation-1 hover:border-slate-300'}`}>
+      <span className={`text-2xl leading-none ${primary ? '' : 'grayscale-0'}`}>{icon}</span>
+      <span className="min-w-0">
+        <span className={`block font-bold ${primary ? 'text-white' : 'text-slate-800'}`}>{title}</span>
+        <span className={`block text-sm mt-0.5 ${primary ? 'text-indigo-100' : 'text-slate-500'}`}>{desc}</span>
+      </span>
+    </Link>
+  );
+}
 
 export default function FinancesPage() {
   return (
     <>
       <Header title="כספים" subtitle="ניהול שכר לימוד וגביות" />
 
-      <div className="p-4 md:p-8 space-y-6">
-        {/* Primary actions - tuition */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-500 mb-2">שכר לימוד</h3>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/finances/monthly"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              📅 הרצת גבייה חודשית
-            </Link>
-            <Link
-              href="/finances/returns"
-              className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              ↩ חזרות הו״ק
-            </Link>
-            <Link
-              href="/finances/tuition/setup"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              🎓 הגדרת שכר לימוד פר תלמיד
-            </Link>
-            <Link
-              href="/finances/tuition/masav"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              🏦 ייצוא קובץ מס״ב
-            </Link>
-            <Link
-              href="/finances/tuition/split"
-              className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              ✂️ חלוקת הוקים משותפות
-            </Link>
-            <Link
-              href="/finances/collection/onetime"
-              className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              💵 גביה חד-פעמית
-            </Link>
-            <Link
-              href="/finances/collection/history"
-              className="bg-slate-600 hover:bg-slate-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              📋 היסטוריית גביות
-            </Link>
-            <Link
-              href="/finances/inactive-payers"
-              className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              ⚠️ עזבו אך עדיין משלמים
-            </Link>
+      <div className="p-4 md:p-8 space-y-8 max-w-6xl">
+        {/* ===== גבייה — the monthly workflow ===== */}
+        <section>
+          <SectionTitle>גבייה חודשית</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <ActionCard primary href="/finances/monthly" icon="📅" title="הרצת גבייה חודשית"
+              desc="כמה כל תלמיד משלם החודש, תוספות ושינויים" />
+            <ActionCard href="/finances/tuition/masav" icon="🏦" title="ייצוא קובץ מס״ב"
+              desc="הפקת קובץ החיוב לבנק" />
+            <ActionCard href="/finances/returns" icon="↩️" title="חזרות הו״ק"
+              desc="סימון וטיפול בהו״ק שחזרו" />
+            <ActionCard href="/finances/collection/onetime" icon="💳" title="חיוב לתאריך"
+              desc="חיוב חד-פעמי בתאריך שתבחר" />
+            <ActionCard href="/finances/collection/history" icon="📋" title="היסטוריית גביות"
+              desc="מה נגבה ומתי" />
           </div>
-        </div>
+        </section>
 
-        {/* Nedarim actions */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-500 mb-2">נדרים פלוס</h3>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/finances/nedarim"
-              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              🔗 הוראות קבע
-            </Link>
-            <Link
-              href="/finances/nedarim/match"
-              className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              🧩 שיוך למשפחות
-            </Link>
-            <Link
-              href="/finances/nedarim/groups"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              🏷️ קטגוריות
-            </Link>
-            <Link
-              href="/finances/nedarim/transactions"
-              className="bg-cyan-600 hover:bg-cyan-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
-            >
-              📊 עסקאות היסטוריות
-            </Link>
+        {/* ===== הגדרות ותלמידים ===== */}
+        <section>
+          <SectionTitle>הגדרות תלמידים</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <ActionCard href="/finances/tuition/setup" icon="🎓" title="הגדרת שכר לימוד"
+              desc="אופן תשלום וסכום לכל תלמיד" />
+            <ActionCard href="/finances/nedarim" icon="🔗" title="נדרים — הוראות קבע"
+              desc="ניהול הוראות קבע באשראי" />
+            <ActionCard href="/finances/nedarim/match" icon="🧩" title="שיוך נדרים"
+              desc="קישור הו״ק נדרים לתלמידים" />
+            <ActionCard href="/finances/nedarim/transactions" icon="📊" title="עסקאות נדרים"
+              desc="היסטוריית עסקאות אשראי" />
           </div>
-        </div>
+        </section>
 
-        {/* 🎯 Dashboard - collection this month */}
-        <MonthlyCollectionGauge />
-
-        {/* ⚠️ Overdue debtors - past due date this month */}
-        <OverdueDebtorsCard />
-
-        {/* Main forecast - student tuition breakdown by method */}
-        <TuitionByMethodCard />
-
-        {/* 12-month forecast */}
-        <Forecast12MonthsCard />
-
-        {/* Nedarim subscriptions summary */}
-        <NedarimSummaryCard />
-
-        {/* Red flag - inactive students still paying */}
-        <InactivePayersCard />
+        {/* ===== מבט חודשי — clean dashboard (3) ===== */}
+        <section>
+          <SectionTitle>מבט חודשי</SectionTitle>
+          <div className="space-y-4">
+            <MonthlyCollectionGauge />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <OverdueDebtorsCard />
+              <InactivePayersCard />
+            </div>
+          </div>
+        </section>
       </div>
     </>
   );
