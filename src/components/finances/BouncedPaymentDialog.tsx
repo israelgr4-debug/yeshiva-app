@@ -69,9 +69,6 @@ export function BouncedPaymentDialog({ isOpen, paymentId, studentName, amount, p
           .eq('id', paymentId);
       }
 
-      // TODO: if resolution='spread', create N tuition_payments for next months
-      // TODO: if resolution='suspend', mark the parent tuition_charge as suspended
-
       // Auto-create a follow-up task
       try {
         const taskDueDate = new Date();

@@ -11,7 +11,6 @@ import { IdScanUploader } from '@/components/students/IdScanUploader';
 import { StudentTuitionTab } from '@/components/students/StudentTuitionTab';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
-import { useTuitionLifecycle, LeaveStatus } from '@/hooks/useTuitionLifecycle';
 import { useAuth } from '@/hooks/useAuth';
 import { ConfirmDelete } from '@/components/ui/ConfirmDelete';
 import { StatusChangeDialog, StatusChange } from '@/components/students/StatusChangeDialog';
@@ -42,7 +41,6 @@ export default function StudentDetailPage() {
 
   const { getStudentById, createStudent, updateStudent, deleteStudent, loading } = useStudents();
   const { fetchData, insertData, updateData } = useSupabase();
-  const { stopChargesForStudent } = useTuitionLifecycle();
   const { permissions } = useAuth();
 
   useEffect(() => {
@@ -346,19 +344,6 @@ export default function StudentDetailPage() {
         }
       } catch (e) {
         console.error('Failed to update student_periods:', e);
-      }
-    }
-
-    // Auto-stop charges if student became non-active
-    if (becameNonActive) {
-      const stopRes = await stopChargesForStudent(id, newStatus as LeaveStatus);
-      if (stopRes.cancelledCharges > 0 || stopRes.modifiedCharges > 0) {
-        alert(
-          `הגביה עודכנה בהתאם לשינוי הסטטוס:\n` +
-            `• בוטלו: ${stopRes.cancelledCharges} גביות\n` +
-            `• עודכנו: ${stopRes.modifiedCharges} גביות` +
-            (stopRes.errors.length > 0 ? `\n\nשגיאות: ${stopRes.errors.join('; ')}` : '')
-        );
       }
     }
 

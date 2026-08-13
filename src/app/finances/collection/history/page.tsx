@@ -284,10 +284,10 @@ export default function CollectionHistoryPage() {
       <div className="p-4 md:p-8 space-y-4">
         <div className="flex flex-wrap gap-2 items-center">
           <Link
-            href="/finances/collection"
+            href="/finances/tuition/masav"
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
           >
-            ← גביה חדשה
+            ← ייצוא מס״ב חדש
           </Link>
           <Link
             href="/finances"
