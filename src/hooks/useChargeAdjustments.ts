@@ -54,28 +54,26 @@ function computeRow(base: MonthlyRow): MonthlyRow {
 }
 
 export function useChargeAdjustments() {
-  // Load one month's collection run: every active payer + their adjustments + computed final.
+  // Load one month's collection run: EVERY active Yeshiva student (kollel excluded),
+  // including students with no payment setup yet (shiur א) — they show as 'none' so
+  // they can be defined right here. Base + adjustments = final.
   const loadMonth = async (month: string): Promise<MonthlyRow[]> => {
+    // All active Yeshiva students (kollel does not pay -> excluded).
+    const students = await fetchAll<StudentLite>(
+      'students',
+      'id, first_name, last_name, shiur, status, institution_name, family_id',
+      (q) => q.eq('status', 'active').eq('institution_name', 'ישיבה')
+    );
+    if (students.length === 0) return [];
+
     const tuition = await fetchAll<TuitionLite>(
       'student_tuition',
       'student_id, payment_method, monthly_amount, active',
       (q) => q.eq('active', true)
     );
-    const sids = tuition.map((t) => t.student_id);
-    if (sids.length === 0) return [];
+    const tuitionBySid = new Map(tuition.map((t) => [t.student_id, t]));
 
-    const students = await fetchAll<StudentLite>(
-      'students',
-      'id, first_name, last_name, shiur, status, institution_name, family_id',
-      (q) => q.eq('status', 'active')
-    );
-    const stById = new Map(students.map((s) => [s.id, s]));
-
-    const adjustments = await fetchAll<ChargeAdjustment>(
-      'charge_adjustments',
-      '*',
-      (q) => q.eq('month', month)
-    );
+    const adjustments = await fetchAll<ChargeAdjustment>('charge_adjustments', '*', (q) => q.eq('month', month));
     const adjBySid = new Map<string, ChargeAdjustment[]>();
     for (const a of adjustments) {
       const arr = adjBySid.get(a.student_id) || [];
@@ -84,21 +82,20 @@ export function useChargeAdjustments() {
     }
 
     const rows: MonthlyRow[] = [];
-    for (const t of tuition) {
-      const s = stById.get(t.student_id);
-      if (!s) continue; // only active students
+    for (const s of students) {
+      const t = tuitionBySid.get(s.id);
       rows.push(
         computeRow({
-          student_id: t.student_id,
+          student_id: s.id,
           first_name: s.first_name,
           last_name: s.last_name,
           shiur: s.shiur,
           status: s.status,
           institution_name: s.institution_name,
           family_id: s.family_id,
-          method: t.payment_method,
-          base: Number(t.monthly_amount || 0),
-          adjustments: adjBySid.get(t.student_id) || [],
+          method: (t?.payment_method as PayMethod) || 'none',
+          base: t ? Number(t.monthly_amount || 0) : 0,
+          adjustments: adjBySid.get(s.id) || [],
           override: null,
           additionsTotal: 0,
           final: 0,
@@ -257,5 +254,54 @@ export function useChargeAdjustments() {
     return { ok: true, count: targets.length };
   };
 
-  return { loadMonth, addAdjustment, cancelAdjustment, createGroupAction };
+  // --- Onboarding (REQ5): define how an undefined student pays ---------------
+
+  // Family context for the setup dialog: current bank details + the family's
+  // Nedarim standing orders (to link a credit student without re-entering a card).
+  const getFamilyPaymentContext = async (familyId: string) => {
+    const [{ data: fam }, subsRes] = await Promise.all([
+      supabase.from('families').select('bank_number, bank_branch, bank_account, father_id_number').eq('id', familyId).maybeSingle(),
+      supabase.from('nedarim_subscriptions')
+        .select('id, amount_per_charge, last_4_digits, scheduled_day, status, kind')
+        .eq('family_id', familyId).neq('status', 'deleted'),
+    ]);
+    return {
+      bank: {
+        bank_number: fam?.bank_number ?? null,
+        bank_branch: fam?.bank_branch ?? null,
+        bank_account: fam?.bank_account ?? null,
+      },
+      nedarimSubs: (subsRes.data || []) as Array<{ id: string; amount_per_charge: number; last_4_digits: string | null; scheduled_day: number | null; status: string; kind: string }>,
+    };
+  };
+
+  // Create/update the student's payment setup (student_tuition).
+  const saveTuitionSetup = async (studentId: string, p: {
+    method: PayMethod; amount: number; bank_day?: number; nedarim_subscription_id?: string | null;
+  }): Promise<boolean> => {
+    const payload = {
+      student_id: studentId,
+      payment_method: p.method,
+      monthly_amount: p.method === 'exempt' || p.method === 'none' ? 0 : p.amount,
+      bank_day: p.method === 'bank_ho' ? (p.bank_day || 20) : null,
+      nedarim_subscription_id: p.method === 'credit_nedarim' ? (p.nedarim_subscription_id || null) : null,
+      active: true,
+    };
+    const { error } = await supabase.from('student_tuition').upsert(payload, { onConflict: 'student_id' });
+    if (error) { console.error('saveTuitionSetup:', error.message); return false; }
+    return true;
+  };
+
+  // Write bank details onto the family (so the MASAV/הו"ק can charge them).
+  const saveFamilyBank = async (familyId: string, bank: { bank_number: string; bank_branch: string; bank_account: string }): Promise<boolean> => {
+    const { error } = await supabase.from('families').update({
+      bank_number: bank.bank_number ? Number(bank.bank_number) : null,
+      bank_branch: bank.bank_branch || null,
+      bank_account: bank.bank_account || null,
+    }).eq('id', familyId);
+    if (error) { console.error('saveFamilyBank:', error.message); return false; }
+    return true;
+  };
+
+  return { loadMonth, addAdjustment, cancelAdjustment, createGroupAction, getFamilyPaymentContext, saveTuitionSetup, saveFamilyBank };
 }

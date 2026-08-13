@@ -58,6 +58,7 @@ export default function MonthlyCollectionPage() {
   const [sortAsc, setSortAsc] = useState(true);
 
   const [adjFor, setAdjFor] = useState<MonthlyRow | null>(null);
+  const [setupFor, setSetupFor] = useState<MonthlyRow | null>(null);
   const [groupOpen, setGroupOpen] = useState(false);
 
   const reload = useCallback(async () => {
@@ -104,6 +105,8 @@ export default function MonthlyCollectionPage() {
     }
     return t;
   }, [filtered]);
+
+  const undefinedCount = useMemo(() => rows.filter((r) => r.method === 'none').length, [rows]);
 
   const toggleSort = (k: typeof sortKey) => {
     if (sortKey === k) setSortAsc((v) => !v);
@@ -154,8 +157,11 @@ export default function MonthlyCollectionPage() {
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <StatCard label="תלמידים" value={filtered.length.toLocaleString('he-IL')} />
+          <button onClick={() => setMethodFilter((m) => (m === 'none' ? '' : 'none'))} className="text-start">
+            <StatCard label={methodFilter === 'none' ? 'לא מוגדר (מסונן)' : 'לא מוגדר'} value={undefinedCount.toLocaleString('he-IL')} danger={undefinedCount > 0} />
+          </button>
           <StatCard label="בסיס" value={ils(totals.base)} />
           <StatCard label="שינויים החודש" value={(totals.adj >= 0 ? '+' : '') + ils(totals.adj)} accent={totals.adj !== 0} />
           <StatCard label="סה״כ לגבייה" value={ils(totals.final)} strong />
@@ -189,7 +195,17 @@ export default function MonthlyCollectionPage() {
                       </td>
                       <td className="px-3 py-2 text-slate-600">{(r.shiur || '').replace('שיעור ', '') || '—'}</td>
                       <td className="px-3 py-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${METHOD_COLORS[r.method]}`}>{METHOD_LABELS[r.method]}</span>
+                        {r.method === 'none' ? (
+                          <button onClick={() => setSetupFor(r)}
+                            className="px-2.5 py-1 rounded-full text-xs bg-red-600 text-white hover:bg-red-700 font-medium">
+                            ⚙ הגדר תשלום
+                          </button>
+                        ) : (
+                          <button onClick={() => setSetupFor(r)} title="שנה אופן תשלום"
+                            className={`px-2 py-0.5 rounded-full text-xs ${METHOD_COLORS[r.method]} hover:ring-2 hover:ring-slate-300`}>
+                            {METHOD_LABELS[r.method]}
+                          </button>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-slate-700">{ils(r.base)}</td>
                       <td className="px-3 py-2">
@@ -239,6 +255,9 @@ export default function MonthlyCollectionPage() {
             setAdjFor(null); reload();
           }} />
       )}
+      {setupFor && (
+        <SetupDialog row={setupFor} onClose={() => setSetupFor(null)} onSaved={() => { setSetupFor(null); reload(); }} />
+      )}
       {groupOpen && (
         <GroupActionDialog month={month} shiurOptions={SHIUR_ORDER} onClose={() => setGroupOpen(false)}
           onSave={async (p) => {
@@ -252,11 +271,11 @@ export default function MonthlyCollectionPage() {
   );
 }
 
-function StatCard({ label, value, strong, accent }: { label: string; value: string; strong?: boolean; accent?: boolean }) {
+function StatCard({ label, value, strong, accent, danger }: { label: string; value: string; strong?: boolean; accent?: boolean; danger?: boolean }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/70 elevation-1 px-4 py-3">
+    <div className={`bg-white rounded-2xl border elevation-1 px-4 py-3 ${danger ? 'border-red-300' : 'border-slate-200/70'}`}>
       <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-0.5 ${strong ? 'text-xl font-bold text-slate-900' : accent ? 'text-lg font-semibold text-emerald-700' : 'text-lg font-semibold text-slate-800'}`}>{value}</div>
+      <div className={`mt-0.5 ${strong ? 'text-xl font-bold text-slate-900' : danger ? 'text-lg font-bold text-red-700' : accent ? 'text-lg font-semibold text-emerald-700' : 'text-lg font-semibold text-slate-800'}`}>{value}</div>
     </div>
   );
 }
@@ -295,6 +314,98 @@ function AdjustmentDialog({ row, month, onClose, onSave }: {
           <Button variant="primary" disabled={amount === '' || isNaN(amt)} onClick={() => onSave(kind, amt, reason)}>שמור</Button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+function SetupDialog({ row, onClose, onSaved }: { row: MonthlyRow; onClose: () => void; onSaved: () => void }) {
+  const { getFamilyPaymentContext, saveTuitionSetup, saveFamilyBank } = useChargeAdjustments();
+  const [method, setMethod] = useState<PayMethod>(row.method === 'none' ? 'bank_ho' : row.method);
+  const [amount, setAmount] = useState(row.base ? String(row.base) : '');
+  const [bankDay, setBankDay] = useState('20');
+  const [subId, setSubId] = useState('');
+  const [bank, setBank] = useState({ bank_number: '', bank_branch: '', bank_account: '' });
+  const [subs, setSubs] = useState<Array<{ id: string; amount_per_charge: number; last_4_digits: string | null; scheduled_day: number | null }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      if (!row.family_id) { setLoading(false); return; }
+      const ctx = await getFamilyPaymentContext(row.family_id);
+      setBank({
+        bank_number: ctx.bank.bank_number != null ? String(ctx.bank.bank_number) : '',
+        bank_branch: ctx.bank.bank_branch != null ? String(ctx.bank.bank_branch) : '',
+        bank_account: ctx.bank.bank_account != null ? String(ctx.bank.bank_account) : '',
+      });
+      setSubs(ctx.nedarimSubs);
+      setLoading(false);
+    })();
+  }, [row.family_id]); // eslint-disable-line
+
+  const needsAmount = method === 'bank_ho' || method === 'credit_nedarim' || method === 'office';
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      if (method === 'bank_ho' && row.family_id) await saveFamilyBank(row.family_id, bank);
+      const ok = await saveTuitionSetup(row.student_id, {
+        method, amount: Number(amount) || 0, bank_day: Number(bankDay) || 20,
+        nedarim_subscription_id: method === 'credit_nedarim' ? (subId || null) : null,
+      });
+      if (!ok) { alert('שגיאה בשמירה'); setBusy(false); return; }
+      onSaved();
+    } catch (e: any) { alert('שגיאה: ' + (e?.message || e)); setBusy(false); }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title={`הגדרת תשלום · ${row.last_name} ${row.first_name}`}>
+      {loading ? <div className="p-6 text-center text-slate-400">טוען…</div> : (
+        <div className="space-y-4">
+          <div className="text-sm text-slate-500">שיעור {(row.shiur || '').replace('שיעור ', '') || '—'}</div>
+          <Select label="אופן תשלום" value={method} onChange={(e) => setMethod(e.target.value as PayMethod)} options={[
+            { value: 'bank_ho', label: 'הו"ק בנקאי' },
+            { value: 'credit_nedarim', label: 'נדרים (אשראי)' },
+            { value: 'office', label: 'משרד' },
+            { value: 'exempt', label: 'פטור' },
+          ]} />
+          {needsAmount && <Input label="סכום חודשי" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />}
+
+          {method === 'bank_ho' && (
+            <div className="space-y-3 bg-blue-50/50 rounded-xl p-3">
+              <div className="text-sm font-semibold text-slate-700">פרטי בנק (למשפחה)</div>
+              <div className="grid grid-cols-3 gap-2">
+                <Input label="בנק" value={bank.bank_number} onChange={(e) => setBank((b) => ({ ...b, bank_number: e.target.value }))} />
+                <Input label="סניף" value={bank.bank_branch} onChange={(e) => setBank((b) => ({ ...b, bank_branch: e.target.value }))} />
+                <Input label="חשבון" value={bank.bank_account} onChange={(e) => setBank((b) => ({ ...b, bank_account: e.target.value }))} />
+              </div>
+              <Input label="יום חיוב" type="number" value={bankDay} onChange={(e) => setBankDay(e.target.value)} />
+              <div className="text-xs text-slate-500">ההו״ק תיכלל אוטומטית בקובץ המס״ב החודשי — אין צורך באישור נפרד.</div>
+            </div>
+          )}
+
+          {method === 'credit_nedarim' && (
+            <div className="space-y-2 bg-purple-50/50 rounded-xl p-3">
+              <div className="text-sm font-semibold text-slate-700">קישור להוראת קבע בנדרים</div>
+              {subs.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  אין הו״ק נדרים למשפחה זו. צור אותה דרך <Link href="/finances/nedarim/match" className="underline">שיוך נדרים</Link>, ואז חזור לקשר.
+                </div>
+              ) : (
+                <Select label="בחר הו״ק" value={subId} onChange={(e) => setSubId(e.target.value)} options={[
+                  { value: '', label: '— בחר —' },
+                  ...subs.map((s) => ({ value: s.id, label: `₪${s.amount_per_charge} · כרטיס …${s.last_4_digits || '?'} · יום ${s.scheduled_day || '?'}` })),
+                ]} />
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-2 justify-end pt-1">
+            <Button variant="secondary" onClick={onClose}>ביטול</Button>
+            <Button variant="primary" disabled={busy || (method === 'credit_nedarim' && subs.length > 0 && !subId)} onClick={save}>{busy ? 'שומר…' : 'שמור'}</Button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
