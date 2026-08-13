@@ -20,6 +20,12 @@ export default function FinancesPage() {
           <h3 className="text-sm font-semibold text-gray-500 mb-2">שכר לימוד</h3>
           <div className="flex flex-wrap gap-3">
             <Link
+              href="/finances/monthly"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
+            >
+              📅 הרצת גבייה חודשית
+            </Link>
+            <Link
               href="/finances/tuition/setup"
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center gap-2 shadow-md"
             >

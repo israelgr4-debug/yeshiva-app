@@ -262,6 +262,43 @@ export interface Staff {
   updated_at: string;
 }
 
+// Per-student, per-month charge adjustment (migration 045). See collection redesign.
+export interface ChargeAdjustment {
+  id: string;
+  student_id: string;
+  month: string;                 // 'YYYY-MM'
+  kind: 'addition' | 'override';
+  amount: number;                // addition: signed delta; override: absolute month amount
+  reason: string | null;
+  source: 'manual' | 'group' | 'bounce' | 'installment';
+  group_action_id: string | null;
+  bounce_payment_id: string | null;
+  dispatch_method: 'bank_ho' | 'credit_nedarim' | 'office' | 'exempt' | 'none' | null;
+  nedarim_result: string | null;
+  nedarim_transaction_id: string | null;
+  nedarim_error: string | null;
+  status: 'active' | 'cancelled';
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupAction {
+  id: string;
+  month: string;
+  action_kind: 'addition' | 'override';
+  amount: number;
+  target_type: 'shiur' | 'status' | 'institution' | 'custom';
+  target_value: string | null;
+  reason: string | null;
+  skip_exempt: boolean;
+  student_count: number;
+  total_amount: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DashboardStats {
   total_students: number;
   active_students: number;
