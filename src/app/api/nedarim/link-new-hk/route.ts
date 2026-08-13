@@ -21,11 +21,16 @@ export async function POST(req: NextRequest) {
 
   let body: any = {};
   try { body = await req.json(); } catch {}
-  const { student_id, keva_id, amount } = body;
+  const { student_id, keva_id, amount, father_id } = body;
   if (!student_id || !keva_id) return NextResponse.json({ ok: false, error: 'חסר מזהה תלמיד / הו״ק' }, { status: 400 });
 
   const db = adminClient();
   const { data: st } = await db.from('students').select('family_id').eq('id', student_id).maybeSingle();
+
+  // Capture the father's ID onto the family (so we have it for next time / matching).
+  if (father_id && st?.family_id) {
+    await db.from('families').update({ father_id_number: String(father_id) }).eq('id', st.family_id);
+  }
 
   // Pull the new HK details from Nedarim (best-effort — fall back to the entered amount).
   let d: any = {};

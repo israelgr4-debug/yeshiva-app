@@ -25,12 +25,14 @@ function NewHkInner() {
   const [family, setFamily] = useState<FamilyLite | null>(null);
   const [amount, setAmount] = useState(params.get('amount') || '');
   const [day, setDay] = useState('10');
+  const [zeout, setZeout] = useState('');
+  const [familyId, setFamilyId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const stateRef = useRef({ studentId, amount, family: null as FamilyLite | null, student: null as StudentLite | null });
-  stateRef.current = { studentId, amount, family, student };
+  const stateRef = useRef({ studentId, amount, zeout, familyId, family: null as FamilyLite | null, student: null as StudentLite | null });
+  stateRef.current = { studentId, amount, zeout, familyId, family, student };
 
   useEffect(() => {
     (async () => {
@@ -38,8 +40,10 @@ function NewHkInner() {
       const { data: st } = await supabase.from('students').select('first_name, last_name, family_id').eq('id', studentId).maybeSingle();
       setStudent(st as StudentLite);
       if (st?.family_id) {
+        setFamilyId(st.family_id);
         const { data: fam } = await supabase.from('families').select('family_name, father_name, father_phone, father_id_number').eq('id', st.family_id).maybeSingle();
         setFamily(fam as FamilyLite);
+        setZeout((fam?.father_id_number || '').toString());
       }
     })();
   }, [studentId]);
@@ -66,7 +70,7 @@ function NewHkInner() {
           const res = await fetch('/api/nedarim/link-new-hk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-            body: JSON.stringify({ student_id: stateRef.current.studentId, keva_id: val.ID, amount: Number(stateRef.current.amount) || undefined }),
+            body: JSON.stringify({ student_id: stateRef.current.studentId, keva_id: val.ID, amount: Number(stateRef.current.amount) || undefined, father_id: (stateRef.current.zeout || '').replace(/\D/g, '') || undefined }),
           });
           const j = await res.json();
           if (j.ok) { setDone(true); setStatus('✓ ההו״ק הוקמה וקושרה לתלמיד בהצלחה'); }
@@ -90,7 +94,7 @@ function NewHkInner() {
     setBusy(true); setStatus('מבצע הקמה…');
     post({ Name: 'FinishTransaction2', Value: {
       Mosad: MOSAD, ApiValid: API_VALID, PaymentType: 'HK', Currency: '1',
-      Zeout: f?.father_id_number || '', FirstName: f?.father_name || '', LastName: f?.family_name || s?.last_name || '',
+      Zeout: (stateRef.current.zeout || f?.father_id_number || '').replace(/\D/g, ''), FirstName: f?.father_name || '', LastName: f?.family_name || s?.last_name || '',
       Street: '', City: '', Phone: (f?.father_phone || '').replace(/\D/g, ''), Mail: '',
       Amount: String(Number(amount)), Tashlumim: '', Day: String(day),
       Groupe: 'שכר לימוד', Comment: '', Param1: '', Param2: '',
@@ -114,6 +118,10 @@ function NewHkInner() {
           <div className="grid grid-cols-2 gap-3">
             <Input label="סכום חודשי" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
             <Select label="יום חיוב" value={day} onChange={(e) => setDay(e.target.value)} options={DAYS.map((d) => ({ value: d, label: d }))} />
+          </div>
+          <div>
+            <Input label='ת"ז האב (לכרטיס התורם בנדרים)' value={zeout} onChange={(e) => setZeout(e.target.value)} placeholder="9 ספרות" />
+            {!zeout && <div className="text-xs text-amber-600 mt-1">מומלץ למלא — כרטיס התורם בנדרים ייפתח עם הת"ז, וזו תישמר גם אצלנו.</div>}
           </div>
 
           {done ? (
