@@ -328,6 +328,23 @@ function SetupDialog({ row, onClose, onSaved }: { row: MonthlyRow; onClose: () =
   const [subs, setSubs] = useState<Array<{ id: string; amount_per_charge: number; last_4_digits: string | null; scheduled_day: number | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [link, setLink] = useState('');
+  const [linking, setLinking] = useState(false);
+
+  const genLink = async () => {
+    setLinking(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/nedarim/payment-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ student_id: row.student_id, amount: Number(amount) || undefined }),
+      });
+      const json = await res.json();
+      if (json.ok) setLink(json.url); else alert('שגיאה: ' + (json.error || ''));
+    } catch (e: any) { alert('שגיאה: ' + (e?.message || e)); }
+    finally { setLinking(false); }
+  };
 
   useEffect(() => {
     (async () => {
@@ -388,8 +405,22 @@ function SetupDialog({ row, onClose, onSaved }: { row: MonthlyRow; onClose: () =
             <div className="space-y-2 bg-purple-50/50 rounded-xl p-3">
               <div className="text-sm font-semibold text-slate-700">קישור להוראת קבע בנדרים</div>
               {subs.length === 0 ? (
-                <div className="text-sm text-slate-500">
-                  אין הו״ק נדרים למשפחה זו. צור אותה דרך <Link href="/finances/nedarim/match" className="underline">שיוך נדרים</Link>, ואז חזור לקשר.
+                <div className="space-y-2">
+                  <div className="text-sm text-slate-500">אין עדיין הו״ק נדרים למשפחה זו. צור אחת:</div>
+                  {!link ? (
+                    <Button size="sm" variant="secondary" disabled={linking} onClick={genLink}>
+                      {linking ? 'מייצר…' : '➕ צור הו״ק — קישור לתשלום'}
+                    </Button>
+                  ) : (
+                    <div className="space-y-2 bg-white rounded-lg p-2 border border-purple-200">
+                      <div className="text-xs text-slate-500">פתח במשרד (הזן כרטיס) או שלח להורה. אחרי ההקמה — סנכרן וקשר.</div>
+                      <input readOnly value={link} onFocus={(e) => e.target.select()} className="w-full text-xs border rounded px-2 py-1 bg-slate-50" />
+                      <div className="flex gap-2">
+                        <a href={link} target="_blank" rel="noreferrer"><Button size="sm" variant="primary">פתח דף תשלום</Button></a>
+                        <Button size="sm" variant="secondary" onClick={() => { navigator.clipboard?.writeText(link); alert('הקישור הועתק'); }}>העתק קישור</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <Select label="בחר הו״ק" value={subId} onChange={(e) => setSubId(e.target.value)} options={[
