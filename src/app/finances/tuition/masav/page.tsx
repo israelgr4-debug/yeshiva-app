@@ -55,11 +55,13 @@ export default function MasavExportPage() {
   const [downloaded, setDownloaded] = useState(false);
   const [marking, setMarking] = useState(false);
   const [markResult, setMarkResult] = useState<{ updated: number; inserted: number; skipped: number; errors: string[] } | null>(null);
+  const [adjustedCount, setAdjustedCount] = useState(0);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [tuitions, students, families] = await Promise.all([
+      const chargeMonth = chargeDate.slice(0, 7); // 'YYYY-MM' — the collection run this file is for
+      const [tuitions, students, families, adjustments] = await Promise.all([
         fetchAll<TuitionRow & { tuition_active_until?: string | null }>(
           'student_tuition',
           'student_id, monthly_amount, bank_day, tuition_active_until',
@@ -69,6 +71,11 @@ export default function MasavExportPage() {
           q.eq('status', 'active')
         ),
         fetchAll<Family>('families', '*'),
+        fetchAll<{ student_id: string; kind: string; amount: number }>(
+          'charge_adjustments',
+          'student_id, kind, amount',
+          (q) => q.eq('month', chargeMonth).eq('status', 'active')
+        ),
       ]);
 
       const studentMap: Record<string, StudentLite> = {};
@@ -77,7 +84,17 @@ export default function MasavExportPage() {
       const familyMap: Record<string, Family> = {};
       for (const f of families) familyMap[f.id] = f;
 
+      // This month's per-student adjustments (REQ 7/8/9): override replaces the base,
+      // additions are summed on top. Applied to the charged amount.
+      const overrideByStudent: Record<string, number> = {};
+      const additionsByStudent: Record<string, number> = {};
+      for (const a of adjustments) {
+        if (a.kind === 'override') overrideByStudent[a.student_id] = Number(a.amount) || 0;
+        else additionsByStudent[a.student_id] = (additionsByStudent[a.student_id] || 0) + (Number(a.amount) || 0);
+      }
+
       // Group tuitions by family_id
+      let adjApplied = 0;
       const byFamily: Record<string, FamilyCharge> = {};
       for (const t of tuitions) {
         // Honor scheduled stop date: if charge_date > tuition_active_until → skip
@@ -86,6 +103,12 @@ export default function MasavExportPage() {
         if (!student?.family_id) continue;
         const fam = familyMap[student.family_id];
         if (!fam) continue;
+
+        const base = Number(t.monthly_amount) || 0;
+        const ov = overrideByStudent[t.student_id];
+        const add = additionsByStudent[t.student_id] || 0;
+        const amount = (ov != null ? ov : base) + add;
+        if (ov != null || add !== 0) adjApplied++;
 
         if (!byFamily[fam.id]) {
           byFamily[fam.id] = {
@@ -99,10 +122,11 @@ export default function MasavExportPage() {
         byFamily[fam.id].students.push({
           id: student.id,
           name: `${student.first_name} ${student.last_name}`,
-          amount: Number(t.monthly_amount) || 0,
+          amount,
         });
-        byFamily[fam.id].totalAmount += Number(t.monthly_amount) || 0;
+        byFamily[fam.id].totalAmount += amount;
       }
+      setAdjustedCount(adjApplied);
 
       // Validate bank details
       for (const fc of Object.values(byFamily)) {
@@ -124,7 +148,7 @@ export default function MasavExportPage() {
       );
       setLoading(false);
     })();
-  }, []);
+  }, [chargeDate]);
 
   const filtered = useMemo(() => charges, [charges]);
 
@@ -350,6 +374,13 @@ export default function MasavExportPage() {
             </div>
           </CardContent>
         </Card>
+
+        {adjustedCount > 0 && (
+          <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl px-4 py-2.5 text-sm">
+            📅 הסכומים כוללים <b>{adjustedCount}</b> שינויים חודשיים (תוספות/override) לחודש {chargeDate.slice(0, 7)}.
+            לניהולם: <Link href="/finances/monthly" className="underline font-medium">הרצת גבייה חודשית</Link>
+          </div>
+        )}
 
         {/* Summary */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
