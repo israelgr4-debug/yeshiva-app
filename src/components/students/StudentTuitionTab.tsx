@@ -1,10 +1,24 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { supabase } from '@/lib/supabase';
 import { OfficePaymentDialog } from '@/components/finances/OfficePaymentDialog';
+
+interface Adjustment {
+  id: string;
+  month: string;
+  kind: 'addition' | 'override';
+  amount: number;
+  reason: string | null;
+  source: string;
+}
+function currentMonthStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 type PaymentMethod = 'bank_ho' | 'credit_nedarim' | 'office' | 'exempt' | 'none';
 
@@ -92,6 +106,7 @@ export function StudentTuitionTab({ studentId, familyId, studentStatus }: Props)
   const [familyNedarimSubs, setFamilyNedarimSubs] = useState<NedarimSub[]>([]);
   const [siblingAssignments, setSiblingAssignments] = useState<SiblingAssignment[]>([]);
   const [payments, setPayments] = useState<UnifiedPayment[]>([]);
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [officeDialogOpen, setOfficeDialogOpen] = useState(false);
@@ -147,6 +162,17 @@ export function StudentTuitionTab({ studentId, familyId, studentStatus }: Props)
     );
     setFamilyNedarimSubs((subs || []) as NedarimSub[]);
     setPayments((pays || []) as UnifiedPayment[]);
+
+    // This student's monthly adjustments (from the current month onward)
+    const { data: adj } = await supabase
+      .from('charge_adjustments')
+      .select('id, month, kind, amount, reason, source')
+      .eq('student_id', studentId)
+      .eq('status', 'active')
+      .gte('month', currentMonthStr())
+      .order('month', { ascending: true });
+    setAdjustments((adj || []) as Adjustment[]);
+
     setLoading(false);
   };
 
@@ -294,9 +320,12 @@ export function StudentTuitionTab({ studentId, familyId, studentStatus }: Props)
                 הוראת קבע בנדרים (של המשפחה)
               </label>
               {familyNedarimSubs.length === 0 ? (
-                <p className="text-sm text-amber-600">
-                  ⚠️ לא נמצאה הוראת קבע אשראי פעילה במשפחה זו בנדרים
-                </p>
+                <div className="space-y-2">
+                  <p className="text-sm text-amber-600">⚠️ אין הוראת קבע אשראי פעילה במשפחה זו</p>
+                  <Link href={`/finances/nedarim/new-hk?student=${studentId}${tuition.monthly_amount ? `&amount=${tuition.monthly_amount}` : ''}`}>
+                    <Button size="sm" variant="primary" type="button">💳 הקם הו״ק — הזן כרטיס</Button>
+                  </Link>
+                </div>
               ) : (
                 <select
                   value={tuition.nedarim_subscription_id || ''}
@@ -402,6 +431,38 @@ export function StudentTuitionTab({ studentId, familyId, studentStatus }: Props)
           </p>
         </div>
       </div>
+
+      {/* Quick actions — connect the student card to the collection screens */}
+      <div className="flex flex-wrap gap-2">
+        <Link href="/finances/monthly"><Button size="sm" variant="secondary" type="button">📅 גבייה חודשית / שינויים</Button></Link>
+        <Link href="/finances/collection/onetime"><Button size="sm" variant="secondary" type="button">💳 חיוב לתאריך</Button></Link>
+        {isCreditNed && (
+          <Link href={`/finances/nedarim/new-hk?student=${studentId}${tuition.monthly_amount ? `&amount=${tuition.monthly_amount}` : ''}`}>
+            <Button size="sm" variant="secondary" type="button">➕ הקם הו״ק נוספת</Button>
+          </Link>
+        )}
+      </div>
+
+      {/* This student's upcoming monthly adjustments (REQ 7/8/9) */}
+      {adjustments.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-semibold text-gray-700">שינויים חודשיים קרובים</h4>
+            <Link href="/finances/monthly" className="text-xs text-blue-600 hover:underline">נהל</Link>
+          </div>
+          <div className="space-y-1">
+            {adjustments.map((a) => (
+              <div key={a.id} className="flex items-center gap-2 text-sm border-b border-gray-50 py-1">
+                <span className="text-slate-500 w-16">{a.month}</span>
+                <span className={`font-medium ${a.kind === 'override' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {a.kind === 'override' ? `→ ${formatCurrency(a.amount)}` : `${a.amount >= 0 ? '+' : ''}${formatCurrency(a.amount)}`}
+                </span>
+                <span className="text-slate-400 text-xs flex-1">{a.reason || ''}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Office payment button */}
       {tuition.payment_method === 'office' && (
