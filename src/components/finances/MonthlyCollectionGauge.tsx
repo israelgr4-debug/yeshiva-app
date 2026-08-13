@@ -113,6 +113,7 @@ export function MonthlyCollectionGauge() {
           .select('amount_ils,status_code')
           .gte('payment_date', monthStart)
           .lt('payment_date', monthEnd)
+          .is('nedarim_transaction_id', null) // BANK only — exclude mirrored credit charges (counted in creditCollected)
           .range(p * 1000, (p + 1) * 1000 - 1);
         if (!data || data.length === 0) break;
         for (const r of data) {

@@ -28,6 +28,12 @@ const METHOD_COLORS: Record<PayMethod, string> = {
   exempt: 'bg-gray-100 text-gray-700',
   none: 'bg-red-100 text-red-800',
 };
+const COLLECTION_META: Record<string, { label: string; cls: string }> = {
+  paid: { label: '✅ נגבה', cls: 'bg-emerald-100 text-emerald-800' },
+  pending: { label: '⏳ ממתין', cls: 'bg-slate-100 text-slate-600' },
+  returned: { label: '↩️ חזר', cls: 'bg-red-100 text-red-800' },
+  none: { label: '—', cls: 'text-slate-300' },
+};
 const SHIUR_ORDER = ['שיעור א','שיעור ב','שיעור ג','שיעור ד','שיעור ה','שיעור ו','שיעור ז','שיעור ח','שיעור ט','שיעור י','שיעור יא','קיבוץ'];
 
 function ils(n: number) { return '₪' + Math.round(n).toLocaleString('he-IL'); }
@@ -182,6 +188,7 @@ export default function MonthlyCollectionPage() {
                     <Th onClick={() => toggleSort('base')} active={sortKey === 'base'} asc={sortAsc}>בסיס</Th>
                     <th className="text-start px-3 py-2 font-semibold">שינויים החודש</th>
                     <Th onClick={() => toggleSort('final')} active={sortKey === 'final'} asc={sortAsc}>סופי</Th>
+                    <th className="text-start px-3 py-2 font-semibold">סטטוס</th>
                     <th className="px-3 py-2"></th>
                   </tr>
                 </thead>
@@ -233,13 +240,16 @@ export default function MonthlyCollectionPage() {
                         </div>
                       </td>
                       <td className={`px-3 py-2 font-semibold ${r.final !== r.base ? 'text-emerald-700' : 'text-slate-800'}`}>{ils(r.final)}</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${COLLECTION_META[r.collection].cls}`}>{COLLECTION_META[r.collection].label}</span>
+                      </td>
                       <td className="px-3 py-2 text-end">
                         <button onClick={() => setAdjFor(r)} className="text-blue-600 hover:bg-blue-50 rounded-lg w-7 h-7" title="הוסף שינוי">＋</button>
                       </td>
                     </tr>
                   ))}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="p-10 text-center text-slate-400">אין תלמידים תואמים</td></tr>
+                    <tr><td colSpan={8} className="p-10 text-center text-slate-400">אין תלמידים תואמים</td></tr>
                   )}
                 </tbody>
               </table>

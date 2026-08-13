@@ -6,6 +6,8 @@ import { ChargeAdjustment } from '@/lib/types';
 
 export type PayMethod = 'bank_ho' | 'credit_nedarim' | 'office' | 'exempt' | 'none';
 
+export type CollectionStatus = 'paid' | 'pending' | 'returned' | 'none';
+
 export interface MonthlyRow {
   student_id: string;
   first_name: string;
@@ -20,6 +22,7 @@ export interface MonthlyRow {
   override: number | null;         // active override amount for the month, if any
   additionsTotal: number;          // sum of active additions
   final: number;                   // (override ?? base) + additionsTotal
+  collection: CollectionStatus;    // this month's collection status (from payment_history)
 }
 
 interface StudentLite {
@@ -81,6 +84,24 @@ export function useChargeAdjustments() {
       adjBySid.set(a.student_id, arr);
     }
 
+    // This month's collection status from payment_history (bank + mirrored credit).
+    // Priority when a student has several rows: returned > paid > pending.
+    const ph = await fetchAll<{ student_id: string; status_code: number }>(
+      'payment_history', 'student_id, status_code',
+      (q) => q.gte('payment_date', `${month}-01`).lte('payment_date', `${month}-31`)
+    );
+    const rank: Record<number, number> = { 3: 3, 2: 2, 1: 1 };
+    const statusBySid = new Map<string, CollectionStatus>();
+    const bestRank = new Map<string, number>();
+    for (const r of ph) {
+      const rk = rank[r.status_code] || 0;
+      if (rk === 0) continue;
+      if (rk > (bestRank.get(r.student_id) || 0)) {
+        bestRank.set(r.student_id, rk);
+        statusBySid.set(r.student_id, r.status_code === 3 ? 'returned' : r.status_code === 2 ? 'paid' : 'pending');
+      }
+    }
+
     const rows: MonthlyRow[] = [];
     for (const s of students) {
       const t = tuitionBySid.get(s.id);
@@ -99,6 +120,7 @@ export function useChargeAdjustments() {
           override: null,
           additionsTotal: 0,
           final: 0,
+          collection: statusBySid.get(s.id) || 'none',
         })
       );
     }
