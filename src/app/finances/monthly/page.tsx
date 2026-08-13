@@ -406,10 +406,14 @@ function SetupDialog({ row, onClose, onSaved }: { row: MonthlyRow; onClose: () =
               <div className="text-sm font-semibold text-slate-700">קישור להוראת קבע בנדרים</div>
               {subs.length === 0 ? (
                 <div className="space-y-2">
-                  <div className="text-sm text-slate-500">אין עדיין הו״ק נדרים למשפחה זו. צור אחת:</div>
+                  <div className="text-sm text-slate-500">אין עדיין הו״ק נדרים למשפחה זו. הקם אחת:</div>
+                  <Link href={`/finances/nedarim/new-hk?student=${row.student_id}${amount ? `&amount=${amount}` : ''}`}>
+                    <Button size="sm" variant="primary">💳 הקם הו״ק — הזן כרטיס</Button>
+                  </Link>
+                  <div className="text-xs text-slate-400 pt-1">או שלח קישור להורה שיזין בעצמו:</div>
                   {!link ? (
                     <Button size="sm" variant="secondary" disabled={linking} onClick={genLink}>
-                      {linking ? 'מייצר…' : '➕ צור הו״ק — קישור לתשלום'}
+                      {linking ? 'מייצר…' : '🔗 קישור לתשלום להורה'}
                     </Button>
                   ) : (
                     <div className="space-y-2 bg-white rounded-lg p-2 border border-purple-200">
