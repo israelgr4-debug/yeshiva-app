@@ -107,7 +107,7 @@ src/
                                 # nedarim-api.ts, list-reports.ts,
                                 # photo-processor.ts, cert-to-word.ts,
                                 # masav.ts, supabase.ts, supabase-paginate.ts
-supabase/migrations/            # Numbered SQL migrations 001..040
+supabase/migrations/            # Numbered SQL migrations 001..044
 scripts/                        # One-off Python scripts (urllib + system certs,
                                 # no supabase-py - SSL issues on Windows)
 public/                         # logo.png + manifest.json (PWA)
@@ -129,9 +129,24 @@ public/                         # logo.png + manifest.json (PWA)
 - **Student** (`students`): status active/chizuk/inactive/graduated.
   Has `shiur` (class level) + `machzor_id` (cohort). `is_chinuch` flag =
   sub-institution requiring different letterhead. `id_type` '1' = passport,
-  else Israeli ID. `legacy_student_id` from Access import.
-- **Shiur 0** is a holding bucket for accepted registrants between final
-  acceptance and start of school year. On year-up they promote to שיעור א.
+  else Israeli ID. `legacy_student_id` from Access import. `institution_name`
+  = 'ישיבה' / 'כולל' / "כולל של ר' יצחק פינקל" (no DB default - set 'ישיבה'
+  on convert/create). `equivalent_number` ‖ `equivalent_year` = the **מקבילה**
+  (parallel class within a shiur).
+- **Shiur is DERIVED from the (permanent) machzor + base** (CRITICAL model,
+  confirmed by the manager): `shiur_index = base_machzor_for_shiur_alef -
+  machzor_number` (0..10 → שיעור א..יא, ≥11 → קיבוץ). The machzor NEVER
+  changes - it identifies the student for life. **Year-advance = raise the
+  base by 1 and re-derive every student's shiur from their machzor** (ALL
+  statuses incl. inactive/graduated, כולל + no-machzor skipped). So a student
+  returning from inactive is already at the right shiur automatically. Do NOT
+  "advance active students by one" - that was the old bug that left inactive
+  students behind. Held-back students are handled by changing their machzor,
+  never by hand-editing shiur (a resync would overwrite it). Live impl:
+  `useYearAdvance.executeAdvance` + `MachzorTab`; base auto-increments after.
+  One-off resync: `scripts/resync_shiur_from_machzor.py`.
+- **Shiur 0** is a holding bucket for accepted registrants (no machzor yet).
+  On year-advance they enroll into שיעור א and receive machzor = new base.
 - **Family** (`families`): parents + bank info. Linked from students via
   `family_id`. `legacy_family_id` from Access import. `yichus_code` →
   `lookup_yichus`. `neighborhood_code` → `neighborhoods`.
@@ -140,7 +155,14 @@ public/                         # logo.png + manifest.json (PWA)
   `students.status` → inactive/graduated.
 - **Registration** (`registrations`): candidates applying for next year.
   After acceptance, creates a Student in שיעור 0. `first_name` is NULLABLE
-  (some imports have last_name only).
+  (some imports have last_name only). `registration_year` (TEXT, e.g. תשפ"ז)
+  tags the cycle; the active year = setting `current_registration_year`
+  (default new rows). The registration screen has a year selector filtering
+  all tabs. 6 document-checklist booleans on registrations: `doc_student_id`,
+  `doc_parent_id`, `doc_credit`, `doc_standing_order`, `doc_medical`,
+  `doc_declaration` - marked per-candidate in the קבלות tab, persist after
+  convert. `acceptAndConvert` sets `institution_name='ישיבה'` + matches
+  existing family by father ID **ignoring leading zeros** (`idMatchVariants`).
 - **Certificate templates** (`certificate_templates`): editable HTML with
   `{{placeholder}}` syntax. Admin-only at /settings/certificates.
 - **student_tuition**: per-student payment setup. `tuition_active_until` =
@@ -219,6 +241,44 @@ The Sidebar hides `/settings` from non-admins.
    **Left cert** supports chinuch→yeshiva period split.
 13. **Lists Excel export**: every report has a 📥 ייצא לאקסל button
    with all common student/family/parent columns, RTL sheet.
+
+### Added in the pre-year-advance session (migrations 041-044)
+
+14. **Registration form emails** (mig 041): admin uploads PDF form(s) once in
+   Settings→Email (`registration-forms` bucket, `reg_forms_files` setting);
+   `/api/registration/send-forms` sends ONE email per recipient (father→
+   candidate, deduped, `sleep(1200)`), tracked in `registration_form_emails`.
+   Dialog batches client-side (default 50/send). History tab in the dialog.
+15. **Registration document checklist** (mig 042/043): 6 doc_* booleans +
+   bulk "המר את כל המתקבלים" button in קבלות; full-details + checklist reports
+   (PDF cards / Excel) from `lib/registration-report.ts`; search box in קבלות.
+16. **Registration years** (mig 044): see registrations concept above.
+17. **Dormitory overhaul** (`/dormitory` + `/dormitory/manage`):
+   ROOM_CAPACITY=5 (shows 5 names), "⚠️ חדרים חורגים" panel, wings by the
+   room's MIDDLE digit (0-1 דרום · 2-3 צפון · 4-5 מזרח · 6-7 מזרח החדש),
+   🛏️ beds-per-room report (print pairs wings 2/page), "הדפס מפה ריקה",
+   multi-shiur filter, assigned/**unassigned** counters (ישיבה only, excl כולל),
+   names sorted א-ב per room, map shows ALL statuses that hold a room.
+   Manage: annual "שיבוץ שנתי" - ריקון פנימייה (typed "רוקן" + auto backup,
+   clears ALL statuses, ישיבה only), ייבוא/ייצוא roster xlsx by stable `id`
+   (`lib/dorm-roster.ts`), status filter to assign inactive/chizuk ahead.
+18. **Student card**: 🪄 AI photo processing (same pipeline as registration,
+   `student-photos` bucket) + searchable **FamilyPicker** (replaced the 700+
+   family Select). `students/[id]` family match uses `idMatchVariants`.
+19. **Per-shiur bulk Excel update** (`lists` → "עדכון לפי שיעור"): export a
+   shiur's students with student+family fields + hidden `id`, edit offline,
+   re-import to update (blank cells never wipe). `lib/student-bulk.ts`.
+20. **Reports**: split-by-מקבילה (each parallel class its own page, label
+   "שיעור א 1"), CustomReportBuilder multi-select shiur/status/institution,
+   PhotosReport 4×4 (16/page) via Supabase render thumbnails
+   (`lib/storage-image.ts`, onError → original). `Header` now has `no-print`.
+21. **Duplicate families tool** (`/actions` → "משפחות כפולות"): union-find by
+   normalized father ID (no leading zeros) or father phone+name; merges
+   (moves students+graduates, fills empty fields, deletes dup); shows only
+   groups with ≥2 families holding a student/graduate; "🗑️ נקה משפחות יתומות"
+   deletes families with 0 students AND 0 graduates. `idMatchVariants` +
+   `stripIdLeadingZeros` live in `lib/israeli-validators.ts` - reuse for any
+   Israeli-ID matching. Merge scripts: `merge_alef_sibling_families.py`.
 
 ## Design system rules
 
@@ -299,6 +359,16 @@ npx tsc --noEmit
   timestamps via args.
 - **Manager UX subtlety**: the secretary's name and email show as
   `user_email` in audit_log; secretary-activity page joins this nicely.
+- **Israeli-ID matching MUST ignore leading zeros** (first/second '0' often
+  not typed). Use `idMatchVariants(id)` with `.in('father_id_number', ...)`,
+  never a raw `.eq`. Helpers in `lib/israeli-validators.ts`.
+- **`families` are referenced by BOTH `students.family_id` AND
+  `graduates.family_id`.** A family is only orphan/deletable when it has 0 of
+  each. Conversion historically created duplicate empty families (~635 orphans
+  cleaned once) - the duplicate-families tool handles both going forward.
+- **Photo-heavy reports**: request Supabase render thumbnails
+  (`storageThumbUrl`) with an `onError` fallback to the original object URL,
+  else many large images fail to load / print blank.
 - **Bulk email cadence + limits** (registration forms + graduate updates):
   server paces sends at `sleep(1200)` = ~50/min. Real ceilings, not the
   pacing: (1) **Gmail daily cap** — free @gmail.com ~500 recipients/day,
