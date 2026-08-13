@@ -161,6 +161,75 @@ export async function deleteCreditKeva(kevaId: string) {
   });
 }
 
+// One-time single charge on an EXISTING credit standing order, using its saved card.
+// (Nedarim Action=TashlumBodedNew.) This is how REQ7/REQ8 adjustments are billed to
+// credit students — an ad-hoc extra charge without any donor interaction.
+// JoinToKevaId='NoJoin' keeps it a standalone transaction (does NOT touch the HK's
+// remaining-count / next-date), which is what we want for a one-off adjustment.
+export async function chargeSingleFromKeva(
+  kevaId: string,
+  amount: number,
+  opts?: { comments?: string; groupe?: string; currency?: '1' | '2'; join?: boolean }
+): Promise<{ ok: boolean; status: string; message?: string; transactionId?: string; raw: any }> {
+  const { MosadId, ApiPassword } = creds();
+  const res = await postForm(MANAGE_URL, {
+    Action: 'TashlumBodedNew',
+    MosadNumber: MosadId,
+    ApiPassword,
+    KevaId: kevaId,
+    Amount: String(amount),
+    Tashloumim: '1',
+    Currency: opts?.currency || '1',
+    Groupe: opts?.groupe || '',
+    Comments: opts?.comments || '',
+    JoinToKevaId: opts?.join ? 'Join' : 'NoJoin',
+  });
+  const status = String(res?.Status ?? res?.Result ?? '');
+  return {
+    ok: status.toLowerCase() === 'ok',
+    status,
+    message: res?.Message,
+    transactionId: res?.ID ?? res?.TransactionId,
+    raw: res,
+  };
+}
+
+// Change the monthly amount of a credit standing order. UpdateKevaNew OVERWRITES every
+// field, so we first read the current detail (GetKevaId) and resend all values with only
+// Amount changed. Uses the last-4 of the saved card + stored Tokef (both allowed).
+// Fixes the previously-broken `update_amount` queue action.
+export async function updateCreditKevaAmount(
+  kevaId: string,
+  newAmount: number
+): Promise<{ ok: boolean; message?: string; raw: any }> {
+  const { MosadId, ApiPassword } = creds();
+  const d = await getCreditKevaDetail(kevaId);
+  const s = (v: unknown) => (v == null ? '' : String(v));
+  const res = await postForm(MANAGE_URL, {
+    Action: 'UpdateKevaNew',
+    MosadNumber: MosadId,
+    ApiPassword,
+    KevaId: kevaId,
+    Zeout: s(d.KevaZeout),
+    ClientName: s(d.KevaName),
+    Adresse: s(d.KevaAdresse),
+    City: s(d.KevaCity),
+    Phone: s(d.KevaPhone),
+    Mail: s(d.KevaMail),
+    Tashlumim: s(d.KevaTashlumim),
+    Groupe: s(d.KevaGroupe),
+    Avour: s(d.KevaAvour),
+    NextDate: s(d.KevaNextDate),
+    Frequency: s(d.KevaFrequency) || '1',
+    Amount: String(newAmount),
+    CreditCard: s(d.KevaLastNum), // last-4 of the already-saved card is accepted
+    Tokef: s(d.KevaTokef),
+    CVV: '',
+  });
+  const result = String(res?.Result ?? res?.Status ?? '');
+  return { ok: result.toLowerCase() === 'ok', message: res?.Message, raw: res };
+}
+
 // =============================================================================
 // Credit transactions history
 // =============================================================================
