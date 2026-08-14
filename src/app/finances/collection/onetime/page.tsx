@@ -13,7 +13,7 @@ import { buildMasavFile, downloadFile, MasavCharge } from '@/lib/masav';
 
 interface StudentLite { id: string; first_name: string; last_name: string; shiur: string | null; family_id: string | null; }
 interface FamilyLite { id: string; family_name: string; father_name: string | null; father_id_number: string | null; bank_number: number | null; bank_branch: string | null; bank_account: string | null; }
-interface ChargeRow { id: string; student_id: string | null; family_id: string; amount: number; charge_date: string; description: string | null; status: string; masav_send_counter: number | null; }
+interface ChargeRow { id: string; student_id: string | null; family_id: string; amount: number; charge_date: string; description: string | null; status: string; masav_send_counter: number | null; channel: string; nedarim_error: string | null; }
 
 const MOSAD_ID = '7001496';
 function ils(n: number) { return '₪' + Number(n).toLocaleString('he-IL'); }
@@ -22,8 +22,10 @@ function inDays(n: number) { const d = new Date(); d.setDate(d.getDate() + n); r
 export default function ChargeByDatePage() {
   const [students, setStudents] = useState<StudentLite[]>([]);
   const [families, setFamilies] = useState<Record<string, FamilyLite>>({});
+  const [methodBySid, setMethodBySid] = useState<Record<string, string>>({});
   const [queue, setQueue] = useState<ChargeRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [firing, setFiring] = useState<string | null>(null);
 
   // add-charge form
   const [search, setSearch] = useState('');
@@ -39,7 +41,7 @@ export default function ChargeByDatePage() {
 
   const loadQueue = async () => {
     const rows = await fetchAll<ChargeRow>('one_time_charges',
-      'id, student_id, family_id, amount, charge_date, description, status, masav_send_counter',
+      'id, student_id, family_id, amount, charge_date, description, status, masav_send_counter, channel, nedarim_error',
       (q) => q.in('status', ['pending', 'sent']).order('charge_date', { ascending: true }));
     setQueue(rows);
   };
@@ -47,14 +49,18 @@ export default function ChargeByDatePage() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [st, fams] = await Promise.all([
+      const [st, fams, tu] = await Promise.all([
         fetchAll<StudentLite>('students', 'id, first_name, last_name, shiur, family_id', (q) => q.eq('status', 'active')),
         fetchAll<FamilyLite>('families', 'id, family_name, father_name, father_id_number, bank_number, bank_branch, bank_account'),
+        fetchAll<{ student_id: string; payment_method: string }>('student_tuition', 'student_id, payment_method', (q) => q.eq('active', true)),
       ]);
       setStudents(st);
       const fmap: Record<string, FamilyLite> = {};
       for (const f of fams) fmap[f.id] = f;
       setFamilies(fmap);
+      const mmap: Record<string, string> = {};
+      for (const t of tu) mmap[t.student_id] = t.payment_method;
+      setMethodBySid(mmap);
       await loadQueue();
       setLoading(false);
     })();
@@ -62,7 +68,9 @@ export default function ChargeByDatePage() {
 
   const selected = useMemo(() => students.find((s) => s.id === selectedId) || null, [students, selectedId]);
   const selectedFamily = useMemo(() => (selected?.family_id ? families[selected.family_id] : null), [selected, families]);
-  const bankMissing = selected && (!selectedFamily || !selectedFamily.bank_number || !selectedFamily.bank_branch || !selectedFamily.bank_account);
+  const selectedMethod = selected ? methodBySid[selected.id] : undefined;
+  const isCredit = selectedMethod === 'credit_nedarim';
+  const bankMissing = selected && !isCredit && (!selectedFamily || !selectedFamily.bank_number || !selectedFamily.bank_branch || !selectedFamily.bank_account);
 
   const matches = useMemo(() => {
     if (!search.trim() || selectedId) return [];
@@ -79,6 +87,7 @@ export default function ChargeByDatePage() {
     const { error } = await supabase.from('one_time_charges').insert({
       student_id: selected.id, family_id: selected.family_id, amount: amt,
       charge_date: chargeDate, description: description || null, status: 'pending',
+      channel: isCredit ? 'credit' : 'bank',
     });
     setSaving(false);
     if (error) { alert('שגיאה: ' + error.message); return; }
@@ -92,8 +101,25 @@ export default function ChargeByDatePage() {
     await loadQueue();
   };
 
-  const pending = useMemo(() => queue.filter((c) => c.status === 'pending'), [queue]);
-  const pendingForDate = useMemo(() => pending.filter((c) => c.charge_date === masavDate), [pending, masavDate]);
+  const bankPending = useMemo(() => queue.filter((c) => c.status === 'pending' && c.channel !== 'credit'), [queue]);
+  const creditPending = useMemo(() => queue.filter((c) => c.status === 'pending' && c.channel === 'credit'), [queue]);
+  const pendingForDate = useMemo(() => bankPending.filter((c) => c.charge_date === masavDate), [bankPending, masavDate]);
+  const todayStr = inDays(0);
+
+  const fireCredit = async (id: string) => {
+    if (!confirm('לחייב עכשיו בנדרים? זהו חיוב אמיתי בכרטיס האשראי השמור.')) return;
+    setFiring(id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/nedarim/charge-onetime', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ charge_id: id }),
+      });
+      const j = await res.json();
+      if (j.ok) alert('✓ חויב בנדרים'); else alert('✗ ' + (j.error || 'נכשל'));
+    } catch (e: any) { alert('שגיאה: ' + (e?.message || e)); }
+    finally { setFiring(null); await loadQueue(); }
+  };
   const sentGroups = useMemo(() => {
     const g: Record<number, ChargeRow[]> = {};
     for (const c of queue) if (c.status === 'sent' && c.masav_send_counter != null) (g[c.masav_send_counter] ||= []).push(c);
@@ -136,7 +162,7 @@ export default function ChargeByDatePage() {
 
   return (
     <PageGuard requires="write">
-      <Header title="חיוב לתאריך" subtitle="חיוב חד-פעמי בהו״ק בנקאי בתאריך שתבחר" />
+      <Header title="חיוב לתאריך" subtitle="חיוב חד-פעמי בתאריך שתבחר — בנק (מס״ב) או אשראי (נדרים)" />
       <div className="p-4 md:p-8 space-y-5 max-w-4xl">
         <Link href="/finances"><Button variant="ghost">← כספים</Button></Link>
 
@@ -163,7 +189,9 @@ export default function ChargeByDatePage() {
                 <div>
                   <div className="font-semibold">{selected.last_name} {selected.first_name}</div>
                   <div className="text-xs text-slate-500">
-                    {selectedFamily ? `בנק ${selectedFamily.bank_number || '—'} · סניף ${selectedFamily.bank_branch || '—'} · חשבון ${selectedFamily.bank_account || '—'}` : 'ללא משפחה'}
+                    {isCredit
+                      ? '💳 אשראי — יחויב בנדרים בתאריך שנבחר'
+                      : (selectedFamily ? `🏦 בנק ${selectedFamily.bank_number || '—'} · סניף ${selectedFamily.bank_branch || '—'} · חשבון ${selectedFamily.bank_account || '—'}` : 'ללא משפחה')}
                   </div>
                 </div>
                 <button onClick={() => setSelectedId(null)} className="text-slate-400 hover:text-slate-700 text-sm">החלף</button>
@@ -181,20 +209,20 @@ export default function ChargeByDatePage() {
           </CardContent>
         </Card>
 
-        {/* Pending queue + export */}
+        {/* Bank queue + MASAV export */}
         <Card>
           <CardHeader className="flex items-center justify-between">
-            <h3 className="text-lg font-bold">תור חיובים ({pending.length})</h3>
+            <h3 className="text-lg font-bold">🏦 תור בנק — מס״ב ({bankPending.length})</h3>
           </CardHeader>
           <CardContent className="space-y-4">
-            {loading ? <div className="text-center text-slate-400 py-6">טוען…</div> : pending.length === 0 ? (
-              <div className="text-center text-slate-400 py-6">אין חיובים בתור. הוסף חיוב למעלה.</div>
+            {loading ? <div className="text-center text-slate-400 py-6">טוען…</div> : bankPending.length === 0 ? (
+              <div className="text-center text-slate-400 py-6">אין חיובי בנק בתור.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="text-xs text-slate-500 border-b"><th className="text-start px-2 py-1">תלמיד</th><th className="text-start px-2 py-1">תאריך</th><th className="text-start px-2 py-1">סכום</th><th className="text-start px-2 py-1">סיבה</th><th></th></tr></thead>
                   <tbody>
-                    {pending.map((c) => (
+                    {bankPending.map((c) => (
                       <tr key={c.id} className="border-b border-slate-50">
                         <td className="px-2 py-1.5">{studentName(c.student_id)}</td>
                         <td className="px-2 py-1.5 text-slate-600">{c.charge_date}</td>
@@ -215,6 +243,35 @@ export default function ChargeByDatePage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Credit queue — fired via Nedarim on the charge date */}
+        {creditPending.length > 0 && (
+          <Card>
+            <CardHeader><h3 className="text-lg font-bold">💳 תור אשראי — נדרים ({creditPending.length})</h3></CardHeader>
+            <CardContent>
+              <div className="text-xs text-slate-500 mb-3">חיוב אשראי מבוצע בנדרים בתאריך שנקבע (אוטומטית פעם ביום), או ידנית בכפתור "בצע עכשיו".</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-xs text-slate-500 border-b"><th className="text-start px-2 py-1">תלמיד</th><th className="text-start px-2 py-1">תאריך</th><th className="text-start px-2 py-1">סכום</th><th className="text-start px-2 py-1">סיבה</th><th></th></tr></thead>
+                  <tbody>
+                    {creditPending.map((c) => (
+                      <tr key={c.id} className="border-b border-slate-50">
+                        <td className="px-2 py-1.5">{studentName(c.student_id)}</td>
+                        <td className="px-2 py-1.5 text-slate-600">{c.charge_date}{c.charge_date > todayStr && <span className="text-amber-600"> (עתידי)</span>}</td>
+                        <td className="px-2 py-1.5 font-semibold">{ils(c.amount)}</td>
+                        <td className="px-2 py-1.5 text-slate-500">{c.description || '—'}{c.nedarim_error && <span className="text-red-600"> · ✗ {c.nedarim_error}</span>}</td>
+                        <td className="px-2 py-1.5 text-end whitespace-nowrap">
+                          <Button size="sm" variant="primary" disabled={firing === c.id} onClick={() => fireCredit(c.id)}>{firing === c.id ? '…' : 'בצע עכשיו'}</Button>
+                          <button onClick={() => removeCharge(c.id)} className="text-red-500 hover:text-red-700 ms-2">×</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Sent groups awaiting confirmation */}
         {Object.keys(sentGroups).length > 0 && (

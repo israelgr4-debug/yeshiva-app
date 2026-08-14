@@ -14,15 +14,22 @@ export async function GET(req: NextRequest) {
   }
 
   const origin = req.nextUrl.origin;
+  const authHeader = req.headers.get('authorization') || ''; // forward CRON_SECRET to protected steps
   const results: Record<string, any> = {};
-  // process-queue LAST: execute queued HK actions (suspend on leave / resume on return)
-  // after subscriptions are synced.
-  for (const path of ['/api/nedarim/sync', '/api/nedarim/sync-transactions', '/api/nedarim/process-queue']) {
+  // Order: sync subscriptions, sync transactions, process queued HK actions
+  // (suspend on leave / resume on return), then fire due credit one-time charges.
+  const jobs: Array<[string, string]> = [
+    ['/api/nedarim/sync', '{}'],
+    ['/api/nedarim/sync-transactions', '{}'],
+    ['/api/nedarim/process-queue', '{}'],
+    ['/api/nedarim/charge-onetime', '{"due":true}'],
+  ];
+  for (const [path, body] of jobs) {
     try {
       const r = await fetch(`${origin}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
+        headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+        body,
       });
       results[path] = await r.json().catch(() => ({ ok: r.ok }));
     } catch (e: any) {
