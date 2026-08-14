@@ -3,9 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 export const maxDuration = 300;
 
 // GET /api/nedarim/cron-sync — daily Vercel Cron (see vercel.json).
-// Runs the Nedarim subscription sync + transaction sync (which now also mirrors
-// successful credit charges into payment_history). Set CRON_SECRET in Vercel env
-// to lock this to Vercel Cron; Vercel sends it as `Authorization: Bearer <secret>`.
+// Runs, in order: subscription sync, transaction sync (mirrors successful credit
+// charges into payment_history), and process-queue (executes queued HK actions —
+// suspend a leaver's HK / resume on return). Set CRON_SECRET in Vercel env to lock
+// this to Vercel Cron; Vercel sends it as `Authorization: Bearer <secret>`.
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
@@ -14,7 +15,9 @@ export async function GET(req: NextRequest) {
 
   const origin = req.nextUrl.origin;
   const results: Record<string, any> = {};
-  for (const path of ['/api/nedarim/sync', '/api/nedarim/sync-transactions']) {
+  // process-queue LAST: execute queued HK actions (suspend on leave / resume on return)
+  // after subscriptions are synced.
+  for (const path of ['/api/nedarim/sync', '/api/nedarim/sync-transactions', '/api/nedarim/process-queue']) {
     try {
       const r = await fetch(`${origin}${path}`, {
         method: 'POST',
