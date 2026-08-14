@@ -294,6 +294,21 @@ export default function StudentDetailPage() {
       }
     }
 
+    // Returning to active (e.g. back from chizuk) → resume tuition automatically.
+    const becameActive =
+      !!prevStatus && prevStatus !== 'active' && newStatus === 'active' &&
+      ['chizuk', 'inactive'].includes(prevStatus);
+    if (becameActive) {
+      try {
+        await supabase
+          .from('student_tuition')
+          .update({ active: true, tuition_active_until: null })
+          .eq('student_id', id);
+      } catch (err) {
+        console.error('Failed to resume student_tuition:', err);
+      }
+    }
+
     setStudent(updated);
     setIsEditing(false);
 

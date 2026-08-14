@@ -141,6 +141,7 @@ export default function MonthlyCollectionPage() {
 
   return (
     <PageGuard requires="write">
+      <LeaversReminder />
       <Header title="הרצת גבייה חודשית" subtitle="בסיס ± שינויים = סכום סופי לכל תלמיד" />
       <div className="p-4 md:p-8 space-y-5">
         {/* Controls */}
@@ -278,6 +279,41 @@ export default function MonthlyCollectionPage() {
           }} />
       )}
     </PageGuard>
+  );
+}
+
+// Reminder popup: students who left / went to chizuk but are still being charged
+// (their status changed outside the leave dialog, so tuition wasn't stopped).
+function LeaversReminder() {
+  const [count, setCount] = useState(0);
+  const [dismissed, setDismissed] = useState(true);
+  useEffect(() => {
+    (async () => {
+      if (typeof window !== 'undefined' && sessionStorage.getItem('leavers_reminder_dismissed')) return;
+      const { count: c } = await supabase
+        .from('student_tuition')
+        .select('student_id, students!inner(status)', { count: 'exact', head: true })
+        .eq('active', true)
+        .in('payment_method', ['bank_ho', 'credit_nedarim'])
+        .in('students.status', ['inactive', 'graduated', 'chizuk']);
+      if (c && c > 0) { setCount(c); setDismissed(false); }
+    })();
+  }, []);
+  if (dismissed || count === 0) return null;
+  const close = () => { try { sessionStorage.setItem('leavers_reminder_dismissed', '1'); } catch {} setDismissed(true); };
+  return (
+    <Modal isOpen onClose={close} title="⚠️ תזכורת — תלמידים שעזבו">
+      <div className="space-y-4">
+        <div className="text-sm text-slate-700">
+          יש <b>{count.toLocaleString('he-IL')}</b> תלמידים שעזבו / בחיזוק ועדיין <b>מחויבים בשכר לימוד</b> (הו״ק פעילה).
+          כדאי לבדוק ולעצור את מי שלא אמור להיות מחויב.
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="secondary" onClick={close}>אחר כך</Button>
+          <Link href="/finances/inactive-payers"><Button variant="primary" onClick={close}>לטיפול</Button></Link>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
