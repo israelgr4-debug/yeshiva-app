@@ -61,6 +61,7 @@ export default function MonthlyCollectionPage() {
   const [search, setSearch] = useState('');
   const [shiurFilter, setShiurFilter] = useState('');
   const [methodFilter, setMethodFilter] = useState<PayMethod | ''>('');
+  const [accountFilter, setAccountFilter] = useState(false); // show only bank accounts with issues
   const [sortKey, setSortKey] = useState<'name' | 'shiur' | 'method' | 'base' | 'final'>('name');
   const [sortAsc, setSortAsc] = useState(true);
 
@@ -85,6 +86,7 @@ export default function MonthlyCollectionPage() {
     let list = rows;
     if (methodFilter) list = list.filter((r) => r.method === methodFilter);
     if (shiurFilter) list = list.filter((r) => (r.shiur || '') === shiurFilter);
+    if (accountFilter) list = list.filter((r) => r.account === 'invalid' || r.account === 'bad-check');
     if (search.trim()) {
       const q = search.trim();
       list = list.filter((r) => `${r.last_name} ${r.first_name}`.includes(q));
@@ -100,7 +102,7 @@ export default function MonthlyCollectionPage() {
       }
     });
     return sorted;
-  }, [rows, methodFilter, shiurFilter, search, sortKey, sortAsc]);
+  }, [rows, methodFilter, shiurFilter, accountFilter, search, sortKey, sortAsc]);
 
   const totals = useMemo(() => {
     const t = { base: 0, adj: 0, final: 0, changed: 0 };
@@ -114,6 +116,7 @@ export default function MonthlyCollectionPage() {
   }, [filtered]);
 
   const undefinedCount = useMemo(() => rows.filter((r) => r.method === 'none').length, [rows]);
+  const accountIssueCount = useMemo(() => rows.filter((r) => r.account === 'invalid' || r.account === 'bad-check').length, [rows]);
 
   const toggleSort = (k: typeof sortKey) => {
     if (sortKey === k) setSortAsc((v) => !v);
@@ -166,10 +169,13 @@ export default function MonthlyCollectionPage() {
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <StatCard label="תלמידים" value={filtered.length.toLocaleString('he-IL')} />
           <button onClick={() => setMethodFilter((m) => (m === 'none' ? '' : 'none'))} className="text-start">
             <StatCard label={methodFilter === 'none' ? 'לא מוגדר (מסונן)' : 'לא מוגדר'} value={undefinedCount.toLocaleString('he-IL')} danger={undefinedCount > 0} />
+          </button>
+          <button onClick={() => setAccountFilter((v) => !v)} className="text-start">
+            <StatCard label={accountFilter ? 'חשבון לבדיקה (מסונן)' : 'חשבון לבדיקה'} value={accountIssueCount.toLocaleString('he-IL')} danger={accountIssueCount > 0} />
           </button>
           <StatCard label="בסיס" value={ils(totals.base)} />
           <StatCard label="שינויים החודש" value={(totals.adj >= 0 ? '+' : '') + ils(totals.adj)} accent={totals.adj !== 0} />
@@ -202,6 +208,8 @@ export default function MonthlyCollectionPage() {
                         <Link href={`/students/${r.student_id}`} className="text-blue-700 hover:underline">
                           {r.last_name} {r.first_name}
                         </Link>
+                        {r.account === 'invalid' && <span className="text-red-600 ms-1" title="חשבון בנק חסר/לא תקין">❌</span>}
+                        {r.account === 'bad-check' && <span className="text-amber-600 ms-1" title="החשבון לא עבר ספרת ביקורת — כדאי לוודא">⚠</span>}
                       </td>
                       <td className="px-3 py-2 text-slate-600">{(r.shiur || '').replace('שיעור ', '') || '—'}</td>
                       <td className="px-3 py-2">
@@ -477,10 +485,10 @@ function SetupDialog({ row, onClose, onSaved }: { row: MonthlyRow; onClose: () =
               </div>
               {bank.bank_number && bank.bank_branch && bank.bank_account && (() => {
                 const r = validateBankAccountFull(bank.bank_number, bank.bank_branch, bank.bank_account);
-                if (r === 'valid') return <div className="text-sm text-green-700 bg-green-50 rounded-lg px-3 py-1.5">✓ חשבון תקין</div>;
-                if (r === 'bad-check') return <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-1.5 font-medium">❌ מספר החשבון שגוי (ספרת ביקורת לא תואמת) — בדוק שוב</div>;
-                if (r === 'invalid') return <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-1.5 font-medium">❌ מבנה חשבון לא תקין (ספרות בלבד)</div>;
-                return <div className="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-1.5">מבנה תקין (ספרת ביקורת לא נבדקה לבנק זה)</div>;
+                if (r === 'valid') return <div className="text-sm text-green-700 bg-green-50 rounded-lg px-3 py-1.5 font-medium">✓ חשבון תקין</div>;
+                if (r === 'invalid') return <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-1.5 font-medium">❌ מבנה חשבון לא תקין (ספרות בלבד, 4–9 ספרות)</div>;
+                if (r === 'bad-check') return <div className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-1.5">⚠ לא עבר ספרת ביקורת — כדאי לוודא מול ההורה (ייתכן שתקין)</div>;
+                return <div className="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-1.5">מבנה תקין</div>;
               })()}
               <Input label="יום חיוב" type="number" value={bankDay} onChange={(e) => setBankDay(e.target.value)} />
               <div className="text-xs text-slate-500">ההו״ק תיכלל אוטומטית בקובץ המס״ב החודשי — אין צורך באישור נפרד.</div>

@@ -3,6 +3,7 @@
 import { supabase } from '@/lib/supabase';
 import { fetchAll } from '@/lib/supabase-paginate';
 import { ChargeAdjustment } from '@/lib/types';
+import { validateBankAccountFull } from '@/lib/israeli-validators';
 
 export type PayMethod = 'bank_ho' | 'credit_nedarim' | 'office' | 'exempt' | 'none';
 
@@ -23,6 +24,7 @@ export interface MonthlyRow {
   additionsTotal: number;          // sum of active additions
   final: number;                   // (override ?? base) + additionsTotal
   collection: CollectionStatus;    // this month's collection status (from payment_history)
+  account: 'valid' | 'bad-check' | 'invalid' | 'na'; // bank account validity (bank_ho only)
 }
 
 interface StudentLite {
@@ -76,6 +78,19 @@ export function useChargeAdjustments() {
     );
     const tuitionBySid = new Map(tuition.map((t) => [t.student_id, t]));
 
+    // Family bank details, to validate bank_ho accounts.
+    const fams = await fetchAll<{ id: string; bank_number: any; bank_branch: any; bank_account: any }>(
+      'families', 'id, bank_number, bank_branch, bank_account'
+    );
+    const famById = new Map(fams.map((f) => [f.id, f]));
+    const acctStatus = (method: PayMethod, familyId: string | null): MonthlyRow['account'] => {
+      if (method !== 'bank_ho') return 'na';
+      const f = familyId ? famById.get(familyId) : null;
+      if (!f || !f.bank_account || !f.bank_number || !f.bank_branch) return 'invalid';
+      const r = validateBankAccountFull(f.bank_number, f.bank_branch, f.bank_account);
+      return r === 'valid' ? 'valid' : r === 'invalid' ? 'invalid' : r === 'bad-check' ? 'bad-check' : 'na';
+    };
+
     const adjustments = await fetchAll<ChargeAdjustment>('charge_adjustments', '*', (q) => q.eq('month', month));
     const adjBySid = new Map<string, ChargeAdjustment[]>();
     for (const a of adjustments) {
@@ -121,6 +136,7 @@ export function useChargeAdjustments() {
           additionsTotal: 0,
           final: 0,
           collection: statusBySid.get(s.id) || 'none',
+          account: acctStatus((t?.payment_method as PayMethod) || 'none', s.family_id),
         })
       );
     }
