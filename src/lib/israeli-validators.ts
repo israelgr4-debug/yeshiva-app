@@ -79,23 +79,20 @@ export function isValidBankAccount(account: string | null | undefined): boolean 
 export type AccountCheckResult = 'valid' | 'structural' | 'invalid' | 'bad-check';
 
 // Bank groups
-// Weighted sum, left-to-right (the official spec's worked examples apply the first
-// weight to the leftmost digit).
-function wsum(digits: string, weights: number[]): number {
+// Weighted sum with weights [1,2,3,...] (position+1), left to right.
+function wsumLTR(digits: string): number {
   let s = 0;
-  for (let i = 0; i < digits.length; i++) s += Number(digits[i]) * (weights[i] || 0);
+  for (let i = 0; i < digits.length; i++) s += Number(digits[i]) * (i + 1);
   return s;
 }
-const W9 = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-// Otsar Hachayal (14) / International stage-C: branch-dependent remainders.
-function otsarCheck(acc: string, br: string): AccountCheckResult {
-  const rem = wsum(acc.padStart(6, '0') + br, W9) % 11;
-  const brNum = Number(br);
-  let allowed = [0];
-  if ([347, 365, 384, 385].includes(brNum)) allowed = [0, 2];
-  else if ([361, 362, 363].includes(brNum)) allowed = [0, 2, 4];
-  return allowed.includes(rem) ? 'valid' : 'bad-check';
+// The official spec lists accounts check-digit-first (units first); real stored
+// accounts are units-last. So we test BOTH orientations and accept if either passes.
+function modOk(acc: string, branch: string, opts: { branch: boolean; pad: number; allowed: number[] }): boolean {
+  for (const a of [acc, acc.split('').reverse().join('')]) {
+    const ap = opts.pad ? a.padStart(opts.pad, '0') : a;
+    if (opts.allowed.includes(wsumLTR(opts.branch ? ap + branch : ap) % 11)) return true;
+  }
+  return false;
 }
 
 export function validateBankAccountFull(
@@ -110,47 +107,31 @@ export function validateBankAccountFull(
 
   const acc = String(account).replace(/\D/g, '');
   let br = String(branch).replace(/\D/g, '').padStart(3, '0');
+  const ok = (o: { branch: boolean; pad: number; allowed: number[] }): AccountCheckResult =>
+    modOk(acc, br, o) ? 'valid' : 'bad-check';
 
-  // Hapoalim (12): account(pad6) + branch(3), weights 1..9, remainder ∈ {0,2,4,6}
-  if (bank === 12) {
-    return [0, 2, 4, 6].includes(wsum(acc.padStart(6, '0') + br, W9) % 11) ? 'valid' : 'bad-check';
-  }
-  // Yahav (4): account(pad6) + branch(3), weights 1..9, remainder ∈ {0,2}
-  if (bank === 4) {
-    return [0, 2].includes(wsum(acc.padStart(6, '0') + br, W9) % 11) ? 'valid' : 'bad-check';
-  }
-  // Discount group (11 Discount, 17 Mercantile): account only (pad9), remainder ∈ {0,2,4}
-  if (bank === 11 || bank === 17) {
-    return [0, 2, 4].includes(wsum(acc.padStart(9, '0'), W9) % 11) ? 'valid' : 'bad-check';
-  }
-  // Mizrahi-Tefahot (20) + Igud (13, merged): branches 401-799 subtract 400; remainder ∈ {0,2,4}
-  if (bank === 20 || bank === 13) {
+  if (bank === 12) return ok({ branch: true, pad: 6, allowed: [0, 2, 4, 6] });      // Hapoalim
+  if (bank === 4) return ok({ branch: true, pad: 6, allowed: [0, 2] });             // Yahav
+  if (bank === 11 || bank === 17) return ok({ branch: false, pad: 9, allowed: [0, 2, 4] }); // Discount / Mercantile
+  if (bank === 20 || bank === 13) {                                                 // Mizrahi-Tefahot / Igud
     const n = Number(br);
     if (n >= 401 && n <= 799) br = String(n - 400).padStart(3, '0');
-    return [0, 2, 4].includes(wsum(acc.padStart(6, '0') + br, W9) % 11) ? 'valid' : 'bad-check';
+    return ok({ branch: true, pad: 6, allowed: [0, 2, 4] });
   }
-  // International group — First International (31) + PAGI (52): account only, remainder ∈ {0,6}.
-  // Stage B: retry on the 6 rightmost digits. Bank 31 has a further Otsar-style stage.
-  if (bank === 31 || bank === 52) {
-    const ok = (d: string) => [0, 6].includes(wsum(d, W9) % 11);
-    if (ok(acc.padStart(9, '0')) || ok(acc.slice(-6))) return 'valid';
-    return bank === 31 ? otsarCheck(acc, br) : 'bad-check';
+  if (bank === 31 || bank === 52) return ok({ branch: false, pad: 0, allowed: [0, 6] }); // International / PAGI
+  if (bank === 14) {                                                                // Otsar Hachayal
+    const n = Number(br);
+    const allowed = [347, 365, 384, 385].includes(n) ? [0, 2] : [361, 362, 363].includes(n) ? [0, 2, 4] : [0];
+    return ok({ branch: true, pad: 6, allowed });
   }
-  // Otsar Hachayal (14): branch-dependent remainders.
-  if (bank === 14) return otsarCheck(acc, br);
-  // Massad (46): remainder {0}; listed branches also allow {2}.
-  if (bank === 46) {
+  if (bank === 46) {                                                                // Massad
     const relaxed = new Set([154, 166, 178, 181, 183, 191, 192, 503, 505, 507, 515, 516, 527, 539]);
-    const allowed = relaxed.has(Number(br)) ? [0, 2] : [0];
-    return allowed.includes(wsum(acc.padStart(6, '0') + br, W9) % 11) ? 'valid' : 'bad-check';
+    return ok({ branch: true, pad: 6, allowed: relaxed.has(Number(br)) ? [0, 2] : [0] });
   }
-  // Postal bank (9): account only, weights 1..9, mod 10 == 0
-  if (bank === 9) {
-    return wsum(acc.padStart(9, '0'), W9) % 10 === 0 ? 'valid' : 'bad-check';
-  }
-  // Nima Shefa (21): 8-digit account, weights 1..8, remainder ∈ {0,2}
-  if (bank === 21) {
-    return [0, 2].includes(wsum(acc.padStart(8, '0'), [1, 2, 3, 4, 5, 6, 7, 8]) % 11) ? 'valid' : 'bad-check';
+  if (bank === 21) return ok({ branch: false, pad: 8, allowed: [0, 2] });           // Nima Shefa
+  if (bank === 9) {                                                                 // Postal bank — mod 10
+    for (const a of [acc, acc.split('').reverse().join('')]) if (wsumLTR(a.padStart(9, '0')) % 10 === 0) return 'valid';
+    return 'bad-check';
   }
 
   // Leumi (10, 34 — complex 5-type algorithm), Jerusalem (54 — no rule), HSBC (23),
