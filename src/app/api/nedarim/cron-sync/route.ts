@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
     ['/api/nedarim/sync-transactions', '{}'],
     ['/api/nedarim/process-queue', '{}'],
     ['/api/nedarim/charge-onetime', '{"due":true}'],
+    ['/api/nedarim/restore-hk-overrides', '{}'],
   ];
   for (const [path, body] of jobs) {
     try {

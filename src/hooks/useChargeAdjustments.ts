@@ -198,7 +198,7 @@ export function useChargeAdjustments() {
     target_value: string;
     reason?: string;
     skip_exempt?: boolean;
-  }): Promise<{ ok: boolean; count: number; error?: string }> => {
+  }): Promise<{ ok: boolean; count: number; error?: string; credit?: { applied: number; skipped: number; failed: number; skippedNames: string[] } }> => {
     const skipExempt = params.skip_exempt !== false;
 
     // Resolve matching active students by the chosen target.
@@ -273,7 +273,24 @@ export function useChargeAdjustments() {
       const { error } = await supabase.from('charge_adjustments').insert(rows.slice(i, i + 200));
       if (error) return { ok: false, count: 0, error: error.message };
     }
-    return { ok: true, count: targets.length };
+
+    // For an OVERRIDE, temporarily change credit students' Nedarim HK to the month's
+    // amount (restored after the charge day by the daily cron). Bank is handled by MASAV.
+    let credit: { applied: number; skipped: number; failed: number; skippedNames: string[] } | undefined;
+    if (params.action_kind === 'override') {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch('/api/nedarim/apply-hk-override', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+          body: JSON.stringify({ group_action_id: ga.id }),
+        });
+        const j = await res.json();
+        if (j.ok) credit = { applied: j.applied, skipped: j.skipped, failed: j.failed, skippedNames: j.skippedNames || [] };
+      } catch { /* non-fatal — adjustments are saved regardless */ }
+    }
+
+    return { ok: true, count: targets.length, credit };
   };
 
   // --- Onboarding (REQ5): define how an undefined student pays ---------------

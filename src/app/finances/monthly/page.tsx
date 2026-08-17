@@ -144,6 +144,7 @@ export default function MonthlyCollectionPage() {
     <PageGuard requires="write">
       <LeaversReminder />
       <Header title="הרצת גבייה חודשית" subtitle="בסיס ± שינויים = סכום סופי לכל תלמיד" />
+      <PendingHkRestoreBanner />
       <div className="p-4 md:p-8 space-y-5">
         {/* Controls */}
         <div className="flex flex-wrap items-end gap-3">
@@ -275,11 +276,42 @@ export default function MonthlyCollectionPage() {
           onSave={async (p) => {
             const res = await createGroupAction({ month, ...p });
             if (!res.ok) { alert(res.error || 'שגיאה'); return; }
-            alert(`בוצע ל-${res.count} תלמידים`);
+            let msg = `בוצע ל-${res.count} תלמידים`;
+            if (res.credit) {
+              msg += `\n\nאשראי (נדרים):\n• ${res.credit.applied} הו״ק שונו זמנית (יוחזרו אוטומטית אחרי החיוב)`;
+              if (res.credit.skipped) msg += `\n• ${res.credit.skipped} דולגו (הו״ק משותפת) — לטיפול ידני: ${res.credit.skippedNames.join(', ')}`;
+              if (res.credit.failed) msg += `\n• ${res.credit.failed} נכשלו`;
+            }
+            alert(msg);
             setGroupOpen(false); reload();
           }} />
       )}
     </PageGuard>
+  );
+}
+
+// Safety net: credit HKs temporarily changed by a group override, awaiting restore.
+function PendingHkRestoreBanner() {
+  const [rows, setRows] = useState<{ id: string; amount: number; base: number; name: string }[]>([]);
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('charge_adjustments')
+        .select('id, amount, hk_base_amount, students!inner(first_name,last_name)')
+        .not('hk_override_applied_at', 'is', null)
+        .is('hk_override_restored_at', null);
+      setRows((data || []).map((r: any) => ({
+        id: r.id, amount: Number(r.amount), base: Number(r.hk_base_amount),
+        name: `${r.students.last_name} ${r.students.first_name}`,
+      })));
+    })();
+  }, []);
+  if (rows.length === 0) return null;
+  return (
+    <div className="mx-4 md:mx-8 mt-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-3 text-sm">
+      🔄 <b>{rows.length}</b> הו״ק אשראי שונו זמנית וממתינות להחזרה לסכום הקבוע (אוטומטית אחרי יום החיוב):
+      <span className="text-amber-700"> {rows.slice(0, 8).map((r) => `${r.name} (${ils(r.amount)}→${ils(r.base)})`).join(' · ')}{rows.length > 8 ? ' …' : ''}</span>
+    </div>
   );
 }
 
