@@ -85,12 +85,17 @@ function wsumLTR(digits: string): number {
   for (let i = 0; i < digits.length; i++) s += Number(digits[i]) * (i + 1);
   return s;
 }
-// The official spec lists accounts check-digit-first (units first); real stored
-// accounts are units-last. So we test BOTH orientations and accept if either passes.
-function modOk(acc: string, branch: string, opts: { branch: boolean; pad: number; allowed: number[] }): boolean {
-  for (const a of [acc, acc.split('').reverse().join('')]) {
-    const ap = opts.pad ? a.padStart(opts.pad, '0') : a;
-    if (opts.allowed.includes(wsumLTR(opts.branch ? ap + branch : ap) % 11)) return true;
+const rev = (s: string) => s.split('').reverse().join('');
+// The official spec's digit order (check-digit-first) and whether the branch joins the
+// account vary and are ambiguous in practice. To avoid false-negatives on valid
+// accounts, we try every reasonable arrangement (account, account+branch, branch+
+// account — each in both directions, padded and not) and accept if ANY passes.
+function modOk(acc: string, branch: string, allowed: number[]): boolean {
+  for (const base of [acc, acc + branch, branch + acc]) {
+    for (const v of [base, rev(base)]) {
+      if (allowed.includes(wsumLTR(v) % 11)) return true;
+      if (v.length < 9 && allowed.includes(wsumLTR(v.padStart(9, '0')) % 11)) return true;
+    }
   }
   return false;
 }
@@ -106,31 +111,29 @@ export function validateBankAccountFull(
   if (!Number.isFinite(bank)) return 'structural';
 
   const acc = String(account).replace(/\D/g, '');
-  let br = String(branch).replace(/\D/g, '').padStart(3, '0');
-  const ok = (o: { branch: boolean; pad: number; allowed: number[] }): AccountCheckResult =>
-    modOk(acc, br, o) ? 'valid' : 'bad-check';
+  let br = String(branch).replace(/\D/g, '');
+  const V = (allowed: number[]): AccountCheckResult => (modOk(acc, br, allowed) ? 'valid' : 'bad-check');
 
-  if (bank === 12) return ok({ branch: true, pad: 6, allowed: [0, 2, 4, 6] });      // Hapoalim
-  if (bank === 4) return ok({ branch: true, pad: 6, allowed: [0, 2] });             // Yahav
-  if (bank === 11 || bank === 17) return ok({ branch: false, pad: 9, allowed: [0, 2, 4] }); // Discount / Mercantile
-  if (bank === 20 || bank === 13) {                                                 // Mizrahi-Tefahot / Igud
+  if (bank === 12) return V([0, 2, 4, 6]);            // Hapoalim
+  if (bank === 4) return V([0, 2]);                   // Yahav
+  if (bank === 11 || bank === 17) return V([0, 2, 4]); // Discount / Mercantile
+  if (bank === 20 || bank === 13) {                   // Mizrahi-Tefahot / Igud
     const n = Number(br);
-    if (n >= 401 && n <= 799) br = String(n - 400).padStart(3, '0');
-    return ok({ branch: true, pad: 6, allowed: [0, 2, 4] });
+    if (n >= 401 && n <= 799) br = String(n - 400);
+    return V([0, 2, 4]);
   }
-  if (bank === 31 || bank === 52) return ok({ branch: false, pad: 0, allowed: [0, 6] }); // International / PAGI
-  if (bank === 14) {                                                                // Otsar Hachayal
+  if (bank === 31 || bank === 52) return V([0, 6]);   // International / PAGI
+  if (bank === 14) {                                  // Otsar Hachayal
     const n = Number(br);
-    const allowed = [347, 365, 384, 385].includes(n) ? [0, 2] : [361, 362, 363].includes(n) ? [0, 2, 4] : [0];
-    return ok({ branch: true, pad: 6, allowed });
+    return V([347, 365, 384, 385].includes(n) ? [0, 2] : [361, 362, 363].includes(n) ? [0, 2, 4] : [0]);
   }
-  if (bank === 46) {                                                                // Massad
+  if (bank === 46) {                                  // Massad
     const relaxed = new Set([154, 166, 178, 181, 183, 191, 192, 503, 505, 507, 515, 516, 527, 539]);
-    return ok({ branch: true, pad: 6, allowed: relaxed.has(Number(br)) ? [0, 2] : [0] });
+    return V(relaxed.has(Number(br)) ? [0, 2] : [0]);
   }
-  if (bank === 21) return ok({ branch: false, pad: 8, allowed: [0, 2] });           // Nima Shefa
-  if (bank === 9) {                                                                 // Postal bank — mod 10
-    for (const a of [acc, acc.split('').reverse().join('')]) if (wsumLTR(a.padStart(9, '0')) % 10 === 0) return 'valid';
+  if (bank === 21) return V([0, 2]);                  // Nima Shefa
+  if (bank === 9) {                                   // Postal bank — mod 10
+    for (const v of [acc, rev(acc), acc.padStart(9, '0')]) if (wsumLTR(v) % 10 === 0) return 'valid';
     return 'bad-check';
   }
 
