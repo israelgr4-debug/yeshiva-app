@@ -24,7 +24,7 @@ function NewHkInner() {
   const [student, setStudent] = useState<StudentLite | null>(null);
   const [family, setFamily] = useState<FamilyLite | null>(null);
   const [amount, setAmount] = useState(params.get('amount') || '');
-  const [day, setDay] = useState('10');
+  const [day, setDay] = useState('20');
   const [zeout, setZeout] = useState('');
   const [familyId, setFamilyId] = useState<string | null>(null);
   const [status, setStatus] = useState('');

@@ -13,6 +13,7 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { useChargeAdjustments, MonthlyRow, PayMethod } from '@/hooks/useChargeAdjustments';
 import { ChargeAdjustment } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
+import { validateBankAccountFull } from '@/lib/israeli-validators';
 
 const METHOD_LABELS: Record<PayMethod, string> = {
   bank_ho: 'הו"ק בנק',
@@ -442,6 +443,13 @@ function SetupDialog({ row, onClose, onSaved }: { row: MonthlyRow; onClose: () =
                 <Input label="סניף" value={bank.bank_branch} onChange={(e) => setBank((b) => ({ ...b, bank_branch: e.target.value }))} />
                 <Input label="חשבון" value={bank.bank_account} onChange={(e) => setBank((b) => ({ ...b, bank_account: e.target.value }))} />
               </div>
+              {bank.bank_number && bank.bank_branch && bank.bank_account && (() => {
+                const r = validateBankAccountFull(bank.bank_number, bank.bank_branch, bank.bank_account);
+                if (r === 'valid') return <div className="text-sm text-green-700 bg-green-50 rounded-lg px-3 py-1.5">✓ חשבון תקין</div>;
+                if (r === 'bad-check') return <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-1.5 font-medium">❌ מספר החשבון שגוי (ספרת ביקורת לא תואמת) — בדוק שוב</div>;
+                if (r === 'invalid') return <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-1.5 font-medium">❌ מבנה חשבון לא תקין (ספרות בלבד)</div>;
+                return <div className="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-1.5">מבנה תקין (ספרת ביקורת לא נבדקה לבנק זה)</div>;
+              })()}
               <Input label="יום חיוב" type="number" value={bankDay} onChange={(e) => setBankDay(e.target.value)} />
               <div className="text-xs text-slate-500">ההו״ק תיכלל אוטומטית בקובץ המס״ב החודשי — אין צורך באישור נפרד.</div>
             </div>
