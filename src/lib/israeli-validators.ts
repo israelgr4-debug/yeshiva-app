@@ -87,15 +87,21 @@ function wsumLTR(digits: string): number {
   return s;
 }
 const rev = (s: string) => s.split('').reverse().join('');
-// The official spec's digit order (check-digit-first) and whether the branch joins the
-// account vary and are ambiguous in practice. To avoid false-negatives on valid
-// accounts, we try every reasonable arrangement (account, account+branch, branch+
-// account — each in both directions, padded and not) and accept if ANY passes.
+// The official spec is ambiguous in practice on three axes: digit order (accounts are
+// listed check-digit-first but stored units-last), leading-zero padding to the bank's
+// fixed account length, and whether/where the branch joins the account. Rather than
+// guess per bank, we try every reasonable arrangement — the account in both directions,
+// zero-padded to each common length, combined with the branch (in either order/
+// direction or not at all) — and accept if ANY hits the bank's allowed remainders.
 function modOk(acc: string, branch: string, allowed: number[]): boolean {
-  for (const base of [acc, acc + branch, branch + acc]) {
-    for (const v of [base, rev(base)]) {
-      if (allowed.includes(wsumLTR(v) % 11)) return true;
-      if (v.length < 9 && allowed.includes(wsumLTR(v.padStart(9, '0')) % 11)) return true;
+  const brRev = rev(branch);
+  const accForms = new Set<string>();
+  for (const a of [acc, rev(acc)]) {
+    for (const len of [0, 6, 8, 9]) accForms.add(len ? a.padStart(len, '0') : a);
+  }
+  for (const a of accForms) {
+    for (const combined of [a, a + branch, branch + a, a + brRev, brRev + a]) {
+      if (allowed.includes(wsumLTR(combined) % 11)) return true;
     }
   }
   return false;
