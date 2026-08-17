@@ -486,7 +486,7 @@ function SetupDialog({ row, onClose, onSaved }: { row: MonthlyRow; onClose: () =
               {bank.bank_number && bank.bank_branch && bank.bank_account && (() => {
                 const r = validateBankAccountFull(bank.bank_number, bank.bank_branch, bank.bank_account);
                 if (r === 'valid') return <div className="text-sm text-green-700 bg-green-50 rounded-lg px-3 py-1.5 font-medium">✓ חשבון תקין</div>;
-                if (r === 'invalid') return <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-1.5 font-medium">❌ מבנה חשבון לא תקין (ספרות בלבד, 4–9 ספרות)</div>;
+                if (r === 'invalid') return <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-1.5 font-medium">❌ מבנה חשבון לא תקין (ספרות בלבד)</div>;
                 if (r === 'bad-check') return <div className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-1.5">⚠ לא עבר ספרת ביקורת — כדאי לוודא מול ההורה (ייתכן שתקין)</div>;
                 return <div className="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-1.5">מבנה תקין</div>;
               })()}

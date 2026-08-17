@@ -45,8 +45,9 @@ export function isValidIsraeliId(id: string | null | undefined): boolean {
  */
 export function isValidBankAccount(account: string | null | undefined): boolean {
   if (!account) return false;
-  const digits = String(account).replace(/\D/g, '');
-  return digits.length >= 4 && digits.length <= 9;
+  // Ignore leading zeros (accounts are often stored zero-padded, e.g. "0088309500").
+  const digits = String(account).replace(/\D/g, '').replace(/^0+/, '');
+  return digits.length >= 1 && digits.length <= 9;
 }
 
 /**
@@ -110,7 +111,7 @@ export function validateBankAccountFull(
   const bank = Number(bankCode);
   if (!Number.isFinite(bank)) return 'structural';
 
-  const acc = String(account).replace(/\D/g, '');
+  const acc = String(account).replace(/\D/g, '').replace(/^0+/, '') || '0';
   let br = String(branch).replace(/\D/g, '');
   const V = (allowed: number[]): AccountCheckResult => (modOk(acc, br, allowed) ? 'valid' : 'bad-check');
 
