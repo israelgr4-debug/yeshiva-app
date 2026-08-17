@@ -95,9 +95,15 @@ const rev = (s: string) => s.split('').reverse().join('');
 // direction or not at all) — and accept if ANY hits the bank's allowed remainders.
 function modOk(acc: string, branch: string, allowed: number[]): boolean {
   const brRev = rev(branch);
+  // Some banks prefix an account-TYPE (e.g. Massad "105"-052129); for long accounts
+  // also try dropping 2–3 leading type digits.
+  const accBases = new Set<string>([acc]);
+  if (acc.length >= 8) { accBases.add(acc.slice(2)); accBases.add(acc.slice(3)); }
   const accForms = new Set<string>();
-  for (const a of [acc, rev(acc)]) {
-    for (const len of [0, 6, 8, 9]) accForms.add(len ? a.padStart(len, '0') : a);
+  for (const base of accBases) {
+    for (const a of [base, rev(base)]) {
+      for (const len of [0, 6, 8, 9]) accForms.add(len ? a.padStart(len, '0') : a);
+    }
   }
   for (const a of accForms) {
     for (const combined of [a, a + branch, branch + a, a + brRev, brRev + a]) {
