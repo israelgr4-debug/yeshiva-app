@@ -278,6 +278,13 @@ export interface ChargeAdjustment {
   nedarim_transaction_id: string | null;
   nedarim_error: string | null;
   status: 'active' | 'cancelled';
+  // Freeze (הקפאה): a freeze is N override-0 rows sharing freeze_group, tagged is_freeze.
+  is_freeze?: boolean;
+  freeze_group?: string | null;
+  hk_suspended_at?: string | null;
+  hk_resume_scheduled_for?: string | null;
+  hk_resume_queue_id?: string | null;
+  hk_error?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

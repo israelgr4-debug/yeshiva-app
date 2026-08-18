@@ -54,7 +54,7 @@ function monthOptions(): { value: string; label: string }[] {
 }
 
 export default function MonthlyCollectionPage() {
-  const { loadMonth, addAdjustment, cancelAdjustment, createGroupAction } = useChargeAdjustments();
+  const { loadMonth, addAdjustment, cancelAdjustment, createFreeze, cancelFreeze, createGroupAction } = useChargeAdjustments();
   const [month, setMonth] = useState(currentMonth());
   const [rows, setRows] = useState<MonthlyRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,7 +228,17 @@ export default function MonthlyCollectionPage() {
                       <td className="px-3 py-2 text-slate-700">{ils(r.base)}</td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-1">
-                          {r.adjustments.filter((a) => a.status === 'active').map((a) => (
+                          {r.adjustments.filter((a) => a.status === 'active').map((a) => a.is_freeze ? (
+                            <span key={a.id}
+                              className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-sky-100 text-sky-800"
+                              title={a.hk_resume_scheduled_for ? `יתחדש ב-${a.hk_resume_scheduled_for.slice(0, 7)}${a.hk_error ? ' · ' + a.hk_error : ''}` : (a.reason || 'הקפאה')}>
+                              ❄️ מוקפא{a.hk_error ? ' ⚠' : ''}
+                              <button onClick={async () => {
+                                if (!confirm('לבטל את ההקפאה של תלמיד זה (כל החודשים)?' + (r.method === 'credit_nedarim' ? '\n\nהו״ק האשראי תחודש מיד בנדרים.' : ''))) return;
+                                await cancelFreeze(a.freeze_group as string, r.method); reload();
+                              }} className="opacity-50 hover:opacity-100" aria-label="בטל הקפאה">×</button>
+                            </span>
+                          ) : (
                             <span key={a.id}
                               className={`group inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${a.kind === 'override' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}
                               title={a.reason || ''}>
@@ -273,6 +283,23 @@ export default function MonthlyCollectionPage() {
         <AdjustmentDialog row={adjFor} month={month} onClose={() => setAdjFor(null)}
           onSave={async (kind, amount, reason) => {
             await addAdjustment({ student_id: adjFor.student_id, month, kind, amount, reason, dispatch_method: adjFor.method });
+            setAdjFor(null); reload();
+          }}
+          onFreeze={async (months, reason) => {
+            const res = await createFreeze({ student_id: adjFor.student_id, start_month: month, months, reason, dispatch_method: adjFor.method });
+            if (!res.ok) { alert(res.error || 'שגיאה בהקפאה'); return; }
+            if (res.credit) {
+              const c = res.credit;
+              if (c.suspended) {
+                let m = `❄️ ההקפאה בוצעה. הו״ק האשראי הושהתה בנדרים ותתחדש אוטומטית ב-${c.resume_date ? c.resume_date.slice(0, 7) : ''}.`;
+                if (c.already_charged) m += `\n\n⚠️ ייתכן שחיוב החודש הנוכחי כבר בוצע (יום החיוב עבר). בדוק בנדרים אם צריך זיכוי.`;
+                alert(m);
+              } else if (c.shared) {
+                alert('❄️ ההקפאה נרשמה, אך ההו״ק משותפת (אחים) ולא הושהתה אוטומטית.\nהשהה אותה ידנית בנדרים כדי לא לחייב את התלמיד.');
+              } else if (c.error) {
+                alert('❄️ ההקפאה נרשמה, אך השהיית ההו״ק בנדרים נכשלה:\n' + c.error + '\n\nהשהה ידנית בנדרים.');
+              }
+            }
             setAdjFor(null); reload();
           }} />
       )}
@@ -375,30 +402,74 @@ function Th({ children, onClick, active, asc }: { children: React.ReactNode; onC
   );
 }
 
-function AdjustmentDialog({ row, month, onClose, onSave }: {
+// 'YYYY-MM' + k → 'MM/YYYY' label
+function monthLabel(ym: string, k = 0): string {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, (m - 1) + k, 1);
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function AdjustmentDialog({ row, month, onClose, onSave, onFreeze }: {
   row: MonthlyRow; month: string; onClose: () => void;
   onSave: (kind: 'addition' | 'override', amount: number, reason: string) => void;
+  onFreeze: (months: number, reason: string) => void;
 }) {
-  const [kind, setKind] = useState<'addition' | 'override'>('addition');
+  const [kind, setKind] = useState<'addition' | 'override' | 'freeze'>('addition');
   const [amount, setAmount] = useState('');
+  const [months, setMonths] = useState('1');
   const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
   const amt = Number(amount);
+  const nMonths = Math.max(1, Math.floor(Number(months) || 0));
   const preview = kind === 'override' ? amt : row.base + amt;
+  const isCredit = row.method === 'credit_nedarim';
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      if (kind === 'freeze') await onFreeze(nMonths, reason);
+      else await onSave(kind, amt, reason);
+    } finally { setBusy(false); }
+  };
+
   return (
     <Modal isOpen onClose={onClose} title={`שינוי חודשי · ${row.last_name} ${row.first_name}`}>
       <div className="space-y-4">
         <div className="text-sm text-slate-500">חודש {month} · אופן {METHOD_LABELS[row.method]} · בסיס {ils(row.base)}</div>
         <Select label="סוג" value={kind} onChange={(e) => setKind(e.target.value as any)}
-          options={[{ value: 'addition', label: 'תוספת / הנחה (מתווסף לבסיס)' }, { value: 'override', label: 'סכום מוחלט לחודש זה (דורס את הבסיס)' }]} />
-        <Input label={kind === 'addition' ? 'סכום (חיובי=תוספת, שלילי=הנחה)' : 'סכום מוחלט לחודש'} type="number"
-          value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
-        <Input label="הערה (למה?)" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="לדוגמה: טיול, הנחה חד-פעמית" />
-        {amount !== '' && !isNaN(amt) && (
-          <div className="text-sm bg-slate-50 rounded-xl p-3">סופי לחודש זה: <b>{ils(preview)}</b></div>
+          options={[
+            { value: 'addition', label: 'תוספת / הנחה (מתווסף לבסיס)' },
+            { value: 'override', label: 'סכום מוחלט לחודש זה (דורס את הבסיס)' },
+            { value: 'freeze', label: '❄️ הקפאה (לא לחייב) לכמה חודשים' },
+          ]} />
+
+        {kind === 'freeze' ? (
+          <>
+            <Input label="מספר חודשים להקפאה" type="number" min="1" value={months}
+              onChange={(e) => setMonths(e.target.value)} placeholder="1" />
+            <Input label="הערה (למה?)" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="לדוגמה: בחו״ל, הפסקה זמנית" />
+            <div className="text-sm bg-sky-50 border border-sky-200 rounded-xl p-3 space-y-1 text-sky-900">
+              <div>יוקפא מ-<b>{monthLabel(month)}</b> עד <b>{monthLabel(month, nMonths - 1)}</b> ({nMonths} חודשים) · <b>₪0</b> לכל חודש.</div>
+              <div className="text-sky-700">החיוב יחזור אוטומטית מ-<b>{monthLabel(month, nMonths)}</b>.</div>
+              {isCredit && <div className="text-xs text-purple-700 pt-1">💳 אשראי: הו״ק בנדרים תושהה עכשיו ותתחדש אוטומטית בסוף ההקפאה (הו״ק משותפת לאחים — טיפול ידני).</div>}
+            </div>
+          </>
+        ) : (
+          <>
+            <Input label={kind === 'addition' ? 'סכום (חיובי=תוספת, שלילי=הנחה)' : 'סכום מוחלט לחודש'} type="number"
+              value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+            <Input label="הערה (למה?)" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="לדוגמה: טיול, הנחה חד-פעמית" />
+            {amount !== '' && !isNaN(amt) && (
+              <div className="text-sm bg-slate-50 rounded-xl p-3">סופי לחודש זה: <b>{ils(preview)}</b></div>
+            )}
+          </>
         )}
+
         <div className="flex gap-2 justify-end pt-1">
           <Button variant="secondary" onClick={onClose}>ביטול</Button>
-          <Button variant="primary" disabled={amount === '' || isNaN(amt)} onClick={() => onSave(kind, amt, reason)}>שמור</Button>
+          <Button variant="primary"
+            disabled={busy || (kind === 'freeze' ? nMonths < 1 : amount === '' || isNaN(amt))}
+            onClick={submit}>{busy ? 'שומר…' : kind === 'freeze' ? 'הקפא' : 'שמור'}</Button>
         </div>
       </div>
     </Modal>

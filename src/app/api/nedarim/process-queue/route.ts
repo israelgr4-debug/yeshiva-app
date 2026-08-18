@@ -33,10 +33,14 @@ export async function POST(_req: NextRequest) {
     errors: [] as string[],
   };
 
+  // Run items that are pending AND due: no scheduled date (asap) or the date arrived.
+  // (Scheduled resumes come from freezes — /api/nedarim/freeze-hk.)
+  const today = new Date().toISOString().slice(0, 10);
   const { data: queue } = await db
     .from('nedarim_action_queue')
     .select('*')
     .eq('status', 'pending')
+    .or(`scheduled_for.is.null,scheduled_for.lte.${today}`)
     .order('created_at', { ascending: true })
     .limit(50);
 
@@ -73,6 +77,15 @@ export async function POST(_req: NextRequest) {
       if (!success) {
         const msg = res?.Message || res?.raw || 'unknown response';
         throw new Error(`Nedarim refused: ${msg}`);
+      }
+
+      // Keep our subscription mirror in sync with the action we just took
+      // (e.g. a scheduled resume ending a freeze re-activates the HK).
+      if (item.subscription_id && (item.action === 'suspend' || item.action === 'resume')) {
+        await db
+          .from('nedarim_subscriptions')
+          .update({ status: item.action === 'resume' ? 'active' : 'frozen' })
+          .eq('id', item.subscription_id);
       }
 
       await db

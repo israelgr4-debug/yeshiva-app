@@ -43,6 +43,13 @@ interface TuitionLite {
   active: boolean;
 }
 
+// 'YYYY-MM' + k months → 'YYYY-MM'
+function addMonths(ym: string, k: number): string {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, (m - 1) + k, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function computeRow(base: MonthlyRow): MonthlyRow {
   const active = base.adjustments.filter((a) => a.status === 'active');
   const override = active.find((a) => a.kind === 'override');
@@ -204,6 +211,100 @@ export function useChargeAdjustments() {
     return true;
   };
 
+  // --- Freeze (הקפאה): stop charging a single student for X consecutive months ---
+  // Modelled as N override-0 rows (one per month) sharing a freeze_group. For a
+  // credit (Nedarim) student we also suspend the HK now and schedule a resume
+  // (handled by /api/nedarim/freeze-hk). Returns credit outcome for the UI.
+  const createFreeze = async (params: {
+    student_id: string;
+    start_month: string;   // 'YYYY-MM' — first frozen month
+    months: number;        // how many consecutive months
+    reason?: string;
+    dispatch_method?: PayMethod;
+  }): Promise<{
+    ok: boolean;
+    error?: string;
+    freeze_group?: string;
+    credit?: { suspended: boolean; shared: boolean; resume_date?: string; already_charged?: boolean; error?: string };
+  }> => {
+    const n = Math.max(1, Math.floor(params.months));
+    let method = params.dispatch_method;
+    if (!method) {
+      const { data } = await supabase
+        .from('student_tuition').select('payment_method')
+        .eq('student_id', params.student_id).maybeSingle();
+      method = (data?.payment_method as PayMethod) ?? undefined;
+    }
+
+    const months = Array.from({ length: n }, (_, k) => addMonths(params.start_month, k));
+    const freezeGroup = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID() : `${params.student_id}-${params.start_month}-${n}`;
+
+    // A freeze replaces any existing active override in each frozen month.
+    await supabase
+      .from('charge_adjustments')
+      .update({ status: 'cancelled' })
+      .eq('student_id', params.student_id)
+      .in('month', months)
+      .eq('kind', 'override')
+      .eq('status', 'active');
+
+    const rows = months.map((m) => ({
+      student_id: params.student_id,
+      month: m,
+      kind: 'override' as const,
+      amount: 0,
+      reason: params.reason || 'הקפאה',
+      source: 'manual' as const,
+      dispatch_method: method || null,
+      is_freeze: true,
+      freeze_group: freezeGroup,
+    }));
+    const { error } = await supabase.from('charge_adjustments').insert(rows);
+    if (error) { console.error('createFreeze failed:', error.message); return { ok: false, error: error.message }; }
+
+    // Credit students: suspend the HK now + schedule the resume.
+    let credit: { suspended: boolean; shared: boolean; resume_date?: string; already_charged?: boolean; error?: string } | undefined;
+    if (method === 'credit_nedarim') {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch('/api/nedarim/freeze-hk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+          body: JSON.stringify({ op: 'apply', freeze_group: freezeGroup }),
+        });
+        const j = await res.json();
+        if (j.ok) credit = { suspended: !!j.suspended, shared: !!j.shared, resume_date: j.resume_date, already_charged: !!j.already_charged, error: j.error };
+        else credit = { suspended: false, shared: false, error: j.error || 'שגיאה בהשהיית ההו״ק' };
+      } catch (e: any) {
+        credit = { suspended: false, shared: false, error: e?.message || 'שגיאת תקשורת מול נדרים' };
+      }
+    }
+    return { ok: true, freeze_group: freezeGroup, credit };
+  };
+
+  // Cancel an entire freeze (all its months). For credit, resume the HK now and
+  // drop the scheduled resume (handled server-side).
+  const cancelFreeze = async (freezeGroup: string, method?: PayMethod): Promise<boolean> => {
+    if (method === 'credit_nedarim') {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        await fetch('/api/nedarim/freeze-hk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+          body: JSON.stringify({ op: 'cancel', freeze_group: freezeGroup }),
+        });
+      } catch { /* still cancel the DB rows below */ }
+    }
+    const { error } = await supabase
+      .from('charge_adjustments')
+      .update({ status: 'cancelled' })
+      .eq('freeze_group', freezeGroup)
+      .eq('status', 'active');
+    if (error) { console.error('cancelFreeze failed:', error.message); return false; }
+    return true;
+  };
+
   // REQ8/REQ9: a group action that fans out into per-student adjustments,
   // skipping exempt/none students. Returns number of students affected.
   const createGroupAction = async (params: {
@@ -358,5 +459,5 @@ export function useChargeAdjustments() {
     return true;
   };
 
-  return { loadMonth, addAdjustment, cancelAdjustment, createGroupAction, getFamilyPaymentContext, saveTuitionSetup, saveFamilyBank };
+  return { loadMonth, addAdjustment, cancelAdjustment, createFreeze, cancelFreeze, createGroupAction, getFamilyPaymentContext, saveTuitionSetup, saveFamilyBank };
 }
