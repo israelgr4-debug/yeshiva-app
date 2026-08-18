@@ -104,6 +104,12 @@ export function NedarimPlusSettings() {
                 {showPassword ? 'הסתר' : 'הצג'}
               </Button>
             </div>
+            <div className="mt-2 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-xs leading-relaxed">
+              ⚠️ <b>שדה זה אינו בשימוש ע"י החיבור לנדרים.</b> המפתח האמיתי שהשרת שולח
+              (<code>ApiPassword</code>) מוגדר כמשתנה סביבה <code>NEDARIM_API_PASSWORD</code> ב-Vercel.
+              להחלפת מפתח API — עדכן אותו ב-Vercel (Settings → Environment Variables) ובצע Redeploy.
+              עדכון כאן <b>לא</b> ישפיע על הגבייה. אל תגביל את המפתח לפי כתובת IP (שרתי Vercel דינמיים).
+            </div>
           </div>
         </div>
 
