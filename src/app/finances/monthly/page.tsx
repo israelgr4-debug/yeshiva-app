@@ -146,7 +146,8 @@ export default function MonthlyCollectionPage() {
   return (
     <PageGuard requires="write">
       <LeaversReminder />
-      <Header title="הרצת גבייה חודשית" subtitle="בסיס ± שינויים = סכום סופי לכל תלמיד" />
+      <Header title="הרצת גבייה חודשית" subtitle="בסיס ± שינויים = סכום סופי לכל תלמיד"
+        action={<Link href="/finances"><Button variant="ghost">← כספים</Button></Link>} />
       <PendingHkRestoreBanner />
       <div className="p-4 md:p-8 space-y-5">
         {/* Controls */}
