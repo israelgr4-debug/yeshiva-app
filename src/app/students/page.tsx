@@ -6,6 +6,7 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { StudentTable, SortKey, SortDir } from '@/components/students/StudentTable';
+import { SendParentEmailDialog } from '@/components/email/SendParentEmailDialog';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -51,6 +52,7 @@ export default function StudentsPage() {
   const [selectedInstitution, setSelectedInstitution] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('active');
   const [onlyChinuch, setOnlyChinuch] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
 
   const [sortKey, setSortKey] = useState<SortKey>('last_name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -200,12 +202,19 @@ export default function StudentsPage() {
         subtitle="ניהול רשומות תלמידים"
         action={
           permissions.canWrite ? (
-            <Link href="/students/new">
-              <Button size="sm">＋ תלמיד חדש</Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setEmailOpen(true)}>📧 מייל להורים</Button>
+              <Link href="/students/new">
+                <Button size="sm">＋ תלמיד חדש</Button>
+              </Link>
+            </div>
           ) : undefined
         }
       />
+
+      {emailOpen && (
+        <SendParentEmailDialog students={students} families={families} onClose={() => setEmailOpen(false)} />
+      )}
 
       <div className="p-4 md:p-8 space-y-4 animate-fadeIn">
         {/* Filter card */}
