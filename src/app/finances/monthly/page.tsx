@@ -612,27 +612,49 @@ function SetupDialog({ row, onClose, onSaved }: { row: MonthlyRow; onClose: () =
 
 function GroupActionDialog({ month, shiurOptions, onClose, onSave }: {
   month: string; shiurOptions: string[]; onClose: () => void;
-  onSave: (p: { action_kind: 'addition' | 'override'; amount: number; target_type: 'shiur'; target_value: string; reason: string; skip_exempt: boolean }) => void;
+  onSave: (p: { action_kind: 'addition' | 'override'; amount: number; target_type: 'shiur'; target_value: string; reason: string; skip_exempt: boolean }) => void | Promise<void>;
 }) {
   const [shiur, setShiur] = useState(shiurOptions[0]);
   const [kind, setKind] = useState<'addition' | 'override'>('addition');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
   const amt = Number(amount);
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onSave({ action_kind: kind, amount: amt, target_type: 'shiur', target_value: shiur, reason, skip_exempt: true });
+    } finally {
+      setBusy(false); // on success the parent closes the dialog; on error we re-enable for a retry
+    }
+  };
+
   return (
-    <Modal isOpen onClose={onClose} title="פעולת קבוצה">
+    <Modal isOpen onClose={busy ? () => {} : onClose} title="פעולת קבוצה">
       <div className="space-y-4">
         <div className="text-sm text-slate-500">חודש {month} · מדלג אוטומטית על פטורים/לא מוגדרים · כל תלמיד יחויב לפי אופן התשלום שלו</div>
-        <Select label="שיעור" value={shiur} onChange={(e) => setShiur(e.target.value)} options={shiurOptions.map((s) => ({ value: s, label: s }))} />
-        <Select label="סוג" value={kind} onChange={(e) => setKind(e.target.value as any)}
+        <Select label="שיעור" value={shiur} onChange={(e) => setShiur(e.target.value)} options={shiurOptions.map((s) => ({ value: s, label: s }))} disabled={busy} />
+        <Select label="סוג" value={kind} onChange={(e) => setKind(e.target.value as any)} disabled={busy}
           options={[{ value: 'addition', label: 'תוספת לכולם (לדוגמה: טיול +300)' }, { value: 'override', label: 'סכום מוחלט לחודש זה לכולם' }]} />
-        <Input label="סכום" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
-        <Input label="הערה (למה?)" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="לדוגמה: טיול שיעור א" />
+        <Input label="סכום" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" disabled={busy} />
+        <Input label="הערה (למה?)" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="לדוגמה: טיול שיעור א" disabled={busy} />
+
+        {busy && (
+          <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-3 text-sm">
+            <span className="inline-block w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+            <span>
+              מבצע את הפעולה…
+              {kind === 'override' && <span className="block text-xs text-blue-600 mt-0.5">מעדכן גם הוראות קבע באשראי בנדרים — עשוי לקחת עד דקה-שתיים. נא לא לסגור את החלון.</span>}
+            </span>
+          </div>
+        )}
+
         <div className="flex gap-2 justify-end pt-1">
-          <Button variant="secondary" onClick={onClose}>ביטול</Button>
-          <Button variant="primary" disabled={amount === '' || isNaN(amt) || !shiur}
-            onClick={() => onSave({ action_kind: kind, amount: amt, target_type: 'shiur', target_value: shiur, reason, skip_exempt: true })}>
-            החל על הקבוצה
+          <Button variant="secondary" onClick={onClose} disabled={busy}>ביטול</Button>
+          <Button variant="primary" disabled={busy || amount === '' || isNaN(amt) || !shiur} onClick={submit}>
+            {busy ? 'מבצע…' : 'החל על הקבוצה'}
           </Button>
         </div>
       </div>
