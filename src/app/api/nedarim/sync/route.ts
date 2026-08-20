@@ -73,7 +73,7 @@ export async function POST(_req: NextRequest) {
 
       const { data: existing } = await db
         .from('nedarim_subscriptions')
-        .select('id, status, amount_per_charge')
+        .select('id, status, amount_per_charge, last_4_digits, card_tokef, next_charge_date')
         .eq('nedarim_keva_id', kevaId)
         .maybeSingle();
 
@@ -81,20 +81,20 @@ export async function POST(_req: NextRequest) {
         const { error } = await db.from('nedarim_subscriptions').insert(row);
         if (error) summary.errors.push(`credit insert ${kevaId}: ${error.message}`);
         else summary.credit_subs.inserted++;
-      } else if (
-        existing.status !== row.status ||
-        Number(existing.amount_per_charge) !== row.amount_per_charge
-      ) {
+      } else {
+        // Always refresh the full row so card changes (last-4 / expiry), amount,
+        // status, next-charge date and contact details stay in sync — NOT only when
+        // status/amount change (a card swap keeps those identical).
+        const changed =
+          existing.status !== row.status ||
+          Number(existing.amount_per_charge) !== row.amount_per_charge ||
+          (existing.last_4_digits || null) !== (row.last_4_digits || null) ||
+          (existing.card_tokef || null) !== (row.card_tokef || null) ||
+          (existing.next_charge_date || null) !== (row.next_charge_date || null);
         const { error } = await db.from('nedarim_subscriptions').update(row).eq('id', existing.id);
         if (error) summary.errors.push(`credit update ${kevaId}: ${error.message}`);
-        else summary.credit_subs.updated++;
-      } else {
-        // Still touch last_synced_at
-        await db
-          .from('nedarim_subscriptions')
-          .update({ last_synced_at: row.last_synced_at })
-          .eq('id', existing.id);
-        summary.credit_subs.unchanged++;
+        else if (changed) summary.credit_subs.updated++;
+        else summary.credit_subs.unchanged++;
       }
 
       // Collect group
@@ -160,7 +160,7 @@ export async function POST(_req: NextRequest) {
 
       const { data: existing } = await db
         .from('nedarim_subscriptions')
-        .select('id, status, amount_per_charge')
+        .select('id, status, amount_per_charge, bank_account, next_charge_date')
         .eq('nedarim_keva_id', kevaId)
         .maybeSingle();
 
@@ -168,19 +168,18 @@ export async function POST(_req: NextRequest) {
         const { error } = await db.from('nedarim_subscriptions').insert(row);
         if (error) summary.errors.push(`bank insert ${kevaId}: ${error.message}`);
         else summary.bank_subs.inserted++;
-      } else if (
-        existing.status !== row.status ||
-        Number(existing.amount_per_charge) !== row.amount_per_charge
-      ) {
+      } else {
+        // Always refresh the full row (account number / next date can change while
+        // status + amount stay identical).
+        const changed =
+          existing.status !== row.status ||
+          Number(existing.amount_per_charge) !== row.amount_per_charge ||
+          (existing.bank_account || null) !== (row.bank_account || null) ||
+          (existing.next_charge_date || null) !== (row.next_charge_date || null);
         const { error } = await db.from('nedarim_subscriptions').update(row).eq('id', existing.id);
         if (error) summary.errors.push(`bank update ${kevaId}: ${error.message}`);
-        else summary.bank_subs.updated++;
-      } else {
-        await db
-          .from('nedarim_subscriptions')
-          .update({ last_synced_at: row.last_synced_at })
-          .eq('id', existing.id);
-        summary.bank_subs.unchanged++;
+        else if (changed) summary.bank_subs.updated++;
+        else summary.bank_subs.unchanged++;
       }
 
       if (row.groupe) {
