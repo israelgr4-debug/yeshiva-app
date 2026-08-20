@@ -97,13 +97,21 @@ export function InactivePayersCard() {
         תלמידים שעזבו/לא-פעילים עם הוק פעילה (לא כולל מוקפאות). יש לבדוק אם לעצור את הגביה.
       </p>
 
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="text-sm text-amber-700 hover:text-amber-900 mt-2 underline"
-      >
-        {expanded ? '▲ הסתר פירוט' : '▼ הצג פירוט'}
-      </button>
+      <div className="flex items-center gap-3 mt-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="text-sm text-amber-700 hover:text-amber-900 underline"
+        >
+          {expanded ? '▲ הסתר פירוט' : '▼ הצג פירוט'}
+        </button>
+        <Link
+          href="/finances/inactive-payers"
+          className="text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg"
+        >
+          🛑 לטיפול והפסקת חיובים ←
+        </Link>
+      </div>
 
       {expanded && (
         <div className="mt-3 overflow-x-auto">

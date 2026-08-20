@@ -21,6 +21,7 @@ interface StudentLite {
   first_name: string;
   last_name: string;
   family_id: string | null;
+  status: string;
 }
 
 interface Family {
@@ -35,7 +36,7 @@ interface Family {
 
 interface FamilyCharge {
   family: Family;
-  students: { id: string; name: string; amount: number }[];
+  students: { id: string; name: string; amount: number; status: string }[];
   totalAmount: number;
   valid: boolean;
   issues: string[];
@@ -67,9 +68,10 @@ export default function MasavExportPage() {
           'student_id, monthly_amount, bank_day, tuition_active_until',
           (q) => q.eq('payment_method', 'bank_ho').eq('active', true)
         ),
-        fetchAll<StudentLite>('students', 'id, first_name, last_name, family_id', (q) =>
-          q.eq('status', 'active')
-        ),
+        // Inclusion is driven by student_tuition.active (below), NOT by student status —
+        // so an inactive student who keeps paying (active bank הו״ק) is charged too.
+        // Load all students; the tuition list decides who is actually charged.
+        fetchAll<StudentLite>('students', 'id, first_name, last_name, family_id, status'),
         fetchAll<Family>('families', '*'),
         fetchAll<{ student_id: string; kind: string; amount: number }>(
           'charge_adjustments',
@@ -123,6 +125,7 @@ export default function MasavExportPage() {
           id: student.id,
           name: `${student.first_name} ${student.last_name}`,
           amount,
+          status: student.status,
         });
         byFamily[fam.id].totalAmount += amount;
       }
@@ -156,6 +159,10 @@ export default function MasavExportPage() {
   const invalidCharges = filtered.filter((c) => !c.valid);
   const totalAmount = validCharges.reduce((sum, c) => sum + c.totalAmount, 0);
   const totalStudents = validCharges.reduce((sum, c) => sum + c.students.length, 0);
+  const inactiveIncluded = validCharges.reduce(
+    (sum, c) => sum + c.students.filter((s) => s.status !== 'active').length,
+    0
+  );
 
   const formatCurrency = (n: number) => `₪${Number(n).toLocaleString('he-IL')}`;
 
@@ -382,6 +389,13 @@ export default function MasavExportPage() {
           </div>
         )}
 
+        {inactiveIncluded > 0 && (
+          <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-2.5 text-sm">
+            ⚠️ הקובץ כולל <b>{inactiveIncluded}</b> תלמידים <b>לא-פעילים</b> שההו״ק שלהם עדיין פעילה (מסומנים "לא-פעיל" ברשימה).
+            אם מישהו מהם לא אמור להיגבות — הפסק אותו ב<Link href="/finances/inactive-payers" className="underline font-medium">תלמידים לא-פעילים עם חיוב</Link> לפני ההורדה.
+          </div>
+        )}
+
         {/* Summary */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-green-50 rounded-lg p-4 text-center">
@@ -543,6 +557,9 @@ export default function MasavExportPage() {
                           {c.students.map((s) => (
                             <div key={s.id}>
                               {s.name} · {formatCurrency(s.amount)}
+                              {s.status !== 'active' && (
+                                <span className="ms-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-medium">לא-פעיל</span>
+                              )}
                             </div>
                           ))}
                         </td>
