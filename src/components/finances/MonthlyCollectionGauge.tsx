@@ -152,14 +152,10 @@ export function MonthlyCollectionGauge() {
   const pct = stats && stats.target > 0 ? Math.min(100, (total / stats.target) * 100) : 0;
   const formatCurrency = (n: number) => `₪${Math.round(n).toLocaleString('he-IL')}`;
 
-  const radius = 100;
-  const centerX = 120;
-  const centerY = 120;
-  const angle = Math.PI * (pct / 100);
-  const endX = centerX - Math.cos(angle) * radius;
-  const endY = centerY - Math.sin(angle) * radius;
-
   const color = pct >= 85 ? '#16a34a' : pct >= 60 ? '#d97706' : '#dc2626';
+  // The fixed semicircle track. Progress is revealed with stroke-dasharray on the
+  // SAME path (pathLength normalised to 100) — it can never overflow the arc.
+  const ARC = 'M 20 120 A 100 100 0 0 1 220 120';
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5">
@@ -215,21 +211,17 @@ export function MonthlyCollectionGauge() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
           <div className="flex justify-center">
-            <svg width="240" height="140" viewBox="0 0 240 140">
-              <path
-                d={`M 20 ${centerY} A ${radius} ${radius} 0 0 1 220 ${centerY}`}
-                fill="none"
-                stroke="#e5e7eb"
-                strokeWidth="20"
-                strokeLinecap="round"
-              />
+            <svg width="240" height="140" viewBox="0 0 240 140" className="max-w-full h-auto">
+              <path d={ARC} fill="none" stroke="#e5e7eb" strokeWidth="20" strokeLinecap="round" />
               {pct > 0 && (
                 <path
-                  d={`M 20 ${centerY} A ${radius} ${radius} 0 ${pct > 50 ? 1 : 0} 1 ${endX} ${endY}`}
+                  d={ARC}
                   fill="none"
                   stroke={color}
                   strokeWidth="20"
                   strokeLinecap="round"
+                  pathLength={100}
+                  strokeDasharray={`${pct} 100`}
                 />
               )}
               <text x="120" y="100" textAnchor="middle" fontSize="36" fontWeight="bold" fill={color}>
