@@ -7,7 +7,12 @@ import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { fetchAll } from '@/lib/supabase-paginate';
-import { buildMasavFile, buildMasavCsv, downloadFile, MasavCharge } from '@/lib/masav';
+import { buildMasavFile, buildMasavCsv, downloadFile, downloadMasavFile, MasavCharge } from '@/lib/masav';
+
+// מס"ב institution identifiers (given by מס"ב for this מוסד).
+const MASAV_MOSAD_NUMBER = '39050646'; // מוסד/נושא — 8 ספרות
+const MASAV_SENDER_NUMBER = '39050';   // מוסד שולח — 5 ספרות
+const MASAV_MOSAD_NAME = 'ישיבת מיר מודיעין עילית';
 import { supabase } from '@/lib/supabase';
 
 interface TuitionRow {
@@ -171,7 +176,6 @@ export default function MasavExportPage() {
       alert('אין גביות תקינות לייצוא');
       return;
     }
-    const mosadId = '7001496'; // TODO: from settings
     const masavCharges: MasavCharge[] = validCharges.map((c, idx) => ({
       reference: String(idx + 1),
       bankNumber: Number(c.family.bank_number) || 0,
@@ -184,15 +188,16 @@ export default function MasavExportPage() {
 
     const content = buildMasavFile(
       {
-        mosadNumber: mosadId,
-        mosadName: 'ישיבת מיר מודיעין עילית',
+        mosadNumber: MASAV_MOSAD_NUMBER,
+        senderNumber: MASAV_SENDER_NUMBER,
+        mosadName: MASAV_MOSAD_NAME,
         chargeDate,
         sendCounter,
       },
       masavCharges
     );
     const filename = `masav_${chargeDate.replace(/-/g, '')}_${sendCounter}.txt`;
-    downloadFile(filename, content);
+    downloadMasavFile(filename, content);
     setDownloaded(true);
     setMarkResult(null);
   };

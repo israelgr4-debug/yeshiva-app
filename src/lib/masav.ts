@@ -1,111 +1,183 @@
-// Masav (מס"ב) HKM file generator - Hora'at Keva (direct debit) format.
-// Produces a 128-byte-per-record fixed-width text file per standard Israeli banking spec.
+// מס"ב (MASAV) direct-debit "חיובים עפ"י הרשאה" file generator.
+// Implements the OFFICIAL spec (mifrat_hiuvim_msv): 128-byte fixed-width records,
+// header ('K' … 'KOT'), transaction ('1'), total ('5'), then a final all-9's record.
+// Each record is terminated by CR+LF (positions 129-130). Numeric (N) fields are
+// digits only, right-justified with leading zeros. Text (X) fields are left-justified
+// with trailing spaces (except the institution/customer name — right-justified).
 //
-// NOTE: There are several Masav format variants. The most common format ("format 500" /
-// "NEW format") is used here with 128-char records. If your bank requires a different
-// format, we can adjust.
+// CRITICAL: the file must be a SINGLE-BYTE Hebrew encoding (Windows-1255) so every
+// record is exactly 128 bytes. UTF-8 Hebrew is 2 bytes/char and breaks the record
+// length — a common reason מס"ב rejects a file. Use downloadMasavFile() to write the
+// correctly-encoded bytes.
 
 export interface MasavCharge {
-  reference: string; // unique transaction reference (e.g., student legacy id + payment_date)
-  bankNumber: number; // 2 digits (e.g. 12 = הפועלים)
-  branch: number; // 3 digits
+  reference: string;   // asmachta — right-justified, leading zeros; rightmost 6 numeric, ≥1 non-zero, stable per הרשאה
+  bankNumber: number;  // 2 digits
+  branch: number;      // 3 digits
   accountNumber: string; // up to 9 digits
-  payerIdNumber: string; // תעודת זהות (9 digits, last 9 digits only if longer)
-  payerName: string; // first 16 chars used in file
-  amountAgorot: number; // amount × 100
+  payerIdNumber: string; // ת"ז (9 digits)
+  payerName: string;   // up to 16 chars in the file
+  amountAgorot: number; // amount × 100, must be > 0
 }
 
 export interface MasavHeaderInfo {
-  mosadNumber: string; // 8 digits
-  mosadName: string;
-  chargeDate: string; // YYYY-MM-DD
-  sendCounter: number; // mosad's own counter
+  mosadNumber: string;   // מוסד/נושא — 8 digits (given by מס"ב)
+  senderNumber: string;  // מוסד שולח — 5 digits (given by מס"ב)
+  mosadName: string;     // institution name (printed on the record)
+  chargeDate: string;    // YYYY-MM-DD — value date (תאריך חיוב)
+  sendCounter: number;   // serial (מספר סידורי) — 3 digits
+  creationDate?: string; // YYYY-MM-DD — file creation date; defaults to today
 }
 
-// Pad a string/number right with spaces or zeros
-function padLeft(v: string | number, len: number, char = '0'): string {
-  const s = String(v);
-  if (s.length >= len) return s.slice(-len);
-  return char.repeat(len - s.length) + s;
+// --- padding -----------------------------------------------------------------
+function zeros(v: string | number, len: number): string {
+  const s = String(v).replace(/[^\d]/g, '');
+  if (s.length >= len) return s.slice(-len); // keep the rightmost `len` digits
+  return '0'.repeat(len - s.length) + s;
+}
+function padRightText(v: string, len: number): string {
+  const s = String(v || '');
+  return s.length >= len ? s.slice(0, len) : s + ' '.repeat(len - s.length);
+}
+function padLeftText(v: string, len: number): string {
+  const s = String(v || '');
+  return s.length >= len ? s.slice(0, len) : ' '.repeat(len - s.length) + s;
 }
 
-function padRight(v: string, len: number, char = ' '): string {
-  const s = String(v);
-  if (s.length >= len) return s.slice(0, len);
-  return s + char.repeat(len - s.length);
+// Keep only characters expressible in Windows-1255 (Hebrew letters, ASCII, basic punct).
+function cleanName(s: string): string {
+  return (s || '').replace(/[^א-ת\s\-'".A-Za-z0-9]/g, '').trim();
 }
 
-function toHebrewChars(s: string): string {
-  // Replace characters that are problematic in fixed-width encoding
-  return (s || '').replace(/[^\u0590-\u05FF\s\-'"A-Za-z0-9.]/g, '');
+// YYYY-MM-DD → YYMMDD (parsed manually to avoid timezone shifts).
+function yymmdd(dateISO: string): string {
+  const m = /(\d{4})-(\d{2})-(\d{2})/.exec(dateISO || '');
+  if (!m) return '000000';
+  return m[1].slice(2) + m[2] + m[3];
+}
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function formatDateYYMMDD(dateISO: string): string {
-  const d = new Date(dateISO);
-  const y = String(d.getFullYear() % 100).padStart(2, '0');
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return y + m + day;
+// Right-justified asmachta (20), leading zeros. Ensure the 6 rightmost are numeric
+// with at least one non-zero (spec requirement).
+function formatReference(ref: string): string {
+  let digits = String(ref || '').replace(/[^\d]/g, '');
+  if (!digits || /^0+$/.test(digits)) digits = '000001';
+  return zeros(digits, 20);
 }
 
-// ================================================================
-// Build the Masav file (128 chars per record)
-// Format: simplified HKM format with header + per-transaction records + footer
-// ================================================================
-
+// =============================================================================
+// Build the מס"ב file (128 chars per record; Hebrew still as single chars — the
+// byte encoding to Windows-1255 happens in downloadMasavFile).
+// =============================================================================
 export function buildMasavFile(header: MasavHeaderInfo, charges: MasavCharge[]): string {
-  const lines: string[] = [];
-  const sendDate = formatDateYYMMDD(header.chargeDate);
-  const mosad = padLeft(header.mosadNumber, 8);
-  const sendNum = padLeft(header.sendCounter, 3);
+  const mosad = zeros(header.mosadNumber, 8);
+  const sender = zeros(header.senderNumber || '0', 5);
+  const serial = zeros(header.sendCounter, 3);
+  const chargeDate = yymmdd(header.chargeDate);
+  const creationDate = yymmdd(header.creationDate || todayISO());
+  const CURRENCY = '00';
 
-  // ========== HEADER RECORD (record type "1" = 128 chars) ==========
-  // Simplified structure - real Masav uses specific positions
+  const recs: string[] = [];
+
+  // ---- HEADER (רשומת כותרת) ----
   let h = '';
-  h += '1';                                                   // pos 1: record type
-  h += sendNum;                                               // pos 2-4: send number
-  h += mosad;                                                 // pos 5-12: mosad
-  h += sendDate;                                              // pos 13-18: send date YYMMDD
-  h += sendDate;                                              // pos 19-24: charge date YYMMDD
-  h += padRight(toHebrewChars(header.mosadName), 30);         // pos 25-54: mosad name
-  h += padRight('', 128 - h.length);                          // fill rest with spaces
-  lines.push(h.slice(0, 128));
+  h += 'K';                              // 1    (1)  זיהוי רשומה
+  h += mosad;                            // 2-9  (8)  מוסד/נושא
+  h += CURRENCY;                         // 10-11(2)  מטבע
+  h += chargeDate;                       // 12-17(6)  תאריך החיוב YYMMDD
+  h += '0';                              // 18   (1)  FILLER
+  h += serial;                           // 19-21(3)  מספר סידורי
+  h += '0';                              // 22   (1)  FILLER
+  h += creationDate;                     // 23-28(6)  תאריך יצירת הסרט YYMMDD
+  h += sender;                           // 29-33(5)  מוסד שולח
+  h += '000000';                         // 34-39(6)  FILLER
+  h += padLeftText(cleanName(header.mosadName), 30); // 40-69 (30) שם המוסד — צמוד לימין
+  h += ' '.repeat(56);                   // 70-125(56) FILLER
+  h += 'KOT';                            // 126-128(3) זיהוי כותרת
+  recs.push(h);
 
-  // ========== TRANSACTION RECORDS (record type "2") ==========
+  // ---- TRANSACTIONS (רשומת תנועה) ----
   let totalAgorot = 0;
   for (const c of charges) {
     let r = '';
-    r += '2';                                                          // pos 1: type
-    r += padLeft(c.bankNumber, 2);                                     // pos 2-3
-    r += padLeft(c.branch, 3);                                         // pos 4-6
-    r += padLeft(c.accountNumber.replace(/\D/g, ''), 9);               // pos 7-15
-    r += '10';                                                         // pos 16-17: account type (regular)
-    r += padLeft(c.reference, 9);                                      // pos 18-26: reference
-    r += padLeft((c.payerIdNumber || '').replace(/\D/g, ''), 9);       // pos 27-35: payer ID (9 digits)
-    r += padRight(toHebrewChars(c.payerName), 16);                     // pos 36-51: payer name
-    r += padLeft(c.amountAgorot, 13);                                  // pos 52-64: amount in agorot
-    r += sendDate;                                                     // pos 65-70: charge date
-    r += '0';                                                          // pos 71: installment indicator
-    r += padLeft(mosad, 8);                                            // pos 72-79: mosad
-    r += padRight('', 128 - r.length);                                 // fill rest
-    lines.push(r.slice(0, 128));
+    r += '1';                            // 1     (1)  זיהוי רשומה
+    r += mosad;                          // 2-9   (8)  מוסד/נושא
+    r += CURRENCY;                       // 10-11 (2)  מטבע
+    r += '000000';                       // 12-17 (6)  FILLER
+    r += zeros(c.bankNumber, 2);         // 18-19 (2)  קוד בנק
+    r += zeros(c.branch, 3);             // 20-22 (3)  מספר סניף
+    r += '0000';                         // 23-26 (4)  סוג חשבון — אפסים
+    r += zeros(c.accountNumber, 9);      // 27-35 (9)  מספר חשבון
+    r += '0';                            // 36    (1)  FILLER
+    r += zeros(c.payerIdNumber, 9);      // 37-45 (9)  מס' זיהוי הלקוח (ת"ז)
+    r += padRightText(cleanName(c.payerName), 16); // 46-61 (16) שם הלקוח
+    r += zeros(c.amountAgorot, 13);      // 62-74 (13) סכום לחיוב (11 ש"ח + 2 אג')
+    r += formatReference(c.reference);   // 75-94 (20) אסמכתא
+    r += '00000000';                     // 95-102(8)  תקופת החיוב — אפסים
+    r += '000';                          // 103-105(3) קוד מלל
+    r += '504';                          // 106-108(3) סוג תנועה — חיוב רגיל
+    r += '0'.repeat(18);                 // 109-126(18) FILLER
+    r += '  ';                           // 127-128(2) FILLER
+    recs.push(r);
     totalAgorot += c.amountAgorot;
   }
 
-  // ========== FOOTER RECORD (record type "5") ==========
+  // ---- TOTAL (רשומת סה"כ) ----
   let f = '';
-  f += '5';                                                      // pos 1: type
-  f += sendNum;                                                  // pos 2-4
-  f += mosad;                                                    // pos 5-12
-  f += padLeft(charges.length, 7);                               // pos 13-19: count
-  f += padLeft(totalAgorot, 15);                                 // pos 20-34: total amount
-  f += padRight('', 128 - f.length);
-  lines.push(f.slice(0, 128));
+  f += '5';                              // 1     (1)  זיהוי רשומה
+  f += mosad;                            // 2-9   (8)  מוסד/נושא
+  f += CURRENCY;                         // 10-11 (2)  מטבע
+  f += chargeDate;                       // 12-17 (6)  תאריך החיוב
+  f += '0';                              // 18    (1)  FILLER
+  f += serial;                           // 19-21 (3)  מספר סידורי
+  f += '0'.repeat(15);                   // 22-36 (15) FILLER
+  f += zeros(totalAgorot, 15);           // 37-51 (15) סכום התנועות
+  f += '0'.repeat(7);                    // 52-58 (7)  FILLER
+  f += zeros(charges.length, 7);         // 59-65 (7)  מספר התנועות
+  f += ' '.repeat(63);                   // 66-128(63) FILLER
+  recs.push(f);
 
-  return lines.join('\r\n') + '\r\n';
+  // ---- Trailing all-9's record (after the last logical file) ----
+  recs.push('9'.repeat(128));
+
+  // Every record MUST be exactly 128 chars.
+  const normalized = recs.map((r) => (r.length > 128 ? r.slice(0, 128) : r + ' '.repeat(128 - r.length)));
+  return normalized.join('\r\n') + '\r\n';
 }
 
-// Build a human-readable CSV for preview / bank confirmation
+// --- Windows-1255 (Hebrew) single-byte encoder -------------------------------
+// Maps ASCII 0x20-0x7E as-is, Hebrew alef..tav (U+05D0..U+05EA) → 0xE0..0xFA,
+// everything else → space. Guarantees 1 byte per record char → 128-byte records.
+function encodeWin1255(str: string): Uint8Array {
+  const out = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code === 0x0d || code === 0x0a) out[i] = code;            // CR / LF
+    else if (code >= 0x20 && code <= 0x7e) out[i] = code;          // ASCII
+    else if (code >= 0x05d0 && code <= 0x05ea) out[i] = 0xe0 + (code - 0x05d0); // Hebrew
+    else out[i] = 0x20;                                            // fallback: space
+  }
+  return out;
+}
+
+// Download the מס"ב file as correctly-encoded Windows-1255 bytes.
+export function downloadMasavFile(filename: string, content: string) {
+  const bytes = encodeWin1255(content);
+  const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// Human-readable CSV for preview / bank confirmation (UTF-8 with BOM for Excel).
 export function buildMasavCsv(charges: MasavCharge[]): string {
   const header = ['תאריך', 'בנק', 'סניף', 'מספר חשבון', 'ת.ז.', 'שם', 'סכום (₪)', 'אסמכתא'].join(',');
   const lines = charges.map((c) =>
@@ -120,11 +192,10 @@ export function buildMasavCsv(charges: MasavCharge[]): string {
       c.reference,
     ].join(',')
   );
-  // Add BOM for Excel Hebrew compatibility
-  return '\uFEFF' + header + '\r\n' + lines.join('\r\n') + '\r\n';
+  return '﻿' + header + '\r\n' + lines.join('\r\n') + '\r\n';
 }
 
-// Download helper
+// Generic text download (used by the CSV preview and elsewhere).
 export function downloadFile(filename: string, content: string, mimeType = 'text/plain') {
   const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
   const url = URL.createObjectURL(blob);

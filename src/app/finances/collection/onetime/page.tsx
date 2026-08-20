@@ -9,13 +9,14 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { supabase } from '@/lib/supabase';
 import { fetchAll } from '@/lib/supabase-paginate';
-import { buildMasavFile, downloadFile, MasavCharge } from '@/lib/masav';
+import { buildMasavFile, downloadMasavFile, MasavCharge } from '@/lib/masav';
 
 interface StudentLite { id: string; first_name: string; last_name: string; shiur: string | null; family_id: string | null; }
 interface FamilyLite { id: string; family_name: string; father_name: string | null; father_id_number: string | null; bank_number: number | null; bank_branch: string | null; bank_account: string | null; }
 interface ChargeRow { id: string; student_id: string | null; family_id: string; amount: number; charge_date: string; description: string | null; status: string; masav_send_counter: number | null; channel: string; nedarim_error: string | null; }
 
-const MOSAD_ID = '7001496';
+const MOSAD_ID = '39050646';         // מוסד/נושא — 8 ספרות
+const MASAV_SENDER_NUMBER = '39050'; // מוסד שולח — 5 ספרות
 function ils(n: number) { return '₪' + Number(n).toLocaleString('he-IL'); }
 function inDays(n: number) { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
 
@@ -137,8 +138,8 @@ export default function ChargeByDatePage() {
       accountNumber: String(f.bank_account || ''), payerIdNumber: String(f.father_id_number || ''),
       payerName: `${f.family_name} ${f.father_name || ''}`.trim(), amountAgorot: Math.round(Number(c.amount) * 100),
     }; });
-    const content = buildMasavFile({ mosadNumber: MOSAD_ID, mosadName: 'ישיבת מיר מודיעין עילית', chargeDate: masavDate, sendCounter: masavCounter }, charges);
-    downloadFile(`masav_date_${masavDate.replace(/-/g, '')}_${masavCounter}.txt`, content);
+    const content = buildMasavFile({ mosadNumber: MOSAD_ID, senderNumber: MASAV_SENDER_NUMBER, mosadName: 'ישיבת מיר מודיעין עילית', chargeDate: masavDate, sendCounter: masavCounter }, charges);
+    downloadMasavFile(`masav_date_${masavDate.replace(/-/g, '')}_${masavCounter}.txt`, content);
     await supabase.from('one_time_charges').update({ status: 'sent', masav_send_counter: masavCounter, masav_sent_at: new Date().toISOString() }).in('id', valid.map((c) => c.id));
     setMasavCounter((c) => c + 1);
     await loadQueue();
