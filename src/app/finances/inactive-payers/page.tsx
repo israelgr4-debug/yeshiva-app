@@ -90,16 +90,21 @@ export default function InactivePayersPage() {
   const total = filtered.reduce((sum, r) => sum + r.monthly_amount, 0);
   const formatCurrency = (n: number) => `₪${Number(n).toLocaleString('he-IL')}`;
 
-  // Mark this student's tuition as inactive (active=false) so it stops being charged.
-  // Does NOT touch the Nedarim HK on the provider's side - admin needs to do that
-  // separately in /finances/nedarim if needed.
+  // Stop charging a leaving student. Always flips student_tuition.active=false (removes
+  // them from our monthly run / MASAV). For CREDIT it ALSO suspends the Nedarim HK, since
+  // Nedarim keeps charging the card otherwise — unless the HK is shared with an active
+  // student (then it's reported for manual handling). Bank/office need nothing more (the
+  // MASAV file already excludes non-active students).
   const stopTuition = async (r: Row) => {
+    const isCredit = r.payment_method === 'credit_nedarim';
     if (!confirm(
       `להפסיק את חיוב שכר הלימוד של ${r.student_name}?\n\n` +
       `הסטטוס שלו: ${STATUS_LABELS[r.student_status] || r.student_status}\n` +
       `שיטה: ${METHOD_LABELS[r.payment_method]}\n` +
       `סכום חודשי: ${formatCurrency(r.monthly_amount)}\n\n` +
-      `הפעולה תסיר אותו מהחיוב הבא. ההוק עצמה בבנק / נדרים לא תיגע - יש לטפל בה בנפרד.`
+      (isCredit
+        ? `הפעולה תפסיק את החיוב אצלנו וגם תשהה את ההו"ק באשראי בנדרים\n(אם אינה משותפת עם תלמיד פעיל — אז תדווח לטיפול ידני).`
+        : `הפעולה תסיר אותו מהחיוב הבא. ההו"ק בבנק לא תיגע — ממילא הוא כבר לא נכלל בקובץ המס"ב.`)
     )) return;
     setStoppingId(r.tuition_id);
     try {
@@ -108,6 +113,28 @@ export default function InactivePayersPage() {
         .update({ active: false })
         .eq('id', r.tuition_id);
       if (error) throw error;
+
+      // Credit: also suspend the Nedarim HK so the card actually stops being charged.
+      if (isCredit) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await fetch('/api/nedarim/suspend-hk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+            body: JSON.stringify({ student_id: r.student_id }),
+          });
+          const j = await res.json();
+          if (j.suspended) {
+            alert('✓ החיוב הופסק וההו"ק באשראי הושהתה בנדרים.');
+          } else if (j.shared) {
+            alert(`⚠️ החיוב הופסק אצלנו, אך ההו"ק משותפת עם תלמיד פעיל (${(j.names || []).join(', ')}) ולכן לא הושהתה.\nיש להשהות/להקטין אותה ידנית בנדרים.`);
+          } else if (!res.ok || j.ok === false) {
+            alert('⚠️ החיוב הופסק אצלנו, אך השהיית ההו"ק בנדרים נכשלה:\n' + (j.error || 'שגיאה') + '\nיש להשהות ידנית בנדרים.');
+          }
+        } catch (e: any) {
+          alert('⚠️ החיוב הופסק אצלנו, אך השהיית ההו"ק בנדרים נכשלה (תקשורת). יש להשהות ידנית בנדרים.');
+        }
+      }
       await load();
     } catch (e: any) {
       alert('שגיאה: ' + (e?.message || e));
@@ -225,7 +252,7 @@ export default function InactivePayersPage() {
                               onClick={() => stopTuition(r)}
                               disabled={stoppingId === r.tuition_id}
                               className="text-xs px-2 py-1 rounded-md bg-red-50 text-red-700 hover:bg-red-100 ring-1 ring-red-200 disabled:opacity-50"
-                              title="הפסק את חיוב שכר הלימוד (ההוק עצמה לא תיגע)"
+                              title={r.payment_method === 'credit_nedarim' ? 'הפסק חיוב — כולל השהיית ההו"ק באשראי בנדרים' : 'הפסק את חיוב שכר הלימוד'}
                             >
                               {stoppingId === r.tuition_id ? '...' : '🛑 הפסק חיוב'}
                             </button>
@@ -238,8 +265,9 @@ export default function InactivePayersPage() {
               </div>
             )}
             <p className="text-xs text-gray-500 mt-3 text-center">
-              💡 הפסקת חיוב משנה רק את <code>student_tuition.active</code> ל-false. כדי לבטל את ההוק
-              עצמה (בנדרים / מס״ב) - יש לעשות זאת בנפרד מתוך דף הוראות הקבע.
+              💡 הפסקת חיוב מסירה את התלמיד מהגבייה שלנו (הרצה חודשית / מס״ב). ל<b>אשראי</b> היא גם
+              משהה את ההו"ק בנדרים (אלא אם היא משותפת עם תלמיד פעיל — אז תדווח לטיפול ידני).
+              ל<b>בנק</b> אין צורך נוסף — הוא ממילא לא נכלל בקובץ המס״ב.
             </p>
           </CardContent>
         </Card>
