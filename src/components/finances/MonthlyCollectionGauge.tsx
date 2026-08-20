@@ -65,19 +65,44 @@ export function MonthlyCollectionGauge() {
 
       // For past months: skip the roster-based target altogether — we'll
       // derive a real one from payment_history below.
+      // For current/future: target = Σ FINAL per student = (override ?? base) + additions,
+      // folding in this month's charge_adjustments (e.g. a שיעור א group override to a
+      // partial-year amount). Using the raw base overstated the target and the "remaining".
       let rosterTarget = 0;
       if (monthKey >= currentMonthKey()) {
+        const baseBySid = new Map<string, number>();
         for (let p = 0; p < 20; p++) {
           const { data } = await supabase
             .from('student_tuition')
-            .select('monthly_amount, payment_method, students!inner(status, institution_name)')
+            .select('student_id, monthly_amount, payment_method, students!inner(status, institution_name)')
             .eq('students.status', 'active')
             .eq('students.institution_name', 'ישיבה')
             .in('payment_method', ['bank_ho', 'credit_nedarim', 'office'])
             .range(p * 1000, (p + 1) * 1000 - 1);
           if (!data || data.length === 0) break;
-          rosterTarget += data.reduce((sum, r) => sum + (Number(r.monthly_amount) || 0), 0);
+          for (const r of data as any[]) baseBySid.set(r.student_id, Number(r.monthly_amount) || 0);
           if (data.length < 1000) break;
+        }
+        // This month's adjustments: override replaces the base, additions add on top.
+        const overrideBySid = new Map<string, number>();
+        const addBySid = new Map<string, number>();
+        for (let p = 0; p < 10; p++) {
+          const { data } = await supabase
+            .from('charge_adjustments')
+            .select('student_id, kind, amount')
+            .eq('month', monthKey)
+            .eq('status', 'active')
+            .range(p * 1000, (p + 1) * 1000 - 1);
+          if (!data || data.length === 0) break;
+          for (const a of data as any[]) {
+            if (a.kind === 'override') overrideBySid.set(a.student_id, Number(a.amount) || 0);
+            else addBySid.set(a.student_id, (addBySid.get(a.student_id) || 0) + (Number(a.amount) || 0));
+          }
+          if (data.length < 1000) break;
+        }
+        for (const [sid, base] of baseBySid) {
+          const ov = overrideBySid.get(sid);
+          rosterTarget += (ov != null ? ov : base) + (addBySid.get(sid) || 0);
         }
       }
 
