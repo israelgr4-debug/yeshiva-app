@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
 interface Stats {
@@ -290,6 +291,11 @@ export function MonthlyCollectionGauge() {
             <div className="flex justify-between items-center text-sm">
               <span className="text-gray-500">{isCurrent ? 'נותר:' : 'לא נגבה:'}</span>
               <span className="text-gray-700 font-semibold">{formatCurrency(Math.max(0, stats.target - total))}</span>
+            </div>
+            <div className="text-end">
+              <Link href="/finances/uncollected" className="text-xs text-blue-600 hover:text-blue-800 hover:underline">
+                🔎 פירוט: מה עוד לא נגבה ←
+              </Link>
             </div>
           </div>
         </div>
