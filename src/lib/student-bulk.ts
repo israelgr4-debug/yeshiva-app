@@ -90,10 +90,13 @@ export async function parseBulkFile(
   file: File
 ): Promise<{ rows: ParsedBulkRow[]; unknownHeaders: string[] }> {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  // cellDates → real Excel date cells parse to dates; dateNF renders them as ISO
+  // so a date the user picked/typed in Excel imports regardless of display locale.
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  // raw:false → cells come back as formatted strings (dates as text, not serials)
-  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, raw: false }) as any[][];
+  const aoa = XLSX.utils.sheet_to_json(ws, {
+    header: 1, blankrows: false, raw: false, dateNF: 'yyyy-mm-dd',
+  }) as any[][];
   if (aoa.length < 2) return { rows: [], unknownHeaders: [] };
 
   const header = (aoa[0] || []).map((h) => String(h ?? '').trim());
@@ -116,16 +119,44 @@ export async function parseBulkFile(
   return { rows, unknownHeaders };
 }
 
-/** Normalize a date cell to YYYY-MM-DD, or '' if unparseable. */
+/** Normalize a date cell to YYYY-MM-DD, or '' if unparseable.
+ *  Accepts: ISO (yyyy-mm-dd, yyyy/mm/dd), DD/MM/YYYY or DD.MM.YYYY or DD-MM-YYYY
+ *  (2- or 4-digit year), Excel date serials, and common textual dates (15 Mar 2010). */
 export function parseDateCell(v: string): string {
   const s = (v || '').trim();
   if (!s) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // already ISO
-  const dmy = s.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/); // DD/MM/YYYY
-  if (dmy) {
-    const [, d, m, y] = dmy;
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+
+  const iso = (y: string | number, m: number, d: number) =>
+    (m >= 1 && m <= 12 && d >= 1 && d <= 31)
+      ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      : '';
+
+  // ISO first: yyyy-mm-dd / yyyy/mm/dd / yyyy.mm.dd
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (m) return iso(m[1], Number(m[2]), Number(m[3]));
+
+  // Day-first: dd/mm/yyyy, dd.mm.yy, dd-mm-yyyy … (2- or 4-digit year)
+  m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/);
+  if (m) {
+    let day = Number(m[1]);
+    let mon = Number(m[2]);
+    // Tolerate US month-first (m/d/y) when the 2nd field can't be a month.
+    if (mon > 12 && day <= 12) { const t = day; day = mon; mon = t; }
+    let year = m[3];
+    if (year.length === 2) year = (Number(year) > 40 ? '19' : '20') + year;
+    return iso(year, mon, day);
   }
+
+  // Bare Excel serial number (days since 1899-12-30).
+  if (/^\d{4,6}$/.test(s)) {
+    const dt = new Date(Date.UTC(1899, 11, 30) + Number(s) * 86400000);
+    if (!isNaN(dt.getTime())) return iso(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+  }
+
+  // Fallback: textual dates like "15 Mar 2010".
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) return iso(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+
   return '';
 }
 
