@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Sidebar } from './Sidebar';
+import { GlobalSearch } from './GlobalSearch';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -15,6 +16,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       <main className="flex-1 lg:ms-64 overflow-auto min-h-screen">
         {children}
       </main>
+      <GlobalSearch />
     </div>
   );
 }
