@@ -73,10 +73,14 @@ export function useBounces() {
 
   // REQ4 helper: this month's collected (status 2) rows, to pick which bounced.
   const loadPaidForMonth = async (month: string): Promise<PaidRow[]> => {
+    // Real next-month boundary — `${month}-31` is invalid for 30-day months / February.
+    const [my, mm] = month.split('-').map(Number);
+    const nd = new Date(my, mm, 1);
+    const nextStart = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}-01`;
     const ph = await fetchAll<PHRow>(
       'payment_history',
       'id, student_id, amount_ils, payment_date, status_code, bounce_resolution, bounce_resolved_at, bounce_note',
-      (q) => q.eq('status_code', 2).gte('payment_date', `${month}-01`).lte('payment_date', `${month}-31`)
+      (q) => q.eq('status_code', 2).gte('payment_date', `${month}-01`).lt('payment_date', nextStart)
     );
     const stMap = await studentsByIds([...new Set(ph.map((r) => r.student_id))]);
     return ph.map((r) => {

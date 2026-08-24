@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useBounces, BounceRow, PaidRow, addMonths } from '@/hooks/useBounces';
+import { MasavReturnsImport } from '@/components/finances/MasavReturnsImport';
 
 const SHIUR_ORDER = ['שיעור א','שיעור ב','שיעור ג','שיעור ד','שיעור ה','שיעור ו','שיעור ז','שיעור ח','שיעור ט','שיעור י','שיעור יא','קיבוץ'];
 const RES_LABELS: Record<string, string> = {
@@ -26,17 +27,18 @@ function monthOptions(): { value: string; label: string }[] {
 }
 
 export default function ReturnsPage() {
-  const [tab, setTab] = useState<'view' | 'mark'>('view');
+  const [tab, setTab] = useState<'view' | 'mark' | 'import'>('view');
   return (
     <PageGuard requires="write">
       <Header title="חזרות הו״ק" subtitle="מעקב וטיפול בהוראות קבע שחזרו" />
       <div className="p-4 md:p-8 space-y-5">
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant={tab === 'view' ? 'primary' : 'secondary'} onClick={() => setTab('view')}>↩ חזרות</Button>
           <Button variant={tab === 'mark' ? 'primary' : 'secondary'} onClick={() => setTab('mark')}>✔ סימון חזרות</Button>
+          <Button variant={tab === 'import' ? 'primary' : 'secondary'} onClick={() => setTab('import')}>📥 ייבוא קובץ חזרות ממס״ב</Button>
           <Link href="/finances" className="ms-auto"><Button variant="ghost">← כספים</Button></Link>
         </div>
-        {tab === 'view' ? <ViewTab /> : <MarkTab />}
+        {tab === 'view' ? <ViewTab /> : tab === 'mark' ? <MarkTab /> : <MasavReturnsImport />}
       </div>
     </PageGuard>
   );
