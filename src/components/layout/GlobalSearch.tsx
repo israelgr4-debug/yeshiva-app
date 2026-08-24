@@ -24,8 +24,10 @@ export function GlobalSearch() {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); setOpen((v) => !v); }
       if (e.key === 'Escape') setOpen(false);
     };
+    const onOpen = () => setOpen(true); // triggered by the sidebar search button
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('global-search:open', onOpen);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('global-search:open', onOpen); };
   }, []);
 
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 50); else { setQ(''); setStudents([]); setFamilies([]); } }, [open]);
@@ -64,7 +66,7 @@ export function GlobalSearch() {
         type="button"
         onClick={() => setOpen(true)}
         title="חיפוש מהיר (Ctrl+K)"
-        className="no-print fixed bottom-5 start-5 z-40 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg px-4 py-3"
+        className="no-print lg:hidden fixed bottom-5 start-5 z-40 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg px-4 py-3"
       >
         🔍 <span className="hidden sm:inline text-sm font-medium">חיפוש מהיר</span>
       </button>

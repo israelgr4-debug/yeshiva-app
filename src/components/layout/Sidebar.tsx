@@ -110,6 +110,19 @@ export function Sidebar() {
           </button>
         </div>
 
+        {/* Global quick search */}
+        <div className="px-2.5 pt-3">
+          <button
+            type="button"
+            onClick={() => { window.dispatchEvent(new CustomEvent('global-search:open')); setIsOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors"
+          >
+            <span className="text-base">🔍</span>
+            <span className="text-sm font-medium flex-1 text-start">חיפוש מהיר</span>
+            <kbd className="text-[10px] text-slate-400 border border-slate-600 rounded px-1.5 py-0.5">Ctrl K</kbd>
+          </button>
+        </div>
+
         <nav className="flex-1 px-2.5 py-3 overflow-y-auto">
           <ul className="space-y-0.5">
             {menuItems.filter((item) => {
