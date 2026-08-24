@@ -108,9 +108,14 @@ export function useChargeAdjustments() {
 
     // This month's collection status from payment_history (bank + mirrored credit).
     // Priority when a student has several rows: returned > paid > pending.
+    // Use a real next-month boundary — `${month}-31` is an INVALID date for 30-day
+    // months (Sep/Apr/Jun/Nov) and February, which made Postgres reject the query.
+    const [my, mm] = month.split('-').map(Number);
+    const nd = new Date(my, mm, 1);
+    const nextMonthStart = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}-01`;
     const ph = await fetchAll<{ student_id: string; status_code: number }>(
       'payment_history', 'student_id, status_code',
-      (q) => q.gte('payment_date', `${month}-01`).lte('payment_date', `${month}-31`)
+      (q) => q.gte('payment_date', `${month}-01`).lt('payment_date', nextMonthStart)
     );
     const rank: Record<number, number> = { 3: 3, 2: 2, 1: 1 };
     const statusBySid = new Map<string, CollectionStatus>();

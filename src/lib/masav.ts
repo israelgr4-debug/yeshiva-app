@@ -49,6 +49,18 @@ function cleanName(s: string): string {
   return (s || '').replace(/[^א-ת\s\-'".A-Za-z0-9]/g, '').trim();
 }
 
+// מס"ב name fields are "ערוך להדפסה / מימין לשמאל" = VISUAL order: Hebrew stored
+// reversed so a left-to-right printer shows it correctly. (Sending logical order made
+// the bank display names backwards.) Digit runs are kept in their natural order.
+function visualName(s: string): string {
+  const clean = cleanName(s);
+  return clean
+    .split(/(\d+)/)                                   // keep number groups intact
+    .map((part) => (/^\d+$/.test(part) ? part : part.split('').reverse().join('')))
+    .reverse()
+    .join('');
+}
+
 // YYYY-MM-DD → YYMMDD (parsed manually to avoid timezone shifts).
 function yymmdd(dateISO: string): string {
   const m = /(\d{4})-(\d{2})-(\d{2})/.exec(dateISO || '');
@@ -94,7 +106,7 @@ export function buildMasavFile(header: MasavHeaderInfo, charges: MasavCharge[]):
   h += creationDate;                     // 23-28(6)  תאריך יצירת הסרט YYMMDD
   h += sender;                           // 29-33(5)  מוסד שולח
   h += '000000';                         // 34-39(6)  FILLER
-  h += padLeftText(cleanName(header.mosadName), 30); // 40-69 (30) שם המוסד — צמוד לימין
+  h += padLeftText(visualName(header.mosadName), 30); // 40-69 (30) שם המוסד — צמוד לימין (חזותי)
   h += ' '.repeat(56);                   // 70-125(56) FILLER
   h += 'KOT';                            // 126-128(3) זיהוי כותרת
   recs.push(h);
@@ -113,7 +125,7 @@ export function buildMasavFile(header: MasavHeaderInfo, charges: MasavCharge[]):
     r += zeros(c.accountNumber, 9);      // 27-35 (9)  מספר חשבון
     r += '0';                            // 36    (1)  FILLER
     r += zeros(c.payerIdNumber, 9);      // 37-45 (9)  מס' זיהוי הלקוח (ת"ז)
-    r += padRightText(cleanName(c.payerName), 16); // 46-61 (16) שם הלקוח
+    r += padRightText(visualName(c.payerName), 16); // 46-61 (16) שם הלקוח (חזותי — מימין לשמאל)
     r += zeros(c.amountAgorot, 13);      // 62-74 (13) סכום לחיוב (11 ש"ח + 2 אג')
     r += formatReference(c.reference);   // 75-94 (20) אסמכתא
     r += '00000000';                     // 95-102(8)  תקופת החיוב — אפסים
