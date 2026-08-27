@@ -68,8 +68,17 @@ function DetailsPage({
 }) {
   return (
     <div className={`report-page ${isNotFirst ? 'page-break' : ''}`}>
-      <h1 className="report-title">{title}</h1>
+      {/* A4 print margins — kept small so 12 cards (2×6) fit. Plain <style> (not
+          styled-jsx) for @page, per the project's styled-jsx @page caveat. */}
+      <style dangerouslySetInnerHTML={{ __html: '@media print { @page { size: A4 portrait; margin: 5mm; } }' }} />
 
+      {/* Table wrapper: the <thead> title REPEATS on every printed page. */}
+      <table className="report-table">
+        <thead>
+          <tr><th><div className="report-title">{title}</div></th></tr>
+        </thead>
+        <tbody>
+          <tr><td>
       <div className="cards-grid">
         {students.map((s) => {
           const family = s.family_id ? families[s.family_id] : undefined;
@@ -132,11 +141,14 @@ function DetailsPage({
           );
         })}
       </div>
+          </td></tr>
+        </tbody>
+      </table>
 
       <style jsx>{`
         .report-page {
           background: white;
-          padding: 10mm 8mm;
+          padding: 4mm 6mm;
           direction: rtl;
           font-family: 'David', 'Miriam', Arial, sans-serif;
           color: #000;
@@ -145,18 +157,32 @@ function DetailsPage({
           page-break-before: always;
           break-before: page;
         }
+        /* Table wrapper — thead repeats the title on every printed page. */
+        .report-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        .report-table thead {
+          display: table-header-group; /* repeat on each page */
+        }
+        .report-table th,
+        .report-table td {
+          padding: 0;
+          border: 0;
+        }
         .report-title {
           text-align: center;
-          font-size: 14pt;
+          font-size: 13pt;
           font-weight: bold;
-          margin-bottom: 8px;
+          padding-bottom: 4px;
+          margin-bottom: 3px;
           text-decoration: underline;
         }
         .cards-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
           grid-auto-rows: 44mm;
-          gap: 3mm;
+          gap: 2mm;
         }
         .details-card {
           display: grid;
@@ -166,7 +192,7 @@ function DetailsPage({
           break-inside: avoid;
           page-break-inside: avoid;
           overflow: hidden;
-          font-size: 8pt;
+          font-size: 9pt;
           height: 44mm;
         }
         .card-body {
@@ -178,7 +204,7 @@ function DetailsPage({
         }
         .name-row {
           font-weight: bold;
-          font-size: 10pt;
+          font-size: 11pt;
           margin-bottom: 2px;
           border-bottom: 1px solid #333;
           padding-bottom: 2px;
@@ -190,7 +216,7 @@ function DetailsPage({
         .field-row {
           display: flex;
           gap: 8px;
-          font-size: 7.5pt;
+          font-size: 8.5pt;
           line-height: 1.3;
           white-space: nowrap;
           overflow: hidden;
@@ -228,10 +254,11 @@ function DetailsPage({
         }
         @media print {
           .report-page {
-            padding: 6mm;
+            padding: 0; /* @page margin (6mm) handles the page border */
           }
           .cards-grid {
             grid-auto-rows: 44mm;
+            gap: 2mm;
           }
         }
       `}</style>
