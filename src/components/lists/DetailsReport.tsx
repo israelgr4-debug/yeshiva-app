@@ -193,14 +193,19 @@ function DetailsPage({
         .report-table td {
           padding: 0;
           border: 0;
+          background: transparent;
+          vertical-align: top;
         }
+        /* Full-width title band (border spans the whole width) so the area above
+           the top cards never reads as a stray white box. */
         .report-title {
           text-align: center;
           font-size: 13pt;
           font-weight: bold;
-          padding-bottom: 4px;
-          margin-bottom: 3px;
-          text-decoration: underline;
+          padding-bottom: 3px;
+          margin: 0 0 3px 0;
+          border-bottom: 2px solid #333;
+          text-decoration: none;
         }
         .cards-grid {
           display: grid;
@@ -209,6 +214,7 @@ function DetailsPage({
           gap: 2mm;
         }
         .details-card {
+          box-sizing: border-box;
           display: grid;
           grid-template-columns: 1fr 30mm;
           border: 1px solid #333;
@@ -278,7 +284,7 @@ function DetailsPage({
         }
         @media print {
           .report-page {
-            padding: 0; /* @page margin (6mm) handles the page border */
+            padding: 0; /* @page margin handles the page border */
           }
           .cards-grid {
             grid-auto-rows: 44mm;
