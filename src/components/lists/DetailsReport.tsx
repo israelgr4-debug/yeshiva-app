@@ -4,6 +4,25 @@ import { Student, Family, Machzor, EducationHistory } from '@/lib/types';
 import { sortStudentsByName, groupStudentsByShiur } from '@/lib/list-reports';
 import { toHebrewDate } from '@/lib/utils';
 
+// Reorder so the grid (which flows row-by-row) READS column-by-column (top→bottom,
+// then the next column). Works per printed page of PER_PAGE cards in COLS columns.
+const PER_PAGE = 12;
+const COLS = 2;
+function columnMajorOrder<T>(list: T[]): T[] {
+  const out: T[] = [];
+  for (let p = 0; p < list.length; p += PER_PAGE) {
+    const chunk = list.slice(p, p + PER_PAGE);
+    const rows = Math.ceil(chunk.length / COLS);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const idx = c * rows + r; // column c holds the r-th item top-to-bottom
+        if (idx < chunk.length) out.push(chunk[idx]);
+      }
+    }
+  }
+  return out;
+}
+
 interface Props {
   students: Student[];
   families: Record<string, Family>;
@@ -70,7 +89,7 @@ function DetailsPage({
     <div className={`report-page ${isNotFirst ? 'page-break' : ''}`}>
       {/* A4 print margins — kept small so 12 cards (2×6) fit. Plain <style> (not
           styled-jsx) for @page, per the project's styled-jsx @page caveat. */}
-      <style dangerouslySetInnerHTML={{ __html: '@media print { @page { size: A4 portrait; margin: 5mm; } }' }} />
+      <style dangerouslySetInnerHTML={{ __html: '@media print { @page { size: A4 portrait; margin: 5mm 10mm 5mm 5mm; } }' }} />
 
       {/* Table wrapper: the <thead> title REPEATS on every printed page. */}
       <table className="report-table">
@@ -80,7 +99,7 @@ function DetailsPage({
         <tbody>
           <tr><td>
       <div className="cards-grid">
-        {students.map((s) => {
+        {columnMajorOrder(students).map((s) => {
           const family = s.family_id ? families[s.family_id] : undefined;
           const machzor = s.machzor_id ? machzorot[s.machzor_id] : undefined;
           const edu = education[s.id] || [];
@@ -128,14 +147,17 @@ function DetailsPage({
                 </div>
               </div>
 
-              {/* Photo on the left side, filling full height */}
+              {/* Photo on the left side + student phone underneath */}
               <div className="photo-spot">
-                {s.photo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={s.photo_url} alt={`${s.first_name} ${s.last_name}`} />
-                ) : (
-                  <div className="photo-placeholder">אין תמונה</div>
-                )}
+                <div className="photo-img">
+                  {s.photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.photo_url} alt={`${s.first_name} ${s.last_name}`} />
+                  ) : (
+                    <div className="photo-placeholder">אין תמונה</div>
+                  )}
+                </div>
+                <div className="student-phone">{s.phone ? `נייד: ${s.phone}` : ''}</div>
               </div>
             </div>
           );
@@ -236,15 +258,33 @@ function DetailsPage({
           border-right: 1px solid #333;
           background: #f5f5f5;
           display: flex;
-          align-items: center;
-          justify-content: center;
+          flex-direction: column;
           overflow: hidden;
           height: 100%;
         }
-        .photo-spot img {
+        .photo-img {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        .photo-img img {
           width: 100%;
           height: 100%;
           object-fit: cover;
+        }
+        .student-phone {
+          flex: 0 0 auto;
+          font-size: 8.5pt;
+          font-weight: bold;
+          text-align: center;
+          padding: 1px 2px;
+          border-top: 1px solid #999;
+          background: #fff;
+          direction: ltr;
+          white-space: nowrap;
         }
         .photo-placeholder {
           color: #999;
