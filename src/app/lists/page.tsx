@@ -276,7 +276,7 @@ export default function ListsPage() {
     <>
       <Header title="דוחות" subtitle="הפקת דוחות ורשימות" />
 
-      <div className="p-4 md:p-8">
+      <div className="p-4 md:p-8 print:p-0">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Controls sidebar */}
           <div className="lg:col-span-1 no-print">
@@ -430,8 +430,8 @@ export default function ListsPage() {
 
           {/* Preview */}
           <div className="lg:col-span-3">
-            <div className="bg-gray-100 p-4 rounded-lg">
-              <div className="print-area bg-white shadow-md" style={{ minHeight: '297mm' }}>
+            <div className="bg-gray-100 p-4 rounded-lg print:bg-transparent print:p-0 print:rounded-none">
+              <div className="print-area bg-white shadow-md print:shadow-none" style={{ minHeight: '297mm' }}>
                 {renderReport()}
               </div>
             </div>
