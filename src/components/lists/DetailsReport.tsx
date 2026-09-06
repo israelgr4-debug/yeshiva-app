@@ -121,6 +121,9 @@ function DetailsPage({
                   </span>
                 </div>
                 <div className="field-row">
+                  <b>נייד תלמיד:</b> {s.phone || '-'}
+                </div>
+                <div className="field-row">
                   <b>ת.ז.:</b> {s.id_number || '-'}
                 </div>
                 <div className="field-row">
@@ -147,17 +150,14 @@ function DetailsPage({
                 </div>
               </div>
 
-              {/* Photo on the left side + student phone underneath */}
+              {/* Photo on the left side, full height */}
               <div className="photo-spot">
-                <div className="photo-img">
-                  {s.photo_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.photo_url} alt={`${s.first_name} ${s.last_name}`} />
-                  ) : (
-                    <div className="photo-placeholder">אין תמונה</div>
-                  )}
-                </div>
-                <div className="student-phone">{s.phone ? `נייד: ${s.phone}` : ''}</div>
+                {s.photo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={s.photo_url} alt={`${s.first_name} ${s.last_name}`} />
+                ) : (
+                  <div className="photo-placeholder">אין תמונה</div>
+                )}
               </div>
             </div>
           );
@@ -218,10 +218,10 @@ function DetailsPage({
           height: 44mm;
         }
         .card-body {
-          padding: 2mm 3mm;
+          padding: 1.5mm 3mm;
           display: flex;
           flex-direction: column;
-          gap: 1px;
+          gap: 0;
           min-width: 0;
         }
         .name-row {
@@ -239,7 +239,7 @@ function DetailsPage({
           display: flex;
           gap: 8px;
           font-size: 8.5pt;
-          line-height: 1.3;
+          line-height: 1.22;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -258,33 +258,15 @@ function DetailsPage({
           border-right: 1px solid #333;
           background: #f5f5f5;
           display: flex;
-          flex-direction: column;
-          overflow: hidden;
-          height: 100%;
-        }
-        .photo-img {
-          flex: 1;
-          min-height: 0;
-          display: flex;
           align-items: center;
           justify-content: center;
           overflow: hidden;
+          height: 100%;
         }
-        .photo-img img {
+        .photo-spot img {
           width: 100%;
           height: 100%;
           object-fit: cover;
-        }
-        .student-phone {
-          flex: 0 0 auto;
-          font-size: 8.5pt;
-          font-weight: bold;
-          text-align: center;
-          padding: 1px 2px;
-          border-top: 1px solid #999;
-          background: #fff;
-          direction: ltr;
-          white-space: nowrap;
         }
         .photo-placeholder {
           color: #999;
