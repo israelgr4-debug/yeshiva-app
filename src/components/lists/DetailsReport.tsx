@@ -120,11 +120,13 @@ function DetailsPage({
                     <b>מחזור:</b> {machzor ? machzor.name.replace('מחזור ', '') : '-'}
                   </span>
                 </div>
-                <div className="field-row">
-                  <b>נייד תלמיד:</b> {s.phone || '-'}
-                </div>
-                <div className="field-row">
-                  <b>ת.ז.:</b> {s.id_number || '-'}
+                <div className="pair-row">
+                  <span>
+                    <b>ת.ז.:</b> {s.id_number || '-'}
+                  </span>
+                  <span>
+                    <b>נייד:</b> {s.phone || '-'}
+                  </span>
                 </div>
                 <div className="field-row">
                   <b>ת.לידה:</b> {toHebrewDate(s.date_of_birth) || '-'}
@@ -218,10 +220,10 @@ function DetailsPage({
           height: 44mm;
         }
         .card-body {
-          padding: 1.5mm 3mm;
+          padding: 2mm 3mm;
           display: flex;
           flex-direction: column;
-          gap: 0;
+          gap: 1px;
           min-width: 0;
         }
         .name-row {
@@ -239,7 +241,7 @@ function DetailsPage({
           display: flex;
           gap: 8px;
           font-size: 8.5pt;
-          line-height: 1.22;
+          line-height: 1.3;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
