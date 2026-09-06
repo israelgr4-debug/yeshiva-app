@@ -196,16 +196,13 @@ function DetailsPage({
           background: transparent;
           vertical-align: top;
         }
-        /* Full-width title band (border spans the whole width) so the area above
-           the top cards never reads as a stray white box. */
         .report-title {
           text-align: center;
           font-size: 13pt;
           font-weight: bold;
-          padding-bottom: 3px;
+          padding-bottom: 4px;
           margin: 0 0 3px 0;
-          border-bottom: 2px solid #333;
-          text-decoration: none;
+          text-decoration: underline;
         }
         .cards-grid {
           display: grid;

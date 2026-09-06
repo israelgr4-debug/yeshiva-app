@@ -55,7 +55,7 @@ export function Sidebar() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="lg:hidden fixed top-3 start-3 z-40 bg-slate-800 text-white rounded-lg p-2 shadow-lg"
+        className="no-print lg:hidden fixed top-3 start-3 z-40 bg-slate-800 text-white rounded-lg p-2 shadow-lg"
         aria-label="פתח תפריט"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
