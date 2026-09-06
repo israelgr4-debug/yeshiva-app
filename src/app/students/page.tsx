@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { StudentTable, SortKey, SortDir } from '@/components/students/StudentTable';
 import { SendParentEmailDialog } from '@/components/email/SendParentEmailDialog';
+import { StudentPhoneImport } from '@/components/students/StudentPhoneImport';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -53,6 +54,7 @@ export default function StudentsPage() {
   const [selectedStatus, setSelectedStatus] = useState('active');
   const [onlyChinuch, setOnlyChinuch] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [phoneImportOpen, setPhoneImportOpen] = useState(false);
 
   const [sortKey, setSortKey] = useState<SortKey>('last_name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -203,6 +205,7 @@ export default function StudentsPage() {
         action={
           permissions.canWrite ? (
             <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setPhoneImportOpen(true)}>📞 עדכון טלפונים</Button>
               <Button size="sm" variant="secondary" onClick={() => setEmailOpen(true)}>📧 מייל להורים</Button>
               <Link href="/students/new">
                 <Button size="sm">＋ תלמיד חדש</Button>
@@ -214,6 +217,9 @@ export default function StudentsPage() {
 
       {emailOpen && (
         <SendParentEmailDialog students={students} families={families} onClose={() => setEmailOpen(false)} />
+      )}
+      {phoneImportOpen && (
+        <StudentPhoneImport students={students} machzorot={machzorot} onClose={() => setPhoneImportOpen(false)} onUpdated={() => window.location.reload()} />
       )}
 
       <div className="p-4 md:p-8 space-y-4 animate-fadeIn">
