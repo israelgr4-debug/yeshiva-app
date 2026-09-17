@@ -167,6 +167,7 @@ export default function MonthlyCollectionPage() {
             <SearchInput value={search} onSearch={setSearch} placeholder="חיפוש תלמיד..." />
           </div>
           <Button variant="primary" onClick={() => setGroupOpen(true)}>👥 פעולת קבוצה</Button>
+          <HkAuditButton />
         </div>
 
         {/* Summary */}
@@ -346,20 +347,21 @@ function PendingHkRestoreBanner() {
   useEffect(() => { load(); }, []);
 
   const restoreNow = async () => {
-    if (!confirm('להחזיר עכשיו את הו״ק האשראי לסכום הקבוע בנדרים?\n(מתאים כשההחזרה האוטומטית לא קרתה אחרי יום החיוב)')) return;
+    if (!confirm('לבדוק ולתקן מול נדרים את הו״ק האשראי לסכום הקבוע?\n(קורא את הסכום האמיתי בנדרים, מעדכן, ומאמת שהשינוי אכן נכנס)')) return;
     setBusy(true); setResult(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/nedarim/restore-hk-overrides', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-        body: JSON.stringify({ force: true }),
+        body: JSON.stringify({ reprocess: true }),
       });
       const j = await res.json();
       if (!j.ok) { setResult('שגיאה: ' + (j.error || 'לא ידוע')); }
       else {
-        let m = `✓ הוחזרו ${j.restored} · נכשלו ${j.failed}`;
-        if (j.errors?.length) m += '\n\nשגיאות:\n' + j.errors.map((e: any) => `• ${e.name}: ${e.message}`).join('\n');
+        let m = `✓ הוחזרו ${j.restored} · תקינים כבר ${j.alreadyOk || 0} · נכשלו ${j.failed}`;
+        const bad = (j.details || []).filter((d: any) => !d.ok);
+        if (bad.length) m += '\n\nלא נכנס בנדרים:\n' + bad.map((d: any) => `• ${d.name}: בנדרים ${d.after ?? '?'} (צריך ${d.base})`).join('\n');
         setResult(m);
       }
       await load();
@@ -387,6 +389,38 @@ function PendingHkRestoreBanner() {
       )}
       {result && <pre className="mt-2 whitespace-pre-wrap text-xs bg-white/70 rounded p-2 border border-amber-200">{result}</pre>}
     </div>
+  );
+}
+
+// Always-available audit: read the ACTUAL amount of every overridden credit HK from
+// Nedarim, fix any that drifted, and report exactly what Nedarim has (source of truth).
+function HkAuditButton() {
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    if (!confirm('לבדוק מול נדרים את כל הו״ק האשראי ששונו זמנית, ולתקן את מי שלא חזר לסכום הקבוע?')) return;
+    setBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/nedarim/restore-hk-overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ reprocess: true }),
+      });
+      const j = await res.json();
+      if (!j.ok) { alert('שגיאה: ' + (j.error || 'לא ידוע')); return; }
+      let m = `בדיקה מול נדרים:\n✓ תוקנו עכשיו: ${j.restored}\n✓ כבר תקינים: ${j.alreadyOk || 0}\n✗ לא נכנס בנדרים: ${j.failed}`;
+      const bad = (j.details || []).filter((d: any) => !d.ok);
+      if (bad.length) m += '\n\nלא הצליח לעדכן בנדרים (עדיין לא בסכום הנכון):\n' + bad.slice(0, 20).map((d: any) => `• ${d.name}: בנדרים ${d.after ?? '?'} · צריך ${d.base}`).join('\n') + '\n\n→ אלה כנראה דורשים שינוי ידני בנדרים (ראה הסבר).';
+      else if (j.restored + (j.alreadyOk || 0) > 0) m += '\n\n🎉 הכל תקין בנדרים.';
+      else m += '\n\nאין הו״ק אשראי ששונו זמנית.';
+      alert(m);
+    } catch (e: any) { alert('שגיאת תקשורת: ' + (e?.message || e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Button variant="secondary" onClick={run} disabled={busy}>
+      {busy ? 'בודק…' : '🔍 בדוק הו״ק אשראי'}
+    </Button>
   );
 }
 
