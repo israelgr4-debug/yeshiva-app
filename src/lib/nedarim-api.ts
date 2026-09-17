@@ -203,28 +203,16 @@ export async function updateCreditKevaAmount(
   newAmount: number
 ): Promise<{ ok: boolean; message?: string; raw: any }> {
   const { MosadId, ApiPassword } = creds();
-  const d = await getCreditKevaDetail(kevaId);
-  const s = (v: unknown) => (v == null ? '' : String(v));
+  // UpdateKevaNew is a PARTIAL update (per Nedarim docs): only fields we send change;
+  // an EMPTY field would WIPE the stored value. So to change ONLY the amount we send
+  // ONLY KevaId + Amount — sending card fields (esp. an empty CVV) makes Nedarim try to
+  // re-validate the card and silently NOT apply the amount change.
   const res = await postForm(MANAGE_URL, {
     Action: 'UpdateKevaNew',
     MosadNumber: MosadId,
     ApiPassword,
     KevaId: kevaId,
-    Zeout: s(d.KevaZeout),
-    ClientName: s(d.KevaName),
-    Adresse: s(d.KevaAdresse),
-    City: s(d.KevaCity),
-    Phone: s(d.KevaPhone),
-    Mail: s(d.KevaMail),
-    Tashlumim: s(d.KevaTashlumim),
-    Groupe: s(d.KevaGroupe),
-    Avour: s(d.KevaAvour),
-    NextDate: s(d.KevaNextDate),
-    Frequency: s(d.KevaFrequency) || '1',
     Amount: String(newAmount),
-    CreditCard: s(d.KevaLastNum), // last-4 of the already-saved card is accepted
-    Tokef: s(d.KevaTokef),
-    CVV: '',
   });
   const result = String(res?.Result ?? res?.Status ?? '');
   return { ok: result.toLowerCase() === 'ok', message: res?.Message, raw: res };
