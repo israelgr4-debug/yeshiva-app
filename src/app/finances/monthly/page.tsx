@@ -397,7 +397,7 @@ function PendingHkRestoreBanner() {
 function HkAuditButton() {
   const [busy, setBusy] = useState(false);
   const run = async () => {
-    if (!confirm('לבדוק מול נדרים את כל הו״ק האשראי ששונו זמנית, ולתקן את מי שלא חזר לסכום הקבוע?')) return;
+    if (!confirm('לעדכן בנדרים כל הו״ק אשראי ששונתה זמנית → לשכר הלימוד הקבוע של התלמיד (למשל שיעור א = 1200)?\n\nבדוק בתוצאה שהסכומים (יעד) נכונים.')) return;
     setBusy(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();

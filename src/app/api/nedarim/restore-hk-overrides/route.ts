@@ -35,6 +35,16 @@ export async function POST(req: NextRequest) {
   if (!reprocess) query = query.is('hk_override_restored_at', null);
   const { data: pending } = await query;
 
+  // Restore TARGET = the student's real recurring tuition (student_tuition.monthly_amount),
+  // NOT hk_base_amount — that snapshot was found to be corrupted (held the reduced override
+  // amount), which made "restore" wrongly set HKs back to the reduced amount.
+  const sids = [...new Set((pending || []).map((a: any) => a.student_id).filter(Boolean))] as string[];
+  const monthlyBySid = new Map<string, number>();
+  for (let i = 0; i < sids.length; i += 500) {
+    const { data } = await db.from('student_tuition').select('student_id, monthly_amount').in('student_id', sids.slice(i, i + 500));
+    for (const t of (data as any[]) || []) monthlyBySid.set(t.student_id, Number(t.monthly_amount) || 0);
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   let restored = 0, waiting = 0, failed = 0, alreadyOk = 0;
   const details: { name: string; base: number; before: number | null; after: number | null; ok: boolean; message?: string }[] = [];
@@ -43,8 +53,9 @@ export async function POST(req: NextRequest) {
   const amt = (d: any) => { const n = Number(d?.KevaAmount); return isNaN(n) ? null : n; };
 
   for (const adj of pending || []) {
-    if (!adj.hk_keva_id) { failed++; details.push({ name: nameOf(adj), base: Number(adj.hk_base_amount) || 0, before: null, after: null, ok: false, message: 'חסר KevaId' }); continue; }
-    const base = Number(adj.hk_base_amount) || 0;
+    if (!adj.hk_keva_id) { failed++; details.push({ name: nameOf(adj), base: 0, before: null, after: null, ok: false, message: 'חסר KevaId' }); continue; }
+    const base = monthlyBySid.get(adj.student_id) || 0; // TARGET = real recurring tuition
+    if (!base) { failed++; details.push({ name: nameOf(adj), base: 0, before: null, after: null, ok: false, message: 'אין שכר לימוד מוגדר לתלמיד — דלג (לא משנים בנדרים)' }); continue; }
     const day = String(adj.hk_charge_day || 20).padStart(2, '0');
     const chargeDate = `${adj.month}-${day}`;
     if (!force && !reprocess && today <= chargeDate) { waiting++; continue; }
