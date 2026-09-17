@@ -409,10 +409,15 @@ function HkAuditButton() {
       const j = await res.json();
       if (!j.ok) { alert('שגיאה: ' + (j.error || 'לא ידוע')); return; }
       let m = `בדיקה מול נדרים:\n✓ תוקנו עכשיו: ${j.restored}\n✓ כבר תקינים: ${j.alreadyOk || 0}\n✗ לא נכנס בנדרים: ${j.failed}`;
-      const bad = (j.details || []).filter((d: any) => !d.ok);
-      if (bad.length) m += '\n\nלא הצליח לעדכן בנדרים (עדיין לא בסכום הנכון):\n' + bad.slice(0, 20).map((d: any) => `• ${d.name}: בנדרים ${d.after ?? '?'} · צריך ${d.base}`).join('\n') + '\n\n→ אלה כנראה דורשים שינוי ידני בנדרים (ראה הסבר).';
-      else if (j.restored + (j.alreadyOk || 0) > 0) m += '\n\n🎉 הכל תקין בנדרים.';
-      else m += '\n\nאין הו״ק אשראי ששונו זמנית.';
+      if (j.sample) {
+        const s = j.sample;
+        m += `\n\n🐞 אבחון (${s.name}, הו״ק ${s.keva}):\n` +
+          `לפני: ${s.before} → אחרי: ${s.after} (יעד ${s.base})\n` +
+          `תשובת נדרים לעדכון: Result=${s.updateResult} · Message=${s.updateMessage ?? '(ריק)'}\n` +
+          `סטטוס הו״ק: ${s.kevaStatus}\n` +
+          `גולמי: ${s.updateRaw}`;
+      }
+      console.log('HK audit sample:', j.sample);
       alert(m);
     } catch (e: any) { alert('שגיאת תקשורת: ' + (e?.message || e)); }
     finally { setBusy(false); }

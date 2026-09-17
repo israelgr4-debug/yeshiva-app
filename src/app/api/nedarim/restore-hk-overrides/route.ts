@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
   const today = new Date().toISOString().slice(0, 10);
   let restored = 0, waiting = 0, failed = 0, alreadyOk = 0;
   const details: { name: string; base: number; before: number | null; after: number | null; ok: boolean; message?: string }[] = [];
+  let sample: any = null; // raw Nedarim responses for the first update attempt (diagnostics)
   const nameOf = (adj: any) => adj.students ? `${adj.students.last_name} ${adj.students.first_name}` : (adj.hk_keva_id || adj.id);
   const amt = (d: any) => { const n = Number(d?.KevaAmount); return isNaN(n) ? null : n; };
 
@@ -58,7 +59,16 @@ export async function POST(req: NextRequest) {
     }
 
     const res = await updateCreditKevaAmount(adj.hk_keva_id, base);
-    const after = amt(await getCreditKevaDetail(adj.hk_keva_id)); // VERIFY the change actually took effect
+    const afterDetail = await getCreditKevaDetail(adj.hk_keva_id); // VERIFY the change actually took effect
+    const after = amt(afterDetail);
+
+    if (!sample) sample = {
+      name: nameOf(adj), keva: adj.hk_keva_id, base, before, after,
+      updateResult: res.raw?.Result ?? res.raw?.Status ?? null,
+      updateMessage: res.raw?.Message ?? null,
+      updateRaw: (typeof res.raw === 'string' ? res.raw : JSON.stringify(res.raw)).slice(0, 500),
+      kevaStatus: afterDetail?.KevaStatus ?? null,
+    };
 
     if (after === base) {
       await db.from('charge_adjustments').update({ hk_override_restored_at: new Date().toISOString(), hk_error: null }).eq('id', adj.id);
@@ -72,5 +82,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, restored, waiting, failed, alreadyOk, details: details.slice(0, 60) });
+  return NextResponse.json({ ok: true, restored, waiting, failed, alreadyOk, sample, details: details.slice(0, 60) });
 }
