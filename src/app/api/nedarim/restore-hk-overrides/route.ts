@@ -23,23 +23,33 @@ export async function POST(req: NextRequest) {
   }
 
   const db = adminClient();
-  const { data: pending } = await db.from('charge_adjustments').select('*')
+  // `force` (from an explicit user click) restores regardless of the charge-day wait.
+  let body: any = {};
+  try { body = await req.json(); } catch {}
+  const force = body?.force === true;
+
+  const { data: pending } = await db.from('charge_adjustments')
+    .select('*, students(first_name,last_name)')
     .not('hk_override_applied_at', 'is', null)
     .is('hk_override_restored_at', null);
 
   const today = new Date().toISOString().slice(0, 10);
   let restored = 0, waiting = 0, failed = 0;
+  const errors: { name: string; message: string }[] = [];
+  const nameOf = (adj: any) => adj.students ? `${adj.students.last_name} ${adj.students.first_name}` : (adj.hk_keva_id || adj.id);
 
   for (const adj of pending || []) {
-    if (!adj.hk_keva_id) continue;
+    if (!adj.hk_keva_id) { failed++; errors.push({ name: nameOf(adj), message: 'חסר KevaId — לא ניתן להחזיר אוטומטית' }); continue; }
     const day = String(adj.hk_charge_day || 20).padStart(2, '0');
     const chargeDate = `${adj.month}-${day}`;      // e.g. 2026-09-20
-    if (today <= chargeDate) { waiting++; continue; } // charge day not passed yet
+    if (!force && today <= chargeDate) { waiting++; continue; } // charge day not passed yet
 
     const res = await updateCreditKevaAmount(adj.hk_keva_id, Number(adj.hk_base_amount) || 0);
     if (!res.ok) {
-      await db.from('charge_adjustments').update({ hk_error: 'החזרה נכשלה: ' + (res.message || '') }).eq('id', adj.id);
-      failed++; continue;
+      const msg = res.message || (typeof res.raw === 'string' ? res.raw : JSON.stringify(res.raw)) || 'נכשל בנדרים';
+      await db.from('charge_adjustments').update({ hk_error: 'החזרה נכשלה: ' + msg }).eq('id', adj.id);
+      failed++; errors.push({ name: nameOf(adj), message: msg });
+      continue;
     }
     await db.from('charge_adjustments').update({ hk_override_restored_at: new Date().toISOString(), hk_error: null }).eq('id', adj.id);
     await db.from('nedarim_subscriptions').update({ amount_per_charge: Number(adj.hk_base_amount) || 0 })
@@ -47,5 +57,5 @@ export async function POST(req: NextRequest) {
     restored++;
   }
 
-  return NextResponse.json({ ok: true, restored, waiting, failed });
+  return NextResponse.json({ ok: true, restored, waiting, failed, errors: errors.slice(0, 50) });
 }

@@ -328,25 +328,64 @@ export default function MonthlyCollectionPage() {
 
 // Safety net: credit HKs temporarily changed by a group override, awaiting restore.
 function PendingHkRestoreBanner() {
-  const [rows, setRows] = useState<{ id: string; amount: number; base: number; name: string }[]>([]);
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from('charge_adjustments')
-        .select('id, amount, hk_base_amount, students!inner(first_name,last_name)')
-        .not('hk_override_applied_at', 'is', null)
-        .is('hk_override_restored_at', null);
-      setRows((data || []).map((r: any) => ({
-        id: r.id, amount: Number(r.amount), base: Number(r.hk_base_amount),
-        name: `${r.students.last_name} ${r.students.first_name}`,
-      })));
-    })();
-  }, []);
+  const [rows, setRows] = useState<{ id: string; amount: number; base: number; name: string; error: string | null }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const load = async () => {
+    const { data } = await supabase
+      .from('charge_adjustments')
+      .select('id, amount, hk_base_amount, hk_error, students!inner(first_name,last_name)')
+      .not('hk_override_applied_at', 'is', null)
+      .is('hk_override_restored_at', null);
+    setRows((data || []).map((r: any) => ({
+      id: r.id, amount: Number(r.amount), base: Number(r.hk_base_amount),
+      name: `${r.students.last_name} ${r.students.first_name}`, error: r.hk_error || null,
+    })));
+  };
+  useEffect(() => { load(); }, []);
+
+  const restoreNow = async () => {
+    if (!confirm('להחזיר עכשיו את הו״ק האשראי לסכום הקבוע בנדרים?\n(מתאים כשההחזרה האוטומטית לא קרתה אחרי יום החיוב)')) return;
+    setBusy(true); setResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/nedarim/restore-hk-overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ force: true }),
+      });
+      const j = await res.json();
+      if (!j.ok) { setResult('שגיאה: ' + (j.error || 'לא ידוע')); }
+      else {
+        let m = `✓ הוחזרו ${j.restored} · נכשלו ${j.failed}`;
+        if (j.errors?.length) m += '\n\nשגיאות:\n' + j.errors.map((e: any) => `• ${e.name}: ${e.message}`).join('\n');
+        setResult(m);
+      }
+      await load();
+    } catch (e: any) { setResult('שגיאת תקשורת: ' + (e?.message || e)); }
+    finally { setBusy(false); }
+  };
+
   if (rows.length === 0) return null;
+  const withError = rows.filter((r) => r.error).length;
   return (
     <div className="mx-4 md:mx-8 mt-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-3 text-sm">
-      🔄 <b>{rows.length}</b> הו״ק אשראי שונו זמנית וממתינות להחזרה לסכום הקבוע (אוטומטית אחרי יום החיוב):
-      <span className="text-amber-700"> {rows.slice(0, 8).map((r) => `${r.name} (${ils(r.amount)}→${ils(r.base)})`).join(' · ')}{rows.length > 8 ? ' …' : ''}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          🔄 <b>{rows.length}</b> הו״ק אשראי שונו זמנית וממתינות להחזרה לסכום הקבוע
+          {withError > 0 && <span className="text-red-700"> ({withError} עם שגיאה בהחזרה)</span>}:
+          <span className="text-amber-700"> {rows.slice(0, 8).map((r) => `${r.name} (${ils(r.amount)}→${ils(r.base)})`).join(' · ')}{rows.length > 8 ? ' …' : ''}</span>
+        </div>
+        <button onClick={restoreNow} disabled={busy}
+          className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50">
+          {busy ? 'מחזיר…' : '🔄 החזר עכשיו'}
+        </button>
+      </div>
+      {rows.some((r) => r.error) && (
+        <div className="mt-2 text-xs text-red-700">שגיאות אחרונות: {rows.filter((r) => r.error).slice(0, 3).map((r) => `${r.name} — ${r.error}`).join(' · ')}</div>
+      )}
+      {result && <pre className="mt-2 whitespace-pre-wrap text-xs bg-white/70 rounded p-2 border border-amber-200">{result}</pre>}
     </div>
   );
 }
