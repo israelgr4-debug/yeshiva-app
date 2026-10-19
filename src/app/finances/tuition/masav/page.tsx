@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { MasavFileMarkPaid } from '@/components/finances/MasavFileMarkPaid';
 import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
@@ -60,6 +61,7 @@ export default function MasavExportPage() {
   const [sendCounter, setSendCounter] = useState(1);
   const [downloaded, setDownloaded] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [fileMarkOpen, setFileMarkOpen] = useState(false);
   const [markResult, setMarkResult] = useState<{ updated: number; inserted: number; skipped: number; errors: string[] } | null>(null);
   const [adjustedCount, setAdjustedCount] = useState(0);
 
@@ -230,7 +232,10 @@ export default function MasavExportPage() {
 
     try {
       const monthStart = chargeDate.slice(0, 7) + '-01';
-      const monthEnd   = chargeDate.slice(0, 7) + '-31';
+      // Real next-month boundary — `-31` is an invalid date for 30-day months / February.
+      const [cy, cm] = chargeDate.slice(0, 7).split('-').map(Number);
+      const nd = new Date(cy, cm, 1);
+      const nextMonthStart = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}-01`;
 
       // Build list of {student_id, amount, name} to process
       const items: { student_id: string; amount: number; name: string }[] = [];
@@ -249,7 +254,8 @@ export default function MasavExportPage() {
           .select('id, student_id, payment_date, amount_ils, status_code')
           .in('student_id', chunk.map((x) => x.student_id))
           .gte('payment_date', monthStart)
-          .lte('payment_date', monthEnd);
+          .lt('payment_date', nextMonthStart)
+          .is('nedarim_transaction_id', null); // bank rows only (ignore mirrored credit)
         if (error) throw error;
         for (const r of data || []) {
           (existingByStudent[r.student_id] ||= []).push(r);
@@ -441,7 +447,11 @@ export default function MasavExportPage() {
           >
             {marking ? 'מעדכן...' : '✅ סמן את הקובץ כנפרע (אחרי שהבנק חייב)'}
           </Button>
+          <Button variant="secondary" onClick={() => setFileMarkOpen(true)}>
+            📂 סמן קובץ שיוצא בעבר כנפרע
+          </Button>
         </div>
+        {fileMarkOpen && <MasavFileMarkPaid onClose={() => setFileMarkOpen(false)} />}
 
         {downloaded && !markResult && !marking && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
