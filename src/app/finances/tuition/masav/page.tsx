@@ -63,6 +63,7 @@ export default function MasavExportPage() {
   const [sendCounter, setSendCounter] = useState(1);
   const [fileMarkOpen, setFileMarkOpen] = useState(false);
   const [runsKey, setRunsKey] = useState(0);
+  const [hasOpenRun, setHasOpenRun] = useState(false);
 
   // Default the send counter to the last recorded run's counter + 1.
   useEffect(() => {
@@ -71,7 +72,7 @@ export default function MasavExportPage() {
         .eq('kind', 'tuition').order('send_counter', { ascending: false }).limit(1);
       if (data && data[0]) setSendCounter((Number(data[0].send_counter) || 0) + 1);
     })();
-  }, []);
+  }, [runsKey]);
   const [adjustedCount, setAdjustedCount] = useState(0);
 
   useEffect(() => {
@@ -183,6 +184,7 @@ export default function MasavExportPage() {
   const formatCurrency = (n: number) => `₪${Number(n).toLocaleString('he-IL')}`;
 
   const handleDownloadMasav = async () => {
+    if (hasOpenRun) { alert('יש קובץ פתוח — סמן "שודר וזוכה" או "ביטול" לפני הפקת קובץ חדש.'); return; }
     if (validCharges.length === 0) {
       alert('אין גביות תקינות לייצוא');
       return;
@@ -338,25 +340,26 @@ export default function MasavExportPage() {
           </div>
         </div>
 
+        {/* The OPEN produced file (if any): mark "שודר וזוכה" or cancel to produce a new one. */}
+        <MasavRunsList mode="open" refreshKey={runsKey} onOpenChange={setHasOpenRun} onChanged={() => setRunsKey((k) => k + 1)} />
+
         <div className="flex gap-3 flex-wrap">
-          <Button onClick={handleDownloadMasav} disabled={validCharges.length === 0}>
-            💾 הורד קובץ מס״ב (.txt)
+          <Button onClick={handleDownloadMasav} disabled={validCharges.length === 0 || hasOpenRun}>
+            💾 הפק קובץ מס״ב (.txt)
           </Button>
           <Button variant="secondary" onClick={handleDownloadCsv} disabled={validCharges.length === 0}>
             📄 הורד תצוגה מקדימה (CSV)
           </Button>
           <Button variant="secondary" onClick={() => setFileMarkOpen(true)}>
-            📂 סמן קובץ שיוצא בעבר כנפרע
+            📂 סמן קובץ ישן (txt) כנפרע
           </Button>
         </div>
+        {hasOpenRun && (
+          <div className="text-xs text-amber-700">🔒 יש קובץ פתוח למעלה — סמן אותו &quot;שודר וזוכה&quot; או &quot;ביטול&quot; לפני הפקת קובץ חדש.</div>
+        )}
         {fileMarkOpen && <MasavFileMarkPaid onClose={() => setFileMarkOpen(false)} />}
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-          💡 כל קובץ שמורידים נרשם ב&quot;שידורים שהופקו&quot; למטה. אחרי שהבנק זיכה — לחץ שם &quot;סמן כנפרע&quot; על אותו שידור.
-          הסימון לפי מה שהיה בקובץ, גם אם השתנו נתונים מאז.
-        </div>
-
-        <MasavRunsList refreshKey={runsKey} />
+        <MasavRunsList mode="history" refreshKey={runsKey} />
 
         {/* Invalid list */}
         {invalidCharges.length > 0 && (

@@ -24,7 +24,7 @@ export async function recordMasavRun(chargeDate: string, sendCounter: number, fa
 
   const { data: existing } = await supabase.from('masav_runs').select('id')
     .eq('kind', 'tuition').eq('charge_date', chargeDate).eq('send_counter', sendCounter)
-    .is('marked_paid_at', null).maybeSingle();
+    .is('marked_paid_at', null).is('cancelled_at', null).maybeSingle();
 
   let runId: string;
   if (existing) {

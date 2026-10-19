@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS masav_run_items (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- A produced file is OPEN until the manager either marks it "שודר וזוכה" (marked_paid_at)
+-- or cancels it (cancelled_at) to produce a new one.
+ALTER TABLE masav_runs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+ALTER TABLE masav_runs ADD COLUMN IF NOT EXISTS cancelled_by TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_masav_runs_date ON masav_runs(charge_date DESC);
 CREATE INDEX IF NOT EXISTS idx_masav_run_items_run ON masav_run_items(run_id);
 
