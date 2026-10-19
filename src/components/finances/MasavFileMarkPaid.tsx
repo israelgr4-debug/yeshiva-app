@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
-import { supabase } from '@/lib/supabase';
 import { fetchAll } from '@/lib/supabase-paginate';
+import { markItemsPaid } from '@/lib/masav-mark';
 
 // Mark an ALREADY-EXPORTED מס"ב file as paid, using exactly what the file contains
 // (date, serial, and every account+amount) — not today's recalculation, which may
@@ -148,51 +148,8 @@ export function MasavFileMarkPaid({ onClose }: { onClose: () => void }) {
     if (!file || items.length === 0) return;
     if (!confirm(`לסמן ${items.length} תלמידים כנפרעו לתאריך ${file.chargeDate.split('-').reverse().join('/')} (שידור ${file.serial})?\nסה״כ ${ils(matchedTotal)}.\n\n*** רק אם הבנק אכן זיכה את הקובץ ***`)) return;
     setBusy(true); setResult(null);
-    const month = file.chargeDate.slice(0, 7);
-    const [y, m] = month.split('-').map(Number);
-    const nd = new Date(y, m, 1);
-    const nextStart = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}-01`;
-    let inserted = 0, updated = 0, skipped = 0;
-    const errors: string[] = [];
     try {
-      // Existing BANK rows for these students this month (credit mirrors excluded).
-      const existing: Record<string, any[]> = {};
-      for (let i = 0; i < items.length; i += 100) {
-        const { data, error } = await supabase.from('payment_history')
-          .select('id, student_id, amount_ils, status_code')
-          .in('student_id', items.slice(i, i + 100).map((x) => x.id))
-          .gte('payment_date', `${month}-01`).lt('payment_date', nextStart)
-          .is('nedarim_transaction_id', null);
-        if (error) throw error;
-        for (const r of data || []) (existing[r.student_id] ||= []).push(r);
-      }
-      for (const it of items) {
-        const ex = existing[it.id] || [];
-        try {
-          if (ex.length === 0) {
-            const { error } = await supabase.from('payment_history').insert({
-              student_id: it.id, payment_date: file.chargeDate, amount_ils: it.amount,
-              status_code: 2, status_name: 'נפרע', group_number: file.serial,
-            });
-            if (error) throw error;
-            inserted++;
-          } else if (ex.length > 1) {
-            errors.push(`${it.name}: ${ex.length} רשומות בנק בחודש זה — בדוק ידנית`); skipped++;
-          } else if (ex[0].status_code === 2) {
-            if (Math.abs((Number(ex[0].amount_ils) || 0) - it.amount) >= 0.01) errors.push(`${it.name}: כבר נפרע בסכום ${ils(Number(ex[0].amount_ils))} (בקובץ ${ils(it.amount)})`);
-            skipped++;
-          } else if (ex[0].status_code === 3) {
-            errors.push(`${it.name}: מסומן כחזר — לא שונה`); skipped++;
-          } else {
-            const { error } = await supabase.from('payment_history').update({
-              status_code: 2, status_name: 'נפרע', payment_date: file.chargeDate, amount_ils: it.amount, group_number: file.serial,
-            }).eq('id', ex[0].id);
-            if (error) throw error;
-            updated++;
-          }
-        } catch (e: any) { errors.push(`${it.name}: ${e?.message || e}`); }
-      }
-      setResult({ inserted, updated, skipped, errors });
+      setResult(await markItemsPaid(items.map((s) => ({ student_id: s.id, amount: s.amount, name: s.name })), file.chargeDate, file.serial));
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally { setBusy(false); }

@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { MasavFileMarkPaid } from '@/components/finances/MasavFileMarkPaid';
+import { MasavRunsList } from '@/components/finances/MasavRunsList';
+import { recordMasavRun } from '@/lib/masav-mark';
 import { PageGuard } from '@/components/ui/PageGuard';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
@@ -59,10 +61,17 @@ export default function MasavExportPage() {
     return d.toISOString().slice(0, 10);
   });
   const [sendCounter, setSendCounter] = useState(1);
-  const [downloaded, setDownloaded] = useState(false);
-  const [marking, setMarking] = useState(false);
   const [fileMarkOpen, setFileMarkOpen] = useState(false);
-  const [markResult, setMarkResult] = useState<{ updated: number; inserted: number; skipped: number; errors: string[] } | null>(null);
+  const [runsKey, setRunsKey] = useState(0);
+
+  // Default the send counter to the last recorded run's counter + 1.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('masav_runs').select('send_counter')
+        .eq('kind', 'tuition').order('send_counter', { ascending: false }).limit(1);
+      if (data && data[0]) setSendCounter((Number(data[0].send_counter) || 0) + 1);
+    })();
+  }, []);
   const [adjustedCount, setAdjustedCount] = useState(0);
 
   useEffect(() => {
@@ -173,7 +182,7 @@ export default function MasavExportPage() {
 
   const formatCurrency = (n: number) => `₪${Number(n).toLocaleString('he-IL')}`;
 
-  const handleDownloadMasav = () => {
+  const handleDownloadMasav = async () => {
     if (validCharges.length === 0) {
       alert('אין גביות תקינות לייצוא');
       return;
@@ -200,122 +209,19 @@ export default function MasavExportPage() {
     );
     const filename = `masav_${chargeDate.replace(/-/g, '')}_${sendCounter}.txt`;
     downloadMasavFile(filename, content);
-    setDownloaded(true);
-    setMarkResult(null);
-  };
 
-  /**
-   * After the bank has charged the MASAV file, mark every student in this run
-   * as paid in payment_history.
-   * Logic per student:
-   *   - find an existing record for that student in the SAME month as chargeDate
-   *   - if found with status_code=1 (לחיוב/צפי) → UPDATE to status=2 (נפרע), set
-   *     date=chargeDate, amount=that student's amount, group_number=sendCounter
-   *   - if found with status_code=2 already and same amount → SKIP
-   *   - if found with status_code=2 and DIFFERENT amount → error (manual review)
-   *   - if not found → INSERT new with status=2, group_number=sendCounter
-   */
-  const handleMarkAsPaid = async () => {
-    if (validCharges.length === 0) return;
-    const totalToMark = validCharges.reduce((sum, c) => sum + c.students.length, 0);
-    if (!confirm(
-      `לסמן ${totalToMark} תלמידים (${validCharges.length} משפחות) כנפרעו לתאריך ${chargeDate}?\n` +
-      `מספר שידור: ${sendCounter}\n` +
-      `סה״כ ₪${formatCurrency(totalAmount).replace('₪', '')}.\n\n` +
-      `*** לעשות זאת רק אחרי שהבנק חייב בפועל ***`
-    )) return;
-
-    setMarking(true);
-    setMarkResult(null);
-    let updated = 0, inserted = 0, skipped = 0;
-    const errors: string[] = [];
-
-    try {
-      const monthStart = chargeDate.slice(0, 7) + '-01';
-      // Real next-month boundary — `-31` is an invalid date for 30-day months / February.
-      const [cy, cm] = chargeDate.slice(0, 7).split('-').map(Number);
-      const nd = new Date(cy, cm, 1);
-      const nextMonthStart = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}-01`;
-
-      // Build list of {student_id, amount, name} to process
-      const items: { student_id: string; amount: number; name: string }[] = [];
-      for (const fc of validCharges) {
-        for (const s of fc.students) {
-          items.push({ student_id: s.id, amount: s.amount, name: s.name });
-        }
-      }
-
-      // Fetch existing payment_history for this month in chunks
-      const existingByStudent: Record<string, any[]> = {};
-      for (let i = 0; i < items.length; i += 100) {
-        const chunk = items.slice(i, i + 100);
-        const { data, error } = await supabase
-          .from('payment_history')
-          .select('id, student_id, payment_date, amount_ils, status_code')
-          .in('student_id', chunk.map((x) => x.student_id))
-          .gte('payment_date', monthStart)
-          .lt('payment_date', nextMonthStart)
-          .is('nedarim_transaction_id', null); // bank rows only (ignore mirrored credit)
-        if (error) throw error;
-        for (const r of data || []) {
-          (existingByStudent[r.student_id] ||= []).push(r);
-        }
-      }
-
-      for (const it of items) {
-        const existing = existingByStudent[it.student_id] || [];
-        try {
-          if (existing.length === 0) {
-            const { error } = await supabase.from('payment_history').insert({
-              student_id: it.student_id,
-              payment_date: chargeDate,
-              amount_ils: it.amount,
-              status_code: 2,
-              status_name: 'נפרע',
-              group_number: sendCounter,
-            });
-            if (error) throw error;
-            inserted++;
-          } else if (existing.length > 1) {
-            errors.push(`${it.name}: יש ${existing.length} רשומות בחודש זה - דרוש בדיקה ידנית`);
-            skipped++;
-          } else {
-            const rec = existing[0];
-            const recAmt = Number(rec.amount_ils) || 0;
-            if (rec.status_code === 2) {
-              if (Math.abs(recAmt - it.amount) < 0.01) {
-                skipped++; // already paid same amount
-              } else {
-                errors.push(`${it.name}: כבר נפרע בסכום ₪${recAmt} (קובץ מבקש ₪${it.amount})`);
-                skipped++;
-              }
-            } else {
-              const { error } = await supabase
-                .from('payment_history')
-                .update({
-                  status_code: 2,
-                  status_name: 'נפרע',
-                  payment_date: chargeDate,
-                  amount_ils: it.amount,
-                  group_number: sendCounter,
-                })
-                .eq('id', rec.id);
-              if (error) throw error;
-              updated++;
-            }
-          }
-        } catch (e: any) {
-          errors.push(`${it.name}: ${e.message || e}`);
-        }
-      }
-
-      setMarkResult({ updated, inserted, skipped, errors });
-      setSendCounter((c) => c + 1);
-    } catch (e: any) {
-      alert('שגיאה: ' + (e.message || e));
-    } finally {
-      setMarking(false);
-    }
+    // Remember what this file contained (per student) so it can be marked paid later
+    // exactly as produced — not the file itself.
+    const res = await recordMasavRun(chargeDate, sendCounter, validCharges.map((c) => ({
+      family_id: c.family.id,
+      family_name: `${c.family.family_name} ${c.family.father_name || ''}`.trim(),
+      bank: String(c.family.bank_number ?? ''),
+      branch: String(c.family.bank_branch ?? ''),
+      account: String(c.family.bank_account ?? ''),
+      students: c.students.map((s) => ({ id: s.id, name: s.name, amount: s.amount })),
+    })));
+    if (!res.ok) alert('⚠️ הקובץ הורד, אך רישום השידור במערכת נכשל: ' + res.error + '\nאפשר לסמן כנפרע בהמשך דרך "סמן קובץ שיוצא בעבר".');
+    setRunsKey((k) => k + 1);
   };
 
   const handleDownloadCsv = () => {
@@ -439,59 +345,18 @@ export default function MasavExportPage() {
           <Button variant="secondary" onClick={handleDownloadCsv} disabled={validCharges.length === 0}>
             📄 הורד תצוגה מקדימה (CSV)
           </Button>
-          <Button
-            variant={downloaded ? 'primary' : 'secondary'}
-            onClick={handleMarkAsPaid}
-            disabled={validCharges.length === 0 || marking}
-            className={downloaded ? 'bg-green-600 hover:bg-green-700' : ''}
-          >
-            {marking ? 'מעדכן...' : '✅ סמן את הקובץ כנפרע (אחרי שהבנק חייב)'}
-          </Button>
           <Button variant="secondary" onClick={() => setFileMarkOpen(true)}>
             📂 סמן קובץ שיוצא בעבר כנפרע
           </Button>
         </div>
         {fileMarkOpen && <MasavFileMarkPaid onClose={() => setFileMarkOpen(false)} />}
 
-        {downloaded && !markResult && !marking && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-            ✓ הקובץ הורד. העלה אותו לאתר הבנק. אחרי שהבנק חייב בפועל - לחץ על
-            <b className="mx-1">&quot;סמן את הקובץ כנפרע&quot;</b>
-            כדי לעדכן את כל התלמידים כנפרעו.
-          </div>
-        )}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+          💡 כל קובץ שמורידים נרשם ב&quot;שידורים שהופקו&quot; למטה. אחרי שהבנק זיכה — לחץ שם &quot;סמן כנפרע&quot; על אותו שידור.
+          הסימון לפי מה שהיה בקובץ, גם אם השתנו נתונים מאז.
+        </div>
 
-        {markResult && (
-          <Card>
-            <CardContent>
-              <div className="flex flex-wrap gap-4 items-start">
-                <div className="flex-1 min-w-[200px]">
-                  <p className="text-lg font-semibold text-emerald-700">✅ עודכן בהצלחה</p>
-                  <ul className="text-sm mt-2 space-y-0.5">
-                    <li>📝 עודכנו (היו ב״צפי״ → נפרעו): <b>{markResult.updated}</b></li>
-                    <li>➕ נוספו חדשות (לא היה צפי): <b>{markResult.inserted}</b></li>
-                    <li>⏭️ דולגו (כבר נפרעו / רב-משמעי): <b>{markResult.skipped}</b></li>
-                    <li>❌ שגיאות: <b>{markResult.errors.length}</b></li>
-                  </ul>
-                  {markResult.errors.length > 0 && (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-sm text-amber-700">פירוט שגיאות</summary>
-                      <ul className="mt-1 text-xs space-y-0.5 max-h-40 overflow-y-auto bg-amber-50 p-2 rounded">
-                        {markResult.errors.map((e, i) => <li key={i}>• {e}</li>)}
-                      </ul>
-                    </details>
-                  )}
-                </div>
-                <Link
-                  href="/finances/collection/history"
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                >
-                  עבור להיסטוריית הגביות ←
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <MasavRunsList refreshKey={runsKey} />
 
         {/* Invalid list */}
         {invalidCharges.length > 0 && (
