@@ -13,7 +13,8 @@ app day-to-day with restricted permissions.
 
 ## Stack
 
-- **Framework**: Next.js 14 (App Router, RSC where useful, mostly client components)
+- **Framework**: Next.js 15 (App Router, RSC where useful, mostly client components;
+  route `params` are async — `await ctx.params`). React 18. Node ≥20 (nodemailer 10).
 - **UI**: TailwindCSS + custom design tokens in `src/app/globals.css`
 - **Fonts**: Heebo (body) + Frank Ruhl Libre (display headings)
 - **Auth & DB**: Supabase (Postgres + Auth + Storage + RLS), new key format
