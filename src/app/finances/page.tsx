@@ -63,6 +63,8 @@ export default function FinancesPage() {
               desc="קישור הו״ק נדרים לתלמידים" />
             <ActionCard href="/finances/nedarim/transactions" icon="📊" title="עסקאות נדרים"
               desc="היסטוריית עסקאות אשראי" />
+            <ActionCard href="/finances/bank-check" icon="🩺" title="בדיקת פרטי בנק"
+              desc="פרטי בנק חסרים, לא תואמים או שגויים" />
           </div>
         </section>
 

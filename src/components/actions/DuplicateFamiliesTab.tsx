@@ -26,7 +26,7 @@ const normName = (s: any) => String(s || '').trim().replace(/\s+/g, ' ');
 const FILL_FIELDS = [
   'father_name', 'father_id_number', 'father_phone', 'father_email', 'father_occupation',
   'mother_name', 'mother_id_number', 'mother_phone', 'mother_email', 'mother_occupation',
-  'address', 'city', 'postal_code', 'home_phone', 'bank_name', 'bank_branch', 'bank_account',
+  'address', 'city', 'postal_code', 'home_phone', 'bank_number', 'bank_name', 'bank_branch', 'bank_account',
 ];
 
 export function DuplicateFamiliesTab() {

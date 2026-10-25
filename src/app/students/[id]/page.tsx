@@ -1,5 +1,6 @@
 'use client';
 
+import { bankColumns, bankLabel } from '@/lib/israeli-banks';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
@@ -94,6 +95,8 @@ export default function StudentDetailPage() {
             (updates as any)[k] = formVal;
           }
         }
+        // Bank: the form picks a code — write bank_number + bank_name together (MASAV reads bank_number).
+        if ((familyFormData as any).bank_number) Object.assign(updates, bankColumns((familyFormData as any).bank_number));
         // neighborhood_code: number or null - allow clearing to null,
         // and write whenever it changed from existing
         if (
@@ -149,7 +152,9 @@ export default function StudentDetailPage() {
               address: familyFormData.address || existingFamily.address,
               city: familyFormData.city || existingFamily.city,
               home_phone: familyFormData.home_phone || existingFamily.home_phone,
-              bank_name: familyFormData.bank_name || existingFamily.bank_name,
+              ...((familyFormData as any).bank_number
+                ? bankColumns((familyFormData as any).bank_number)
+                : { bank_name: existingFamily.bank_name, bank_number: existingFamily.bank_number ?? null }),
               bank_branch: familyFormData.bank_branch || existingFamily.bank_branch,
               bank_account: familyFormData.bank_account || existingFamily.bank_account,
               billing_notes: familyFormData.billing_notes || existingFamily.billing_notes,
@@ -170,7 +175,7 @@ export default function StudentDetailPage() {
               city: familyFormData.city,
               neighborhood_code: (familyFormData as any).neighborhood_code ?? null,
               home_phone: familyFormData.home_phone,
-              bank_name: familyFormData.bank_name,
+              ...bankColumns((familyFormData as any).bank_number),
               bank_branch: familyFormData.bank_branch,
               bank_account: familyFormData.bank_account,
               billing_notes: familyFormData.billing_notes,
@@ -530,7 +535,7 @@ export default function StudentDetailPage() {
                               פרטי בנק
                             </h4>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                              <DetailRow label="שם בנק" value={family.bank_name} />
+                              <DetailRow label="בנק" value={bankLabel(family)} />
                               <DetailRow label="סניף" value={family.bank_branch} />
                               <DetailRow label="מספר חשבון" value={family.bank_account} />
                             </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { bankColumns } from '@/lib/israeli-banks';
 import { supabase } from '@/lib/supabase';
 import { fetchAll } from '@/lib/supabase-paginate';
 import { ChargeAdjustment } from '@/lib/types';
@@ -456,7 +457,7 @@ export function useChargeAdjustments() {
   // Write bank details onto the family (so the MASAV/הו"ק can charge them).
   const saveFamilyBank = async (familyId: string, bank: { bank_number: string; bank_branch: string; bank_account: string }): Promise<boolean> => {
     const { error } = await supabase.from('families').update({
-      bank_number: bank.bank_number ? Number(bank.bank_number) : null,
+      ...bankColumns(bank.bank_number), // bank_number + matching bank_name (student card shows the name)
       bank_branch: bank.bank_branch || null,
       bank_account: bank.bank_account || null,
     }).eq('id', familyId);

@@ -365,7 +365,10 @@ export default function MasavExportPage() {
         {invalidCharges.length > 0 && (
           <Card>
             <CardHeader>
-              <h3 className="text-lg font-bold text-amber-800">⚠️ משפחות עם בעיות ({invalidCharges.length})</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-lg font-bold text-amber-800">⚠️ משפחות עם בעיות ({invalidCharges.length})</h3>
+                <Link href="/finances/bank-check" className="text-sm text-blue-700 hover:underline">🩺 לתיקון בבדיקת פרטי בנק ←</Link>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">

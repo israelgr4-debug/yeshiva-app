@@ -1,5 +1,6 @@
 'use client';
 
+import { bankLabel } from '@/lib/israeli-banks';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -122,11 +123,11 @@ export default function FamilyDetailPage() {
                 </p>
                 {family.home_phone && <p className="text-gray-600">🏠 {family.home_phone}</p>}
               </div>
-              {family.bank_name && (
+              {(family.bank_name || family.bank_number || family.bank_account) && (
                 <div className="md:col-span-2 pt-3 border-t border-gray-200">
                   <p className="text-xs text-gray-500">פרטי בנק</p>
                   <p className="font-medium">
-                    בנק {family.bank_number} {family.bank_name} · סניף {family.bank_branch} · חשבון {family.bank_account}
+                    בנק {bankLabel(family) || '—'} · סניף {family.bank_branch} · חשבון {family.bank_account}
                   </p>
                 </div>
               )}

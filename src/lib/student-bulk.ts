@@ -4,6 +4,7 @@
 
 import * as XLSX from 'xlsx';
 import { Student, Family, Machzor } from './types';
+import { bankCodeFromText, bankColumns, bankLabel } from './israeli-banks';
 
 export const ID_COL = 'מזהה';
 
@@ -48,7 +49,7 @@ export const BULK_FIELDS: BulkFieldDef[] = [
   { label: 'עיר', scope: 'family', col: 'city', get: (_s, f) => f?.city || '' },
   { label: 'מיקוד', scope: 'family', col: 'postal_code', get: (_s, f) => f?.postal_code || '' },
   { label: 'טלפון בית', scope: 'family', col: 'home_phone', get: (_s, f) => f?.home_phone || '' },
-  { label: 'בנק', scope: 'family', col: 'bank_name', get: (_s, f) => f?.bank_name || '' },
+  { label: 'בנק', scope: 'family', col: 'bank_name', get: (_s, f) => bankLabel(f) },
   { label: 'סניף', scope: 'family', col: 'bank_branch', get: (_s, f) => f?.bank_branch || '' },
   { label: 'חשבון', scope: 'family', col: 'bank_account', get: (_s, f) => f?.bank_account || '' },
 ];
@@ -179,6 +180,11 @@ export function buildPatches(values: Record<string, string>): {
     }
     if (bf.scope === 'student') student[bf.col] = val;
     else family[bf.col] = val;
+  }
+  // Bank cell may be "12", "12 - הפועלים" or a name → write code + name together.
+  if (family.bank_name) {
+    const code = bankCodeFromText(family.bank_name);
+    if (code) Object.assign(family, bankColumns(code));
   }
   return { student, family };
 }

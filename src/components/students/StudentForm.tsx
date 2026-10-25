@@ -10,7 +10,7 @@ import { useSupabase } from '@/hooks/useSupabase';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { supabase } from '@/lib/supabase';
 import { SHIURIM, getMachzorForNewStudent, DEFAULT_BASE_MACHZOR } from '@/lib/shiurim';
-import { ISRAELI_BANKS } from '@/lib/israeli-banks';
+import { ISRAELI_BANKS, familyBankCode, getBankByCode } from '@/lib/israeli-banks';
 import { useNeighborhoods } from '@/hooks/useNeighborhoods';
 import { isValidIsraeliId, isValidBranch, validateBankAccountFull, idMatchVariants } from '@/lib/israeli-validators';
 import { FamilyPicker } from '@/components/finances/FamilyPicker';
@@ -140,6 +140,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
     city: initialFamily?.city || '',
     neighborhood_code: (initialFamily as any)?.neighborhood_code ?? null,
     home_phone: initialFamily?.home_phone || '',
+    bank_number: familyBankCode(initialFamily) ? String(familyBankCode(initialFamily)) : '',
     bank_name: initialFamily?.bank_name || '',
     bank_branch: initialFamily?.bank_branch || '',
     bank_account: initialFamily?.bank_account || '',
@@ -281,6 +282,12 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
 
   const handleFamilyChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    if (name === 'bank_number') {
+      // keep both bank columns in sync (bank_number = what MASAV uses)
+      setFamilyData((prev) => ({ ...prev, bank_number: value, bank_name: getBankByCode(value)?.shortName ?? (value === prev.bank_number ? prev.bank_name : '') }));
+      setFamilyTouched(true);
+      return;
+    }
     setFamilyData((prev) => ({ ...prev, [name]: value }));
     setFamilyTouched(true);
 
@@ -312,6 +319,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
       city: matchedFamily.city || '',
       neighborhood_code: (matchedFamily as any).neighborhood_code ?? null,
       home_phone: matchedFamily.home_phone || '',
+      bank_number: familyBankCode(matchedFamily) ? String(familyBankCode(matchedFamily)) : '',
       bank_name: matchedFamily.bank_name || '',
       bank_branch: matchedFamily.bank_branch || '',
       bank_account: matchedFamily.bank_account || '',
@@ -349,6 +357,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
       city: selected.city || '',
       neighborhood_code: (selected as any).neighborhood_code ?? null,
       home_phone: selected.home_phone || '',
+      bank_number: familyBankCode(selected) ? String(familyBankCode(selected)) : '',
       bank_name: selected.bank_name || '',
       bank_branch: selected.bank_branch || '',
       bank_account: selected.bank_account || '',
@@ -807,16 +816,19 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
         <h4 className="text-sm font-semibold text-gray-600 mb-3 mt-6">פרטי בנק</h4>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">שם בנק</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">בנק</label>
             <select
-              name="bank_name"
-              value={familyData.bank_name}
+              name="bank_number"
+              value={familyData.bank_number}
               onChange={handleFamilyChange}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">-- בחר --</option>
+              {familyData.bank_number && !getBankByCode(familyData.bank_number) && (
+                <option value={familyData.bank_number}>{familyData.bank_number}{familyData.bank_name ? ` - ${familyData.bank_name}` : ''}</option>
+              )}
               {ISRAELI_BANKS.map((b) => (
-                <option key={b.code} value={b.shortName}>
+                <option key={b.code} value={String(b.code)}>
                   {b.code} - {b.shortName}
                 </option>
               ))}
@@ -842,8 +854,7 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             <label className="block text-sm font-medium text-gray-700 mb-1">
               מספר חשבון
               {familyData.bank_account && (() => {
-                const bankCode = ISRAELI_BANKS.find((b) => b.shortName === familyData.bank_name)?.code;
-                const result = validateBankAccountFull(bankCode, familyData.bank_branch, familyData.bank_account);
+                const result = validateBankAccountFull(familyData.bank_number || null, familyData.bank_branch, familyData.bank_account);
                 // Structural errors only show amber warning.
                 // Check-digit mismatches are NOT flagged as errors because the
                 // algorithms vary per bank and not all are publicly documented.
