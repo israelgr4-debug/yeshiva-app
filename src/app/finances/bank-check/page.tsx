@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { fetchAll } from '@/lib/supabase-paginate';
 import { useAuth } from '@/hooks/useAuth';
 import { ISRAELI_BANKS, bankCodeFromText, bankColumns, getBankByCode } from '@/lib/israeli-banks';
-import { validateBankAccountFull } from '@/lib/israeli-validators';
+import { checkBankAccount, AccountCheckDetail } from '@/lib/israeli-validators';
 
 // families keeps the bank in TWO columns: bank_number (what מס"ב/finances use) and
 // bank_name (what the old student card showed/edited). They drifted apart — this page
@@ -20,10 +20,10 @@ type IssueKey = 'missing' | 'no_number' | 'no_name' | 'mismatch' | 'unknown' | '
 const ISSUES: { key: IssueKey; label: string; hint: string; tone: 'red' | 'amber' | 'blue' }[] = [
   { key: 'missing', label: 'חסר בנק/סניף/חשבון', hint: 'משלם בהו״ק בנקאי אבל חסרים פרטים — לא ייכלל בקובץ מס״ב', tone: 'red' },
   { key: 'no_number', label: 'חסר מספר בנק', hint: 'יש שם בנק אבל אין מספר — מס״ב מדלג עליו. מתוקן בסנכרון', tone: 'red' },
-  { key: 'invalid', label: 'חשבון/סניף לא תקין', hint: 'מבנה לא תקין (לא ספרות / אורך שגוי)', tone: 'red' },
+  { key: 'bad_check', label: 'נכשל בבדיקת חוקיות', hint: 'לא עבר את בדיקת החוקיות הרשמית של מס״ב לבנק זה — כמעט בוודאות טעות הקלדה בסניף/חשבון. החיוב צפוי לחזור', tone: 'red' },
+  { key: 'invalid', label: 'חשבון/סניף לא תקין', hint: 'מבנה לא תקין (לא ספרות / ארוך מדי)', tone: 'red' },
   { key: 'mismatch', label: 'שם ≠ מספר', hint: 'שם הבנק בכרטיס לא תואם את מספר הבנק שמשמש בגבייה', tone: 'amber' },
   { key: 'unknown', label: 'שם בנק לא מזוהה', hint: 'טקסט בשדה הבנק שלא זוהה כבנק מוכר', tone: 'amber' },
-  { key: 'bad_check', label: 'ספרת ביקורת', hint: 'לא עבר ספרת ביקורת — כדאי לוודא מול ההורה (ייתכן שתקין)', tone: 'amber' },
   { key: 'no_name', label: 'חסר שם בנק בכרטיס', hint: 'יש מספר בנק אבל כרטיס התלמיד הציג ריק. מתוקן בסנכרון', tone: 'blue' },
 ];
 const ISSUE_BY_KEY = Object.fromEntries(ISSUES.map((i) => [i.key, i])) as Record<IssueKey, (typeof ISSUES)[number]>;
@@ -41,6 +41,7 @@ interface StudentLite { id: string; first_name: string | null; last_name: string
 interface TuitionLite { student_id: string; payment_method: string | null; active: boolean | null; monthly_amount: number | null }
 interface Row extends FamilyRaw {
   code: number | null; nameCode: number | null; hk: boolean; hkAmount: number;
+  check: AccountCheckDetail | null; // official מס"ב rule result (null = no branch/account)
   students: { id: string; name: string; status: string; hk: boolean }[];
   issues: IssueKey[];
 }
@@ -48,7 +49,7 @@ interface Row extends FamilyRaw {
 const s = (v: any) => (v === null || v === undefined ? '' : String(v).trim());
 const ils = (n: number) => '₪' + n.toLocaleString('he-IL', { maximumFractionDigits: 0 });
 
-function analyze(f: FamilyRaw, hk: boolean): { code: number | null; nameCode: number | null; issues: IssueKey[] } {
+function analyze(f: FamilyRaw, hk: boolean): { code: number | null; nameCode: number | null; issues: IssueKey[]; check: AccountCheckDetail | null } {
   const n = Number(f.bank_number);
   const code = s(f.bank_number) && Number.isFinite(n) && n > 0 ? n : null;
   const nameCode = bankCodeFromText(f.bank_name);
@@ -59,12 +60,13 @@ function analyze(f: FamilyRaw, hk: boolean): { code: number | null; nameCode: nu
   if (code && !s(f.bank_name)) issues.push('no_name');
   if (code && nameCode && code !== nameCode) issues.push('mismatch');
   if (!code && s(f.bank_name) && !nameCode) issues.push('unknown');
+  let check: AccountCheckDetail | null = null;
   if (s(f.bank_branch) && s(f.bank_account)) {
-    const r = validateBankAccountFull(eff, f.bank_branch, f.bank_account);
-    if (r === 'invalid') issues.push('invalid');
-    else if (r === 'bad-check') issues.push('bad_check');
+    check = checkBankAccount(eff, f.bank_branch, f.bank_account);
+    if (check.result === 'invalid') issues.push('invalid');
+    else if (check.result === 'bad-check') issues.push('bad_check');
   }
-  return { code, nameCode, issues };
+  return { code, nameCode, issues, check };
 }
 
 export default function BankCheckPage() {
@@ -117,6 +119,18 @@ export default function BankCheckPage() {
     () => rows.filter((r) => r.issues.length > 0 && (!onlyHk || r.hk)),
     [rows, onlyHk]
   );
+  const checkSummary = useMemo(() => {
+    const c = { valid: 0, bad: 0, none: 0, missing: 0 };
+    for (const r of rows) {
+      if (onlyHk && !r.hk) continue;
+      if (!onlyHk && !r.check && !s(r.bank_account)) continue;
+      if (!r.check) c.missing++;
+      else if (r.check.result === 'valid') c.valid++;
+      else if (r.check.result === 'structural') c.none++;
+      else c.bad++;
+    }
+    return c;
+  }, [rows, onlyHk]);
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: scoped.length };
     for (const r of scoped) for (const i of r.issues) c[i] = (c[i] || 0) + 1;
@@ -192,7 +206,9 @@ export default function BankCheckPage() {
   };
 
   const draftCheck = draft.bank_branch && draft.bank_account
-    ? validateBankAccountFull(draft.bank_number || null, draft.bank_branch, draft.bank_account) : null;
+    ? checkBankAccount(draft.bank_number || null, draft.bank_branch, draft.bank_account) : null;
+  const [calc, setCalc] = useState({ bank: '12', branch: '', account: '' });
+  const calcCheck = calc.branch && calc.account ? checkBankAccount(calc.bank || null, calc.branch, calc.account) : null;
 
   return (
     <PageGuard requires="write" message="עמוד זה דורש הרשאת כתיבה (admin / secretary).">
@@ -209,6 +225,38 @@ export default function BankCheckPage() {
             </Button>
           )}
           {syncMsg && <span className="text-sm text-emerald-700">{syncMsg}</span>}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-2xl border border-slate-200/70 elevation-1 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-1 h-4 bg-gradient-to-b from-emerald-500 to-teal-600 rounded-full" />
+              <h3 className="font-bold text-slate-800">בדיקת חוקיות לפי מס״ב — {onlyHk ? 'משלמי הו״ק בנקאי' : 'כל המשפחות עם חשבון'}</h3>
+            </div>
+            {loading ? <div className="text-sm text-slate-400">טוען…</div> : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div className="rounded-xl bg-emerald-50 p-2"><div className="text-2xl font-bold text-emerald-700 tabular-nums">{checkSummary.valid}</div><div className="text-xs text-emerald-800">✓ תקינים</div></div>
+                <button type="button" onClick={() => setIssueFilter('bad_check')} className="rounded-xl bg-red-50 p-2 hover:ring-2 ring-red-300"><div className="text-2xl font-bold text-red-700 tabular-nums">{checkSummary.bad}</div><div className="text-xs text-red-800">✗ נכשלו</div></button>
+                <div className="rounded-xl bg-slate-50 p-2" title="בנקים שלמס״ב אין להם כלל בדיקה (ירושלים, ההודי…) או ללא מספר בנק"><div className="text-2xl font-bold text-slate-600 tabular-nums">{checkSummary.none}</div><div className="text-xs text-slate-600">○ ללא כלל</div></div>
+                <div className="rounded-xl bg-amber-50 p-2"><div className="text-2xl font-bold text-amber-700 tabular-nums">{checkSummary.missing}</div><div className="text-xs text-amber-800">חסר סניף/חשבון</div></div>
+              </div>
+            )}
+            <p className="text-[11px] text-slate-500 mt-2">לפי המסמך הרשמי של מס״ב &quot;בדיקות חוקיות מספרי חשבון&quot; (עדכון 25/05/26) — הכללים שהבנקים אישרו למס״ב.</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/70 elevation-1 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-1 h-4 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-full" />
+              <h3 className="font-bold text-slate-800">🧮 בודק חשבון בנק</h3>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <select value={calc.bank} onChange={(e) => setCalc((c) => ({ ...c, bank: e.target.value }))} className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm">
+                {ISRAELI_BANKS.map((b) => <option key={b.code} value={String(b.code)}>{b.code} - {b.shortName}</option>)}
+              </select>
+              <input value={calc.branch} onChange={(e) => setCalc((c) => ({ ...c, branch: e.target.value }))} placeholder="סניף" dir="ltr" className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm" />
+              <input value={calc.account} onChange={(e) => setCalc((c) => ({ ...c, account: e.target.value }))} placeholder="חשבון" dir="ltr" className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm" />
+            </div>
+            <div className="mt-2 text-sm min-h-[1.5rem]">{calcCheck ? <CheckBadge c={calcCheck} full /> : <span className="text-slate-400">הקלד סניף וחשבון…</span>}</div>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200/70 elevation-1 p-4 space-y-3">
@@ -259,6 +307,7 @@ export default function BankCheckPage() {
                     <th className="text-start px-3 py-2">שם בנק (כרטיס)</th>
                     <th className="text-start px-3 py-2">סניף</th>
                     <th className="text-start px-3 py-2">חשבון</th>
+                    <th className="text-start px-3 py-2">בדיקת חוקיות</th>
                     <th className="text-start px-3 py-2">בעיות</th>
                     <th className="px-3 py-2"></th>
                   </tr>
@@ -279,11 +328,8 @@ export default function BankCheckPage() {
                         </td>
                         <td className="px-3 py-2"><input value={draft.bank_branch} onChange={(e) => setDraft((d) => ({ ...d, bank_branch: e.target.value }))} className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg text-sm" dir="ltr" /></td>
                         <td className="px-3 py-2"><input value={draft.bank_account} onChange={(e) => setDraft((d) => ({ ...d, bank_account: e.target.value }))} className="w-32 px-2 py-1.5 border border-slate-300 rounded-lg text-sm" dir="ltr" /></td>
-                        <td className="px-3 py-2 text-xs">
-                          {draftCheck === 'valid' && <span className="text-emerald-700">✓ תקין</span>}
-                          {draftCheck === 'structural' && <span className="text-blue-700">○ מבנה תקין</span>}
-                          {draftCheck === 'bad-check' && <span className="text-amber-700">⚠ ספרת ביקורת — לוודא</span>}
-                          {draftCheck === 'invalid' && <span className="text-red-700">❌ מבנה לא תקין</span>}
+                        <td className="px-3 py-2 text-xs" colSpan={2}>
+                          {draftCheck && <CheckBadge c={draftCheck} full />}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <Button size="sm" onClick={() => saveEdit(r)} disabled={busy === r.id}>{busy === r.id ? '…' : 'שמור'}</Button>
@@ -312,6 +358,7 @@ export default function BankCheckPage() {
                         <td className="px-3 py-2">{s(r.bank_name) || <span className="text-slate-400">ריק</span>}</td>
                         <td className="px-3 py-2 tabular-nums" dir="ltr">{s(r.bank_branch) || <span className="text-red-600">—</span>}</td>
                         <td className="px-3 py-2 tabular-nums" dir="ltr">{s(r.bank_account) || <span className="text-red-600">—</span>}</td>
+                        <td className="px-3 py-2 text-xs max-w-[220px]">{r.check ? <CheckBadge c={r.check} /> : <span className="text-slate-400">—</span>}</td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-1">
                             {r.issues.map((i) => (
@@ -343,10 +390,25 @@ export default function BankCheckPage() {
         </div>
 
         <p className="text-xs text-slate-500 text-center">
-          💡 מס״ב והגבייה משתמשים ב<b>מספר הבנק</b>. מעכשיו כל שמירה (כרטיס תלמיד, הרצה חודשית, אקסל, מסך זה) כותבת מספר ושם יחד, כך שהם לא יתפצלו שוב.
+          💡 &quot;נכשל בבדיקת חוקיות&quot; = המספר לא עומד בכלל של הבנק — כמעט תמיד ספרה שגויה בסניף/חשבון; לוודא מול ההורה (צילום צ׳ק / אישור ניהול חשבון).
+          מס״ב והגבייה משתמשים ב<b>מספר הבנק</b>. מעכשיו כל שמירה (כרטיס תלמיד, הרצה חודשית, אקסל, מסך זה) כותבת מספר ושם יחד, כך שהם לא יתפצלו שוב.
         </p>
       </div>
     </>
     </PageGuard>
+  );
+}
+
+function CheckBadge({ c, full }: { c: AccountCheckDetail; full?: boolean }) {
+  const map = {
+    valid: { icon: '✓', cls: 'text-emerald-700', label: 'תקין' },
+    'bad-check': { icon: '✗', cls: 'text-red-700 font-medium', label: 'נכשל' },
+    structural: { icon: '○', cls: 'text-slate-500', label: 'אין כלל בדיקה' },
+    invalid: { icon: '✗', cls: 'text-red-700 font-medium', label: 'לא תקין' },
+  }[c.result];
+  return (
+    <span className={map.cls} title={c.reason}>
+      {map.icon} {full || c.result !== 'valid' ? c.reason : map.label}
+    </span>
   );
 }

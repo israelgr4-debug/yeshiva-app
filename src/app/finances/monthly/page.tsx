@@ -13,7 +13,7 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { useChargeAdjustments, MonthlyRow, PayMethod } from '@/hooks/useChargeAdjustments';
 import { ChargeAdjustment } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
-import { validateBankAccountFull } from '@/lib/israeli-validators';
+import { checkBankAccount } from '@/lib/israeli-validators';
 
 const METHOD_LABELS: Record<PayMethod, string> = {
   bank_ho: 'הו"ק בנק',
@@ -211,7 +211,7 @@ export default function MonthlyCollectionPage() {
                           {r.last_name} {r.first_name}
                         </Link>
                         {r.account === 'invalid' && <span className="text-red-600 ms-1" title="חשבון בנק חסר/לא תקין">❌</span>}
-                        {r.account === 'bad-check' && <span className="text-amber-600 ms-1" title="החשבון לא עבר ספרת ביקורת — כדאי לוודא">⚠</span>}
+                        {r.account === 'bad-check' && <span className="text-amber-600 ms-1" title="החשבון לא עבר את בדיקת החוקיות של מס״ב — כנראה טעות">⚠</span>}
                       </td>
                       <td className="px-3 py-2 text-slate-600">{(r.shiur || '').replace('שיעור ', '') || '—'}</td>
                       <td className="px-3 py-2">
@@ -634,11 +634,10 @@ function SetupDialog({ row, onClose, onSaved }: { row: MonthlyRow; onClose: () =
                 <Input label="חשבון" value={bank.bank_account} onChange={(e) => setBank((b) => ({ ...b, bank_account: e.target.value }))} />
               </div>
               {bank.bank_number && bank.bank_branch && bank.bank_account && (() => {
-                const r = validateBankAccountFull(bank.bank_number, bank.bank_branch, bank.bank_account);
-                if (r === 'valid') return <div className="text-sm text-green-700 bg-green-50 rounded-lg px-3 py-1.5 font-medium">✓ חשבון תקין</div>;
-                if (r === 'invalid') return <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-1.5 font-medium">❌ מבנה חשבון לא תקין (ספרות בלבד)</div>;
-                if (r === 'bad-check') return <div className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-1.5">⚠ לא עבר ספרת ביקורת — כדאי לוודא מול ההורה (ייתכן שתקין)</div>;
-                return <div className="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-1.5">מבנה תקין</div>;
+                const { result: r, reason } = checkBankAccount(bank.bank_number, bank.bank_branch, bank.bank_account);
+                if (r === 'valid') return <div className="text-sm text-green-700 bg-green-50 rounded-lg px-3 py-1.5 font-medium">✓ חשבון תקין (בדיקת מס״ב)</div>;
+                if (r === 'invalid' || r === 'bad-check') return <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-1.5 font-medium">❌ {reason} — כנראה טעות בסניף/חשבון, לוודא מול ההורה</div>;
+                return <div className="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-1.5">○ {reason}</div>;
               })()}
               <Input label="יום חיוב" type="number" value={bankDay} onChange={(e) => setBankDay(e.target.value)} />
               <div className="text-xs text-slate-500">ההו״ק תיכלל אוטומטית בקובץ המס״ב החודשי — אין צורך באישור נפרד.</div>

@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { SHIURIM, getMachzorForNewStudent, DEFAULT_BASE_MACHZOR } from '@/lib/shiurim';
 import { ISRAELI_BANKS, familyBankCode, getBankByCode } from '@/lib/israeli-banks';
 import { useNeighborhoods } from '@/hooks/useNeighborhoods';
-import { isValidIsraeliId, isValidBranch, validateBankAccountFull, idMatchVariants } from '@/lib/israeli-validators';
+import { isValidIsraeliId, isValidBranch, checkBankAccount, idMatchVariants } from '@/lib/israeli-validators';
 import { FamilyPicker } from '@/components/finances/FamilyPicker';
 
 interface StudentFormProps {
@@ -854,14 +854,11 @@ export function StudentForm({ student, initialFamily, onSubmit, isLoading }: Stu
             <label className="block text-sm font-medium text-gray-700 mb-1">
               מספר חשבון
               {familyData.bank_account && (() => {
-                const result = validateBankAccountFull(familyData.bank_number || null, familyData.bank_branch, familyData.bank_account);
-                // Structural errors only show amber warning.
-                // Check-digit mismatches are NOT flagged as errors because the
-                // algorithms vary per bank and not all are publicly documented.
-                if (result === 'invalid') return <span className="text-amber-600 ms-1" title="מבנה לא תקין - רק ספרות, 4-9 תווים">⚠</span>;
-                if (result === 'valid') return <span className="text-green-600 ms-1" title="תקין - עבר ספרת ביקורת">✓</span>;
-                // 'structural' or 'bad-check' → show blue circle (didn't validate but didn't fail structurally)
-                return <span className="text-blue-600 ms-1" title="מבנה תקין (ספרת ביקורת לא נבדקה במלואה)">○</span>;
+                // Official מס"ב account rules (lib/bank-account-check.ts).
+                const { result, reason } = checkBankAccount(familyData.bank_number || null, familyData.bank_branch, familyData.bank_account);
+                if (result === 'valid') return <span className="text-green-600 ms-1" title={reason}>✓</span>;
+                if (result === 'structural') return <span className="text-blue-600 ms-1" title={reason}>○</span>;
+                return <span className="text-red-600 text-xs font-normal ms-1">✗ {reason}</span>;
               })()}
             </label>
             <input
