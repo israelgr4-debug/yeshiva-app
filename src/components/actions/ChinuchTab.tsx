@@ -30,6 +30,7 @@ export function ChinuchTab() {
         .from('students')
         .select('id,first_name,last_name,shiur,status,is_chinuch')
         .order('last_name')
+        .order('id')
         .range(from, to);
       if (statusFilter === 'active') q = q.eq('status', 'active');
       if (shiurFilter !== 'all') q = q.eq('shiur', shiurFilter);

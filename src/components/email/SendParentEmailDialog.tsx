@@ -118,6 +118,7 @@ export function SendParentEmailDialog({ students, families, onClose }: Props) {
           .from('parent_emails')
           .select('id, recipient_email, recipient_type, cc_email, subject, sent_at, send_error, sent_by, created_at, students(first_name, last_name)')
           .order('created_at', { ascending: false })
+          .order('id')
           .range(p * 1000, p * 1000 + 999);
         if (!data || data.length === 0) break;
         rows.push(...(data as unknown as HistoryRow[]));

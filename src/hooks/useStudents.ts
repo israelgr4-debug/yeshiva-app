@@ -26,7 +26,9 @@ export function useStudents() {
               `first_name.ilike.%${search}%,last_name.ilike.%${search}%,id_number.ilike.%${search}%`
             );
           }
-          return query.order('last_name', { ascending: true });
+          // 'id' tie-breaker: paging over a non-unique sort lets Postgres repeat/skip rows
+          // across page boundaries (same last_name) → duplicate students + duplicate React keys.
+          return query.order('last_name', { ascending: true }).order('id');
         };
 
         const all: Student[] = [];

@@ -26,7 +26,8 @@ export function useSupabase() {
           if (options?.order) {
             q = q.order(options.order, { ascending: false });
           }
-          return q;
+          // Unique tie-breaker so paging never repeats/skips rows across page boundaries.
+          return q.order('id');
         };
 
         // Explicit pagination: return exactly what caller asked for.

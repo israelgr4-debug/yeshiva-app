@@ -13,6 +13,7 @@ export function useRegistrations() {
         .from('registrations')
         .select('*')
         .order('created_at', { ascending: false })
+        .order('id')
         .range(p * 1000, p * 1000 + 999);
       if (!data || data.length === 0) break;
       all.push(...(data as Registration[]));

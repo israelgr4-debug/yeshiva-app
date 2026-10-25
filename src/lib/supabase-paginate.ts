@@ -15,7 +15,8 @@ export async function fetchAll<T>(
   for (let p = 0; p < 50; p++) {
     let q = supabase.from(table).select(select).range(p * PAGE, p * PAGE + PAGE - 1);
     if (filter) q = filter(q);
-    const { data, error } = await q;
+    // Unique tie-breaker (after any caller order) so pages never repeat/skip rows.
+    const { data, error } = await q.order('id');
     if (error) throw error;
     if (!data || data.length === 0) break;
     all.push(...(data as unknown as T[]));

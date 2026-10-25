@@ -24,7 +24,7 @@ async function loadRunItems(runId: string): Promise<Item[]> {
   const all: Item[] = [];
   for (let p = 0; p < 20; p++) {
     const { data } = await supabase.from('masav_run_items').select('*').eq('run_id', runId)
-      .order('family_name').range(p * 1000, p * 1000 + 999);
+      .order('family_name').order('id').range(p * 1000, p * 1000 + 999);
     if (!data || data.length === 0) break;
     all.push(...(data as Item[]));
     if (data.length < 1000) break;

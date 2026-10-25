@@ -65,6 +65,7 @@ export function SendRegistrationFormsDialog({ registrations, onClose }: Props) {
           .from('registration_form_emails')
           .select('id, recipient_email, recipient_type, sent_at, send_error, sent_by, created_at, registrations(first_name, last_name)')
           .order('created_at', { ascending: false })
+          .order('id')
           .range(p * 1000, p * 1000 + 999);
         if (!data || data.length === 0) break;
         rows.push(...(data as unknown as HistoryRow[]));

@@ -28,6 +28,7 @@ export function useGraduates() {
         .select('*')
         .order('last_name', { ascending: true })
         .order('first_name', { ascending: true })
+        .order('id')
         .range(p * 1000, p * 1000 + 999);
       if (!data || data.length === 0) break;
       all.push(...(data as Graduate[]));

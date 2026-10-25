@@ -30,6 +30,7 @@ export function EquivalentClassTab() {
         .eq('status', 'active')
         .eq('shiur', shiurFilter)
         .order('last_name')
+        .order('id')
         .range(from, to);
       if (!data || data.length === 0) break;
       all.push(...(data as Student[]));
