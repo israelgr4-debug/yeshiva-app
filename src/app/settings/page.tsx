@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useState } from 'react';
 import { NedarimPlusSettings } from '@/components/settings/NedarimPlusSettings';
+import { YemotSettings } from '@/components/settings/YemotSettings';
 import { EmailSettings } from '@/components/settings/EmailSettings';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -102,6 +103,11 @@ export default function SettingsPage() {
         {/* Nedarim Plus Integration */}
         <div className="mb-6">
           <NedarimPlusSettings />
+        </div>
+
+        {/* ימות המשיח (מלגות) */}
+        <div className="mb-6">
+          <YemotSettings />
         </div>
 
         {/* Certificate templates editor (admin only) */}

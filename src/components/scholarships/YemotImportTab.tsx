@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { useScholarships } from '@/hooks/useScholarships';
+import { supabase } from '@/lib/supabase';
 import { ScholarshipBatch, ScholarshipType, ScholarshipYemotCall } from '@/lib/types';
 import { readYemotFile, israelDate } from '@/lib/yemot-parse';
 import {
@@ -112,6 +113,24 @@ export function YemotImportTab(props: ScholarshipTabProps) {
       await loadPreview();
     } catch (e: any) { alert('שגיאה בקריאת הקובץ: ' + e.message); }
     if (fileRef.current) fileRef.current.value = '';
+    setBusy(null);
+  };
+
+  const pullApi = async () => {
+    if (!rangeFrom || !rangeTo) { alert('בחר קודם רכיב וטווח תאריכים'); return; }
+    setBusy('api');
+    setMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch('/api/scholarships/yemot-import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: '{}',
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || 'שגיאה');
+      setMsg(`📞 נמשכו ${j.relevant} שיחות מימות · ${j.inserted} חדשות נשמרו${j.unmatched ? ` (${j.unmatched} לא מזוהות)` : ''}`);
+      await loadPreview();
+    } catch (e: any) { alert('משיכה מימות נכשלה: ' + e.message); }
     setBusy(null);
   };
 
@@ -305,13 +324,14 @@ export function YemotImportTab(props: ScholarshipTabProps) {
           {overlap && <div className="text-sm text-red-700">⛔ הטווח חופף לחיוב &quot;{overlap.title}&quot; ({dmy(overlap.date_from)}–{dmy(overlap.date_to)}). שנה טווח או בחר &quot;המשך חיוב קיים&quot;.</div>}
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : 'bg-blue-700 text-white hover:bg-blue-800'}`}>
+            <Button onClick={pullApi} disabled={!!busy || !rangeFrom || !rangeTo}>📞 משוך מימות עכשיו</Button>
+            <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : 'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50'}`}>
               📂 העלה קובץ מימות (xlsx)
               <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => onFile(e.target.files?.[0] || null)} />
             </label>
             <Button variant="secondary" onClick={loadPreview} disabled={!!busy || !rangeFrom || !rangeTo}>🔄 טען תצוגה מקדימה מהמערכת</Button>
             {calls && <Button variant="secondary" onClick={() => setManualOpen(true)}>➕ הוסף שורה ידנית</Button>}
-            {busy && <span className="text-sm text-slate-500">⏳ {busy === 'upload' ? 'קורא ושומר…' : busy === 'commit' ? 'יוצר חיוב…' : 'טוען…'}</span>}
+            {busy && <span className="text-sm text-slate-500">⏳ {busy === 'upload' ? 'קורא ושומר…' : busy === 'api' ? 'מושך מימות…' : busy === 'commit' ? 'יוצר חיוב…' : 'טוען…'}</span>}
           </div>
           {msg && <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{msg}</div>}
           <p className="text-[11px] text-slate-500">רק שיחות שזמן השיחה שלהן בטווח נכנסות לתצוגה. העלאה חוזרת של אותו קובץ לא יוצרת כפילויות.</p>

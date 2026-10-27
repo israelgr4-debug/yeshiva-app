@@ -304,7 +304,13 @@ The Sidebar hides `/settings` from non-admins.
    (ledger + running balance) and "יתרת מלגה פתוחה" in the directory drawer.
    Perms: canWrite = import/entry/payment, canGenerateReports = report,
    canDelete (admin) = delete batch / cancel payment / edit types.
-   ימות API import (YEMOT_API_TOKEN env var) - NOT built yet, pending API check.
+   ימות API: `POST /api/scholarships/yemot-import` → `RenderYMGRFile?token=&wath=ivr2:/11/
+   ApprovalAll.ymgr&convertType=json` (fields שלוחה/מערכת/טלפון שהתקשר/מס' זהות/שם מזהה/
+   טלפון/שיעור/תאריך/שעה/תאריך עברי/ערך/שלוחה/הזמנה=record/סכום) → `yemotJsonToRows` →
+   same parser. Token = `YEMOT_API_TOKEN` env var (never system_settings). Only stores
+   calls (never batches); filtered to active ימות types' extensions (file has old tests
+   from שלוחה 1). Daily via cron-sync when `yemot_auto_enabled`. Settings card
+   `YemotSettings` (path, auto, connection test).
 
 ## Design system rules
 

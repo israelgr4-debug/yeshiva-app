@@ -138,3 +138,31 @@ export async function readYemotFile(file: File, defaultExtension: string | null)
   const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[name], { header: 1, raw: true, defval: null });
   return parseYemotRows(rows, defaultExtension);
 }
+
+/**
+ * ימות API (RenderYMGRFile … convertType=json) → the same A..M row arrays as the xlsx,
+ * so both sources go through parseYemotRows(). Field names as returned by ימות:
+ * שלוחה, מערכת, טלפון שהתקשר, מס' זהות, שם מזהה, טלפון, שיעור, תאריך (dd/mm/yyyy),
+ * שעה (HH:MM:SS), תאריך עברי, ערך/שלוחה, הזמנה (= record number, column L), סכום.
+ */
+export function yemotJsonToRows(data: Record<string, any>[]): any[][] {
+  const pick = (o: Record<string, any>, ...keys: string[]) => {
+    for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k];
+    return null;
+  };
+  return (data || []).map((o) => [
+    pick(o, 'שלוחה'),
+    pick(o, 'מערכת'),
+    pick(o, 'טלפון שהתקשר'),
+    pick(o, "מס' זהות", 'מס׳ זהות', 'מספר זהות'),
+    pick(o, 'שם מזהה', 'שם'),
+    pick(o, 'טלפון'),
+    pick(o, 'שיעור'),
+    pick(o, 'תאריך'),
+    pick(o, 'שעה'),
+    pick(o, 'תאריך עברי'),
+    pick(o, 'ערך/שלוחה'),
+    pick(o, 'הזמנה'),
+    pick(o, 'סכום'),
+  ]);
+}

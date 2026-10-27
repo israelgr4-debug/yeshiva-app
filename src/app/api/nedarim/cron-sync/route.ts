@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     ['/api/nedarim/process-queue', '{}'],
     ['/api/nedarim/charge-onetime', '{"due":true}'],
     ['/api/nedarim/restore-hk-overrides', '{}'],
+    ['/api/scholarships/yemot-import', '{"auto":true}'], // מלגות: store new ימות calls as pending (off unless enabled in settings)
   ];
   for (const [path, body] of jobs) {
     try {
