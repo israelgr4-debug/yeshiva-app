@@ -19,6 +19,7 @@ export function YemotSettings() {
   const [lastPull, setLastPull] = useState<{ at: string; inserted: number; total: number; auto: boolean } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [breakdown, setBreakdown] = useState<{ byExt: Record<string, { count: number; first: string | null; last: string | null }>; used: string[] } | null>(null);
 
   const load = useCallback(async () => {
     setPath(await getSetting<string>('yemot_ymgr_path', 'ivr2:/11/ApprovalAll.ymgr'));
@@ -50,9 +51,11 @@ export function YemotSettings() {
         body: JSON.stringify({ test: true }),
       });
       const j = await r.json();
-      setStatus(j.ok
-        ? `✅ מחובר: ${j.totalRecords} רשומות בקובץ, ${j.relevant} בשלוחות ${(j.extensions || []).join(', ') || '—'}${j.lastCall ? ` · שיחה אחרונה ${new Date(j.lastCall).toLocaleString('he-IL')}` : ''}`
-        : `❌ ${j.error}`);
+      if (!j.ok) { setStatus(`❌ ${j.error}`); setBreakdown(null); }
+      else {
+        setStatus(`✅ מחובר (${j.path}): ${j.totalRecords} רשומות בקובץ · ${j.relevant} נקלטות (שלוחות ${(j.extensions || []).join(', ') || '—'})${j.lastCall ? ` · שיחה אחרונה ${new Date(j.lastCall).toLocaleString('he-IL')}` : ''}`);
+        setBreakdown({ byExt: j.byExt || {}, used: j.extensions || [] });
+      }
     } catch (e: any) { setStatus('❌ ' + e.message); }
     setBusy(false);
   };
@@ -83,6 +86,22 @@ export function YemotSettings() {
             <Button variant="secondary" onClick={test} disabled={busy}>בדוק חיבור</Button>
           </div>
           {status && <p className="text-sm">{status}</p>}
+          {breakdown && (
+            <table className="text-xs border border-slate-200 rounded-lg">
+              <thead><tr className="bg-slate-50"><th className="px-2 py-1 text-start">שלוחה בקובץ</th><th className="px-2 py-1">רשומות</th><th className="px-2 py-1">מתאריך</th><th className="px-2 py-1">עד תאריך</th><th className="px-2 py-1">נקלט?</th></tr></thead>
+              <tbody>
+                {Object.entries(breakdown.byExt).sort((a, b) => (b[1].last || '').localeCompare(a[1].last || '')).map(([ext, b]) => (
+                  <tr key={ext} className="border-t border-slate-100">
+                    <td className="px-2 py-1 font-semibold" dir="ltr">{ext}</td>
+                    <td className="px-2 py-1 text-center tabular-nums">{b.count}</td>
+                    <td className="px-2 py-1 tabular-nums">{b.first ? new Date(b.first).toLocaleDateString('he-IL') : '—'}</td>
+                    <td className="px-2 py-1 tabular-nums">{b.last ? new Date(b.last).toLocaleDateString('he-IL') : '—'}</td>
+                    <td className="px-2 py-1 text-center">{breakdown.used.includes(ext) ? '✅' : '— מתעלם'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </CardContent>
     </Card>

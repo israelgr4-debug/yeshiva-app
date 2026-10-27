@@ -86,7 +86,16 @@ export async function POST(req: NextRequest) {
 
   if (body.test) {
     const last = parsed.reduce<string | null>((m, c) => (c.call_at && (!m || c.call_at > m) ? c.call_at : m), null);
-    return NextResponse.json({ ok: true, test: true, totalRecords: data.length, relevant: parsed.length, extensions: Array.from(exts), lastCall: last });
+    // breakdown of the WHOLE file per שלוחה (so old/test extensions are visible)
+    const byExt: Record<string, { count: number; first: string | null; last: string | null }> = {};
+    for (const c of parseYemotRows(yemotJsonToRows(data), null)) {
+      const k = c.extension || '—';
+      const b = (byExt[k] ||= { count: 0, first: null, last: null });
+      b.count++;
+      if (c.call_at && (!b.first || c.call_at < b.first)) b.first = c.call_at;
+      if (c.call_at && (!b.last || c.call_at > b.last)) b.last = c.call_at;
+    }
+    return NextResponse.json({ ok: true, test: true, path, totalRecords: data.length, relevant: parsed.length, extensions: Array.from(exts), lastCall: last, byExt });
   }
 
   // 3. match ת"ז → student (id / passport without leading zeros, then aliases)
