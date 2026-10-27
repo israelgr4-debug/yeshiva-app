@@ -138,6 +138,25 @@ export function RichTextEditor({ value, onChange, onSelectionChange, onEditorRea
           ))}
         </select>
         <Btn cmd="removeFormat" label="✕" title="נקה עיצוב" />
+        <span className="w-px h-5 bg-slate-300 mx-1" />
+        <Btn cmd="insertUnorderedList" label="• ≡" title="רשימה עם תבליטים" />
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            const rows = Number(prompt('כמה שורות בטבלה?', '3')) || 0;
+            const cols = Number(prompt('כמה עמודות?', '2')) || 0;
+            if (rows < 1 || cols < 1) return;
+            const cell = (tag: string) => `<${tag} style="border:1px solid #888;padding:4px 8px">&nbsp;</${tag}>`;
+            const head = `<tr>${Array.from({ length: cols }, () => cell('th')).join('')}</tr>`;
+            const body = Array.from({ length: rows - 1 }, () => `<tr>${Array.from({ length: cols }, () => cell('td')).join('')}</tr>`).join('');
+            insertHtml(`<table style="border-collapse:collapse;margin:8px 0">${head}${body}</table><p><br></p>`);
+          }}
+          className="px-2 py-1 text-sm rounded hover:bg-slate-200 active:bg-slate-300 transition-colors"
+          title="הוסף טבלה (השורה הראשונה = כותרת)"
+        >
+          ▦
+        </button>
         <span className="ms-auto" />
         <button
           type="button"

@@ -11,14 +11,16 @@ import {
   CertificateTemplate,
   PLACEHOLDER_CATALOG,
   renderTemplateBody,
+  templateToReportType,
 } from '@/hooks/useCertificateTemplates';
+import { exportCertificateToWord } from '@/lib/cert-to-word';
 import { ExtraField } from '@/lib/certificates';
 import { RichTextEditor } from '@/components/settings/RichTextEditor';
 import Link from 'next/link';
 
 export default function CertificateEditorPage() {
   const { permissions, loading: authLoading } = useAuth();
-  const { templates, loading, upsert } = useCertificateTemplates();
+  const { templates, loading, upsert, remove } = useCertificateTemplates();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<CertificateTemplate | null>(null);
   const [saving, setSaving] = useState(false);
@@ -55,6 +57,64 @@ export default function CertificateEditorPage() {
       alert('שגיאה בשמירה: ' + (e?.message || e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Word check: export the CURRENT draft (even unsaved) with sample data — same generator
+  // as the certificates page, so what you see here is what students get.
+  const handleWordPreview = async () => {
+    if (!draft) return;
+    try {
+      await exportCertificateToWord(
+        { ...sampleStudent, admission_date: '2024-09-01' },
+        templateToReportType(draft),
+        'תשפ"ו',
+        sampleExtras,
+        sampleSigner,
+        false,
+      );
+    } catch (e: any) {
+      alert('שגיאה ביצירת Word: ' + (e?.message || e));
+    }
+  };
+
+  // New certificate = copy of the selected one (or blank), saved under a new id
+  const handleDuplicate = async () => {
+    const base = draft || templates[0];
+    const name = prompt('שם האישור החדש:', base ? `${base.name} (עותק)` : 'אישור חדש');
+    if (!name?.trim()) return;
+    const id = `custom_${Date.now().toString(36)}`;
+    const maxOrder = templates.reduce((m, t) => Math.max(m, t.display_order || 0), 0);
+    try {
+      await upsert({
+        id,
+        name: name.trim(),
+        recipient: base?.recipient ?? 'לכל המעונין:',
+        header_html: base?.header_html ?? null,
+        body: base?.body ?? 'הננו לאשר בזאת כי ה"ה  {{full_name_with_id}}',
+        signer_html: base?.signer_html ?? null,
+        extra_fields: base?.extra_fields ?? [],
+        signer_name: base?.signer_name ?? null,
+        signer_title: base?.signer_title ?? null,
+        signer_id_number: base?.signer_id_number ?? null,
+        is_receipt: false,
+        is_active: true,
+        display_order: maxOrder + 10,
+      });
+      setSelectedId(id);
+    } catch (e: any) {
+      alert('שגיאה ביצירה: ' + (e?.message || e));
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!draft) return;
+    if (!confirm(`למחוק לצמיתות את "${draft.name}"?\nאפשר במקום זה לבטל את הסימון "פעיל" כדי להסתיר אותו.`)) return;
+    try {
+      await remove(draft.id);
+      setSelectedId(null);
+    } catch (e: any) {
+      alert('שגיאה במחיקה: ' + (e?.message || e));
     }
   };
 
@@ -172,12 +232,15 @@ export default function CertificateEditorPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             {/* Templates list */}
             <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 elevation-1 overflow-hidden">
-              <div className="p-3 border-b border-slate-100">
+              <div className="p-3 border-b border-slate-100 space-y-2">
                 <Input
                   placeholder="חיפוש..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
+                <Button type="button" size="sm" variant="secondary" className="w-full" onClick={handleDuplicate}>
+                  ➕ אישור חדש (העתק של הנבחר)
+                </Button>
               </div>
               <div className="max-h-[70vh] overflow-y-auto divide-y divide-slate-100">
                 {filteredTemplates.map((t) => {
@@ -365,7 +428,13 @@ export default function CertificateEditorPage() {
                         />
                         פעיל (יופיע ברשימת האישורים)
                       </label>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="ghost" onClick={handleDelete} title="מחיקה לצמיתות">
+                          🗑️
+                        </Button>
+                        <Button type="button" variant="secondary" onClick={handleWordPreview} title="מוריד קובץ Word לדוגמה מהנוסח הנוכחי (גם לפני שמירה)">
+                          📝 בדיקה בוורד
+                        </Button>
                         <Button type="button" variant="secondary" onClick={handleRevert}>
                           בטל שינויים
                         </Button>
