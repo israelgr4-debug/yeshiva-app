@@ -9,6 +9,7 @@ import {
   ReportType,
 } from '@/lib/certificates';
 import { toHebrewDate } from '@/lib/utils';
+import { formatCertDate } from '@/hooks/useCertificateTemplates';
 
 interface CertificatePreviewProps {
   student: Student;
@@ -199,7 +200,7 @@ export function CertificatePreview({
     };
     return html.replace(/\{\{\s*([a-zA-Z_]\w*)\s*\}\}/g, (_m, key) => {
       const v = replacements[key];
-      return v === undefined || v === '' ? '' : String(v);
+      return v === undefined || v === '' ? '' : formatCertDate(String(v));
     });
   };
 

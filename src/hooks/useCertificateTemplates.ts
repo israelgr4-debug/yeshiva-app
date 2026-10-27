@@ -32,6 +32,12 @@ export interface CertificateTemplate {
   display_order: number;
 }
 
+/** ISO date ("2024-09-01" / "2024-09-01T…") → "01/09/2024"; anything else unchanged. */
+export function formatCertDate(v: string): string {
+  const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : v;
+}
+
 /** Resolve {{placeholders}} in a template body / header / signer */
 export function renderTemplateBody(
   body: string,
@@ -65,7 +71,7 @@ export function renderTemplateBody(
   return body.replace(/\{\{\s*([a-zA-Z_]\w*)\s*\}\}/g, (_m, key) => {
     const v = replacements[key];
     if (v === undefined || v === '') return '';
-    return String(v);
+    return formatCertDate(String(v)); // dates print as dd/mm/yyyy, not ISO
   });
 }
 

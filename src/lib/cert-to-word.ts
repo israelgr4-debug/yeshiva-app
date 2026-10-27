@@ -1,22 +1,90 @@
 'use client';
 
-import {
-  Document,
-  Packer,
-  Paragraph,
-  TextRun,
-  AlignmentType,
-  HeadingLevel,
-} from 'docx';
+// "📝 הורד Word" for certificates. Builds a native RTL .docx that matches the yeshiva's
+// original Word certificates (see lib/cert-docx.ts) from the SAME template the in-app
+// editor edits (body / recipient / signer HTML), so print and Word say the same thing.
+
+import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { Student } from './types';
-import {
-  ReportType,
-  SignerInfo,
-  DEFAULT_SIGNER,
-  getGregorianDate,
-} from './certificates';
+import { ReportType, SignerInfo, DEFAULT_SIGNER } from './certificates';
 import { toHebrewDate } from './utils';
+import { renderTemplateBody, formatCertDate } from '@/hooks/useCertificateTemplates';
+import {
+  certificateBlocks, receiptBlocks, docxParts, hebrewWeekday, shortGregorian, DocBlock,
+} from './cert-docx';
+
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+async function zipBlocks(blocks: DocBlock[]): Promise<Blob> {
+  const zip = new JSZip();
+  for (const [path, xml] of Object.entries(docxParts(blocks))) zip.file(path, xml);
+  return zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME });
+}
+
+/** Title from the template header (<h1>…</h1>), default "אישור". */
+function titleFromHeader(headerHtml: string | null | undefined): string {
+  const m = headerHtml?.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i);
+  const t = m ? m[1].replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ').trim() : '';
+  return t && !/\{\{/.test(t) ? t : 'אישור';
+}
+
+/** Values shown in bold, as in the original certificates (student name, ID, year, dates). */
+function emphasisFor(student: Student, year: string, extras: Record<string, string>): string[] {
+  const vals = [
+    `${student.last_name || ''} ${student.first_name || ''}`.trim(),
+    student.id_number || '',
+    student.passport_number || '',
+    year,
+    formatCertDate(student.admission_date || ''),
+  ];
+  for (const [k, v] of Object.entries(extras || {})) {
+    if (/date/i.test(k) && v) vals.push(formatCertDate(v));
+  }
+  return vals.filter((v) => v && v.length > 1 && v !== '___');
+}
+
+export async function buildCertificateDocx(
+  student: Student,
+  reportType: ReportType,
+  year: string,
+  extras: Record<string, string>,
+  signer: SignerInfo = reportType.signer || DEFAULT_SIGNER,
+  isChinuch = false,
+): Promise<Blob> {
+  const now = new Date();
+
+  if (reportType.isReceipt) {
+    return zipBlocks(receiptBlocks({
+      donorName: extras.donorName || '', donorId: extras.donorId || '',
+      donorAddress: extras.donorAddress || '', donorCity: extras.donorCity || '',
+      amount: extras.amount || '', amountWords: extras.amountWords || '',
+      paymentMethod: extras.paymentMethod || '', receiptNumber: extras.receiptNumber || '',
+      gregorianDate: `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`,
+      hebrewDateShort: toHebrewDate(now),
+    }));
+  }
+
+  const sg = signer || DEFAULT_SIGNER;
+  // chinuch students: the chinuch letterhead/signature carries the signer → only "בכבוד רב,"
+  let signerHtml: string | null = null;
+  let signerLines: string[] | undefined;
+  if (isChinuch) signerLines = ['בכבוד רב,'];
+  else if (reportType.signerHtml) signerHtml = renderTemplateBody(reportType.signerHtml, student, year, extras, sg);
+  else signerLines = ['בכבוד רב,', sg.name, sg.idNumber, sg.title].filter(Boolean) as string[];
+
+  const blocks = certificateBlocks({
+    hebrewDate: `${hebrewWeekday(now)} ${toHebrewDate(now)}`,
+    gregorianDate: shortGregorian(now),
+    title: titleFromHeader(reportType.headerHtml),
+    recipient: renderTemplateBody(reportType.recipient || '', student, year, extras, sg),
+    bodyHtml: reportType.buildBody(student, year, extras),
+    signerHtml,
+    signerLines,
+    emphasize: emphasisFor(student, year, extras),
+  });
+  return zipBlocks(blocks);
+}
 
 export async function exportCertificateToWord(
   student: Student,
@@ -24,170 +92,9 @@ export async function exportCertificateToWord(
   year: string,
   extras: Record<string, string>,
   signer: SignerInfo = reportType.signer || DEFAULT_SIGNER,
-  isChinuch: boolean = false
+  isChinuch = false,
 ): Promise<void> {
-  const hebrewDate = toHebrewDate(new Date());
-  const gregorianDate = getGregorianDate();
-
-  const children: Paragraph[] = [];
-
-  // Top spacer for pre-printed letterhead
-  children.push(
-    new Paragraph({ children: [new TextRun('')], spacing: { after: 400 } })
-  );
-  children.push(
-    new Paragraph({ children: [new TextRun('')], spacing: { after: 400 } })
-  );
-
-  // בס"ד
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      bidirectional: true,
-      children: [new TextRun({ text: 'בס"ד', size: 24 })],
-    })
-  );
-
-  // Dates row (Hebrew + Gregorian)
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      bidirectional: true,
-      spacing: { after: 200 },
-      children: [
-        new TextRun({ text: hebrewDate, size: 24 }),
-        new TextRun({ text: '        ', size: 24 }),
-        new TextRun({ text: gregorianDate, size: 24 }),
-      ],
-    })
-  );
-
-  // Title
-  children.push(
-    new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      alignment: AlignmentType.CENTER,
-      bidirectional: true,
-      spacing: { before: 300, after: 300 },
-      children: [
-        new TextRun({ text: 'אישור', bold: true, size: 44, underline: {} }),
-      ],
-    })
-  );
-
-  // Recipient
-  if (reportType.recipient) {
-    children.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { after: 200 },
-        children: [
-          new TextRun({ text: reportType.recipient, bold: true, size: 28 }),
-        ],
-      })
-    );
-  }
-
-  // Body (multiline → separate paragraphs)
-  const body = reportType.buildBody(student, year, extras);
-  for (const line of body.split('\n')) {
-    if (!line.trim()) {
-      children.push(
-        new Paragraph({
-          children: [new TextRun('')],
-          spacing: { after: 200 },
-        })
-      );
-    } else {
-      children.push(
-        new Paragraph({
-          bidirectional: true,
-          alignment: AlignmentType.JUSTIFIED,
-          spacing: { after: 100 },
-          children: [new TextRun({ text: line, size: 28 })],
-        })
-      );
-    }
-  }
-
-  // Signature block (centered)
-  children.push(
-    new Paragraph({
-      children: [new TextRun('')],
-      spacing: { before: 600 },
-    })
-  );
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      bidirectional: true,
-      spacing: { after: 120 },
-      children: [new TextRun({ text: 'בכבוד רב,', size: 28 })],
-    })
-  );
-  // For chinuch students: hide the signer name/id/title - the printed letterhead
-  // already has the chinuch identity. Only 'בכבוד רב,' is shown.
-  if (!isChinuch) {
-    if (signer.name) {
-      children.push(
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          bidirectional: true,
-          spacing: { after: 80 },
-          children: [new TextRun({ text: signer.name, bold: true, size: 28 })],
-        })
-      );
-    }
-    if (signer.idNumber) {
-      children.push(
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          bidirectional: true,
-          spacing: { after: 80 },
-          children: [new TextRun({ text: signer.idNumber, size: 28 })],
-        })
-      );
-    }
-    if (signer.title) {
-      children.push(
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          bidirectional: true,
-          children: [new TextRun({ text: signer.title, size: 28 })],
-        })
-      );
-    }
-  }
-
-  const doc = new Document({
-    styles: {
-      default: {
-        document: {
-          run: {
-            font: 'David',
-          },
-        },
-      },
-    },
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: {
-              top: 1700, // ~3cm - leaves room for pre-printed letterhead header
-              bottom: 1700,
-              left: 1400,
-              right: 1400,
-            },
-          },
-        },
-        children,
-      },
-    ],
-  });
-
-  const blob = await Packer.toBlob(doc);
-  const fileName = `${reportType.name}_${student.last_name}_${student.first_name}.docx`;
-  saveAs(blob, fileName);
+  const blob = await buildCertificateDocx(student, reportType, year, extras, signer, isChinuch);
+  const who = reportType.isReceipt ? (extras.donorName || 'תורם') : `${student.last_name || ''}_${student.first_name || ''}`;
+  saveAs(blob, `${reportType.name}_${who}.docx`.replace(/[\\/:*?"<>|]/g, ''));
 }
