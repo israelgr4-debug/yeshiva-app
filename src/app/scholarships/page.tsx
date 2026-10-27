@@ -73,7 +73,7 @@ export default function ScholarshipsPage() {
 
       <div className="p-4 md:p-8 space-y-4">
         {!perms.canWrite && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-lg p-3 text-sm flex items-center gap-2">
+          <div className="no-print bg-blue-50 border border-blue-200 text-blue-900 rounded-lg p-3 text-sm flex items-center gap-2">
             <span className="text-lg">👁️</span>
             <span>
               <strong>מצב צפייה בלבד.</strong> פעולות כתיבה (יבוא, הזנה, סימון תשלום) מוסתרות.
@@ -82,7 +82,7 @@ export default function ScholarshipsPage() {
           </div>
         )}
 
-        <div className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1">
+        <div className="no-print flex gap-2 overflow-x-auto whitespace-nowrap pb-1">
           {TABS.map((t) => {
             const active = tab === t.id;
             return (
