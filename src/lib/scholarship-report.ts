@@ -1,7 +1,6 @@
 // Shared model for the מלגות report (print / Excel) and the payment-marking grid:
 // groups (shiur / כולל) → student rows → one cell per scholarship type (רכיב).
 
-import * as XLSX from 'xlsx';
 import { ScholarshipEntry, ScholarshipType } from './types';
 import { SHIURIM } from './shiurim';
 import type { StudentLite } from '@/components/scholarships/shared';
@@ -76,7 +75,8 @@ export function buildScholarshipReport(
   return { columns, groups, totals, total, studentCount: rowsByStudent.size };
 }
 
-export function exportScholarshipReportXlsx(rep: ScholarshipReport, title: string, filename: string) {
+export async function exportScholarshipReportXlsx(rep: ScholarshipReport, title: string, filename: string) {
+  const XLSX = await import('xlsx'); // loaded on demand — keeps the page bundle small
   const wb = XLSX.utils.book_new();
   const cols = rep.columns;
 
