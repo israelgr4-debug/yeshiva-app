@@ -69,6 +69,9 @@ const TABLE_EMOJI: Record<string, string> = {
   registrations: '📋', graduates: '🎓',
   nedarim_action_queue: '⚡', tuition_charges: '💳',
   app_users: '👤', system_settings: '⚙️',
+  scholarship_types: '🎁', scholarship_batches: '🎁', scholarship_entries: '🎁',
+  scholarship_payments: '🎁', scholarship_runs: '🎁', scholarship_yemot_calls: '📞',
+  scholarship_id_aliases: '🎁',
 };
 
 const TABLE_LABEL: Record<string, string> = {
@@ -78,6 +81,9 @@ const TABLE_LABEL: Record<string, string> = {
   registrations: 'רישום', graduates: 'בוגר',
   nedarim_action_queue: 'פעולת נדרים', tuition_charges: 'הוראת חיוב',
   app_users: 'משתמש', system_settings: 'הגדרות',
+  scholarship_types: 'סוג מלגה', scholarship_batches: 'חיוב מלגה', scholarship_entries: 'זכאות מלגה',
+  scholarship_payments: 'תשלום מלגה', scholarship_runs: 'הפקת דוח מלגות',
+  scholarship_yemot_calls: 'שיחת ימות', scholarship_id_aliases: 'שיוך ת"ז למלגה',
 };
 
 function fmtVal(v: any, key?: string): string {

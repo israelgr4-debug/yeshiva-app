@@ -315,3 +315,125 @@ export interface DashboardStats {
   total_rooms: number;
   staff_count: number;
 }
+
+// ---------- מלגות (scholarships, mig 056) ----------
+// רכיב (type) → חיוב תקופתי (batch) → זכאות (entry) → תשלום (payment).
+// An entry without payment_id is an open debt; paid entries are locked (DB trigger).
+
+export type ScholarshipSource = 'yemot' | 'manual';
+
+export interface ScholarshipType {
+  id: string;
+  name: string;
+  source: ScholarshipSource;
+  yemot_extension: string | null;
+  default_amount: number | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScholarshipBatch {
+  id: string;
+  type_id: string;
+  title: string;
+  entry_date: string;
+  source: ScholarshipSource;
+  date_from: string | null;
+  date_to: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScholarshipEntry {
+  id: string;
+  batch_id: string;
+  type_id: string;
+  student_id: string;
+  amount: number;
+  entry_date: string;
+  payment_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScholarshipPayment {
+  id: string;
+  student_id: string;
+  paid_at: string;
+  amount: number;
+  run_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScholarshipRunFilters {
+  type_ids?: string[];
+  batch_ids?: string[];
+  date_from?: string | null;
+  date_to?: string | null;
+  only_unpaid?: boolean;
+  shiurim?: string[];
+  institutions?: string[];
+}
+
+export interface ScholarshipRun {
+  id: string;
+  title: string;
+  filters: ScholarshipRunFilters | null;
+  entry_ids: string[];
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type YemotCallStatus = 'pending' | 'included' | 'excluded' | 'unmatched';
+
+export interface ScholarshipYemotCall {
+  id: string;
+  source: 'api' | 'file' | 'manual';
+  record_number: number | null;
+  dedupe_key: string | null;
+  added_by: string | null;
+  extension: string | null;
+  phone: string | null;
+  phone2: string | null;
+  raw_id_number: string | null;
+  raw_name: string | null;
+  raw_shiur: string | null;
+  call_at: string | null;
+  hebrew_date: string | null;
+  amount: number | null;
+  student_id: string | null;
+  status: YemotCallStatus;
+  batch_id: string | null;
+  entry_id: string | null;
+  notes: string | null;
+  raw: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScholarshipIdAlias {
+  id: string;
+  raw_id_number: string;
+  student_id: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScholarshipBalance {
+  student_id: string;
+  type_id: string;
+  total_charged: number;
+  total_paid: number;
+  balance: number;
+}
