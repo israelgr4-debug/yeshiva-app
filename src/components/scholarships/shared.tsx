@@ -150,3 +150,49 @@ export function matchesSearch(s: StudentLite, q: string): boolean {
   const pool = `${s.first_name || ''} ${s.last_name || ''} ${s.id_number || ''} ${s.passport_number || ''}`.toLowerCase();
   return tokens.every((t) => pool.includes(t));
 }
+
+/** Keyboard-first student search: type name / ת"ז, ↑↓ to move, Enter to pick. */
+export function StudentSearchBox({ students, onPick, autoFocus, placeholder = 'חיפוש תלמיד לפי שם / ת״ז…', inputRef }: {
+  students: StudentLite[];
+  onPick: (s: StudentLite) => void;
+  autoFocus?: boolean;
+  placeholder?: string;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
+}) {
+  const [q, setQ] = React.useState('');
+  const [hi, setHi] = React.useState(0);
+  const results = React.useMemo(() => {
+    if (q.trim().length < 2) return [];
+    return students.filter((s) => matchesSearch(s, q)).sort(compareStudents).slice(0, 8);
+  }, [q, students]);
+  const pick = (s: StudentLite) => { onPick(s); setQ(''); setHi(0); };
+  return (
+    <div className="relative">
+      <input
+        ref={inputRef as any}
+        autoFocus={autoFocus}
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setHi(0); }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(h + 1, results.length - 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+          else if (e.key === 'Enter' && results[hi]) { e.preventDefault(); pick(results[hi]); }
+          else if (e.key === 'Escape') setQ('');
+        }}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+      />
+      {results.length > 0 && (
+        <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+          {results.map((s, i) => (
+            <button key={s.id} type="button" onMouseDown={(e) => { e.preventDefault(); pick(s); }}
+              className={`w-full text-start px-3 py-1.5 text-sm flex justify-between gap-2 ${i === hi ? 'bg-orange-50' : 'hover:bg-slate-50'}`}>
+              <span><b>{s.last_name}</b> {s.first_name} <span className="text-xs text-slate-500">· {shiurLabel(s)}{s.status !== 'active' ? ' · לא פעיל' : ''}</span></span>
+              <span className="text-xs text-slate-400 tabular-nums" dir="ltr">{s.id_number || s.passport_number || ''}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
