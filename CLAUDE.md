@@ -173,6 +173,20 @@ public/                         # logo.png + manifest.json (PWA)
   2=נפרע, 3=חזר, 4=לא לחייב, 9=בוטל. `group_number` = MASAV send_counter.
 - **one_time_charges**: ad-hoc standing-order queue separate from monthly
   tuition. Has its own MASAV export from /finances/collection/onetime.
+- **מלגות / scholarships** (mig 056, `/scholarships`): רכיב (`scholarship_types`,
+  e.g. "שבתות" from ימות / "סיכומים" manual) → חיוב תקופתי (`scholarship_batches`,
+  e.g. "סיכומים חשוון"; new batches ADD to old ones) → זכאות (`scholarship_entries`,
+  student × batch × amount, UNIQUE(batch,student)) → תשלום (`scholarship_payments`,
+  one per student per save, DATE ONLY - no check/method). An entry with
+  `payment_id IS NULL` is an open debt; view `scholarship_balances` = charged/paid/
+  balance per student × type. DB triggers: paid entries are locked (only clearing
+  payment_id allowed; cancelling = deleting the payment → FK SET NULL), ימות batches
+  of the same type can't overlap (date_from..date_to). Printed reports are saved as
+  `scholarship_runs` (entry_ids) and payment is marked per run. ימות calls land in
+  `scholarship_yemot_calls` (dedupe_key = ext+record+call time; status pending/
+  included/excluded/unmatched); unknown ת"ז → `scholarship_id_aliases`. Parser:
+  `lib/yemot-parse.ts` (one parser for file + future API), DB ops `lib/yemot-import.ts`,
+  data hook `useScholarships`. Audit triggers are copied from `students` by the migration.
 
 ## Roles + Permission System (CRITICAL)
 
@@ -280,6 +294,17 @@ The Sidebar hides `/settings` from non-admins.
    deletes families with 0 students AND 0 graduates. `idMatchVariants` +
    `stripIdLeadingZeros` live in `lib/israeli-validators.ts` - reuse for any
    Israeli-ID matching. Merge scripts: `merge_alef_sibling_families.py`.
+22. **מלגות module** (`/scholarships`, mig 056): 7 tabs - סקירה, יבוא ימות (xlsx
+   upload → preview: מוכנים / שאלות לבירור / לא פעילים / לא מזוהים / כבר בחיוב →
+   create batch; manual phone rows), ת"ז לא מזוהות (suggestions by phone / 1-digit
+   typo / name, alias or one-off assign, ignore), הזנה ידנית (keyboard-first grid:
+   amounts in a ref + memo rows, localStorage draft), דוח והדפסה (summary page +
+   page per shiur, A4 landscape > 3 types, Excel, saved as run), סימון תשלום (per run,
+   checkbox grid, arrows + space), סוגי מלגות (admin). Student card tab "מלגות"
+   (ledger + running balance) and "יתרת מלגה פתוחה" in the directory drawer.
+   Perms: canWrite = import/entry/payment, canGenerateReports = report,
+   canDelete (admin) = delete batch / cancel payment / edit types.
+   ימות API import (YEMOT_API_TOKEN env var) - NOT built yet, pending API check.
 
 ## Design system rules
 
