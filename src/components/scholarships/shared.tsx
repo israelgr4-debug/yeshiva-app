@@ -3,6 +3,8 @@
 // Shared bits for the מלגות tabs: permissions, navigation between tabs, formatting.
 
 import React from 'react';
+import { SHIURIM } from '@/lib/shiurim';
+import { fetchAll } from '@/lib/supabase-paginate';
 
 export type ScholarshipTabId = 'overview' | 'yemot' | 'unmatched' | 'manual' | 'report' | 'payment' | 'types';
 
@@ -61,4 +63,90 @@ export function EmptyState({ icon, text, hint }: { icon: string; text: string; h
 
 export function ComingSoon({ stage }: { stage: string }) {
   return <EmptyState icon="🚧" text="בבנייה" hint={`ייבנה ב${stage}`} />;
+}
+
+// ---------------- students + shiur picker ----------------
+
+
+export interface StudentLite {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  shiur: string | null;
+  id_number: string | null;
+  passport_number: string | null;
+  institution_name: string | null;
+  status: string;
+  phone?: string | null;
+  family_id?: string | null;
+}
+
+export const STUDENT_LITE_COLS = 'id, first_name, last_name, shiur, id_number, passport_number, institution_name, status, phone, family_id';
+
+export async function fetchStudentsLite(opts: { activeOnly?: boolean; ids?: string[] } = {}): Promise<StudentLite[]> {
+  if (opts.ids) {
+    const out: StudentLite[] = [];
+    for (let i = 0; i < opts.ids.length; i += 150) {
+      const part = opts.ids.slice(i, i + 150);
+      out.push(...await fetchAll<StudentLite>('students', STUDENT_LITE_COLS, (q) => q.in('id', part)));
+    }
+    return out;
+  }
+  return fetchAll<StudentLite>('students', STUDENT_LITE_COLS, (q) => (opts.activeOnly ? q.eq('status', 'active') : q));
+}
+
+const SHIUR_RANK = new Map(SHIURIM.map((s, i) => [s.name, i]));
+export const KOLLEL = '__kollel';
+export const isKollel = (s: { institution_name: string | null }) => !!s.institution_name && s.institution_name.includes('כולל');
+
+/** Sort key: shiur order (כולל / unknown last), then last name, first name (א-ב). */
+export function compareStudents(a: StudentLite, b: StudentLite): number {
+  const ra = isKollel(a) ? 900 : (SHIUR_RANK.get(a.shiur || '') ?? 800);
+  const rb = isKollel(b) ? 900 : (SHIUR_RANK.get(b.shiur || '') ?? 800);
+  if (ra !== rb) return ra - rb;
+  return (a.last_name || '').localeCompare(b.last_name || '', 'he') || (a.first_name || '').localeCompare(b.first_name || '', 'he');
+}
+
+export const shiurLabel = (s: StudentLite) => (isKollel(s) ? (s.institution_name || 'כולל') : (s.shiur || '—'));
+
+/** Group key used in reports: shiur, or the כולל institution. */
+export const shiurGroup = (s: StudentLite) => (isKollel(s) ? 'כולל' : (s.shiur || 'ללא שיעור'));
+
+/** Empty selection = everyone. KOLLEL matches students of a כולל institution. */
+export function matchesShiurSelection(s: StudentLite, selected: Set<string>): boolean {
+  if (selected.size === 0) return true;
+  if (selected.has(KOLLEL) && isKollel(s)) return true;
+  return !isKollel(s) && !!s.shiur && selected.has(s.shiur);
+}
+
+export function ShiurPicker({ selected, onChange }: { selected: Set<string>; onChange: (s: Set<string>) => void }) {
+  const options = [...SHIURIM.map((s) => ({ value: s.name, label: s.shortName === 'קיבוץ' ? 'קיבוץ' : s.shortName })), { value: KOLLEL, label: 'כולל' }];
+  const toggle = (v: string) => {
+    const next = new Set(selected);
+    if (next.has(v)) next.delete(v); else next.add(v);
+    onChange(next);
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-slate-500 me-1">שיעורים:</span>
+      {options.map((o) => {
+        const on = selected.has(o.value);
+        return (
+          <button key={o.value} type="button" onClick={() => toggle(o.value)}
+            className={`px-2.5 py-1 rounded-lg text-sm font-medium border ${on ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>
+            {o.label}
+          </button>
+        );
+      })}
+      {selected.size > 0 && <button type="button" onClick={() => onChange(new Set())} className="text-xs text-red-600 hover:underline ms-1">נקה (הכל)</button>}
+    </div>
+  );
+}
+
+/** Name / ID search (any order, all tokens must match). */
+export function matchesSearch(s: StudentLite, q: string): boolean {
+  const tokens = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return true;
+  const pool = `${s.first_name || ''} ${s.last_name || ''} ${s.id_number || ''} ${s.passport_number || ''}`.toLowerCase();
+  return tokens.every((t) => pool.includes(t));
 }
