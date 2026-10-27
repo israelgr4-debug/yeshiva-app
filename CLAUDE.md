@@ -312,6 +312,16 @@ The Sidebar hides `/settings` from non-admins.
    from שלוחה 1). Daily via cron-sync when `yemot_auto_enabled`. Settings card
    `YemotSettings` (path, auto, connection test).
 
+23. **Certificates → Word** (`lib/cert-docx.ts` + `lib/cert-to-word.ts`): native RTL
+   .docx built with jszip that reproduces the original Word certificates in
+   `C:\yeshiva\Ishurim` (letterhead gap, בס"ד right, dates left, centered underlined
+   אישור, signer block left; David 12pt navy). Same template as the editor (body /
+   recipient / signer HTML → bold/underline/size/align/lists/tables). GOTCHAS (verified
+   by rendering in Word): in bidi paragraphs `w:jc` left/right and `w:ind` left/right are
+   LOGICAL (jc="left" = right edge); Latin runs need explicit `<w:rtl w:val="0"/>` because
+   Normal defaults runs to RTL. Editor has "📝 בדיקה בוורד" (exports the unsaved draft).
+   Placeholder dates render dd/mm/yyyy (`formatCertDate`).
+
 ## Design system rules
 
 When editing UI, follow the conventions established across the app:

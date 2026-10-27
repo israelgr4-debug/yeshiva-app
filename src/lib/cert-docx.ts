@@ -184,6 +184,9 @@ export function htmlToBlocks(input: string, opts: { emphasize?: string[]; baseSz
   let html = input || '';
   if (!/<[a-z][\s\S]*>/i.test(html)) {
     html = html.split('\n').map((l) => `<p>${esc(l)}</p>`).join('');
+  } else if (!/<(p|div|br|li|h[1-6])[\s>/]/i.test(html)) {
+    // text lines + inline HTML (e.g. a payments <table>) without block tags: keep the line breaks
+    html = html.replace(/\n/g, '<br>');
   }
   const emph = (opts.emphasize || []).filter((v) => v && v.trim().length > 1).sort((a, b) => b.length - a.length);
 
