@@ -14,6 +14,7 @@ import {
   StudentLite, fetchStudentsLite, compareStudents, shiurLabel, StudentSearchBox,
 } from './shared';
 import { UnmatchedIdsTab } from './UnmatchedIdsTab';
+import { YemotLineCard } from './YemotLineCard';
 
 // "יבוא ימות": pick a ימות type + date range (new batch) or an existing ימות batch
 // (continue), upload the xlsx (→ scholarship_yemot_calls), review the preview in
@@ -288,6 +289,7 @@ export function YemotImportTab(props: ScholarshipTabProps) {
 
   return (
     <div className="space-y-4">
+      <YemotLineCard canWrite={perms.canWrite} />
       <SectionCard title="יבוא שיחות מימות המשיח">
         <div className="space-y-3">
           <div className="flex gap-2">
