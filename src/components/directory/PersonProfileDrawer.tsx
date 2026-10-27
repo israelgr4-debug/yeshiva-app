@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Person } from '@/hooks/useDirectory';
 
@@ -104,6 +105,8 @@ export function PersonProfileDrawer({ person, onClose }: Props) {
               </ul>
             </div>
           )}
+
+          {person.studentRefs.length > 0 && <ScholarshipBalanceLine studentIds={person.studentRefs.map((s) => s.id)} />}
 
           {/* Phones */}
           {person.phones.length > 0 && (
@@ -226,6 +229,25 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div>
       <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{title}</h3>
       {children}
+    </div>
+  );
+}
+
+/** "יתרת מלגה פתוחה" — shown only when the open scholarship balance is > 0. */
+function ScholarshipBalanceLine({ studentIds }: { studentIds: string[] }) {
+  const [balance, setBalance] = useState(0);
+  const key = studentIds.join(',');
+  useEffect(() => {
+    let alive = true;
+    supabase.from('scholarship_balances').select('balance').in('student_id', key.split(','))
+      .then(({ data }) => { if (alive) setBalance((data || []).reduce((s: number, r: any) => s + (Number(r.balance) || 0), 0)); });
+    return () => { alive = false; };
+  }, [key]);
+  if (balance <= 0) return null;
+  return (
+    <div className="flex items-center justify-between p-3 bg-orange-50 rounded-xl border border-orange-200 text-sm">
+      <span className="text-orange-900">🎁 יתרת מלגה פתוחה</span>
+      <span className="font-bold text-orange-800 tabular-nums">₪{balance.toLocaleString('he-IL')}</span>
     </div>
   );
 }

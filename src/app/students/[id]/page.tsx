@@ -10,6 +10,7 @@ import { StudentCard } from '@/components/students/StudentCard';
 import { EducationHistory } from '@/components/students/EducationHistory';
 import { IdScanUploader } from '@/components/students/IdScanUploader';
 import { StudentTuitionTab } from '@/components/students/StudentTuitionTab';
+import { StudentScholarshipsTab } from '@/components/students/StudentScholarshipsTab';
 import { useStudents } from '@/hooks/useStudents';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -386,6 +387,7 @@ export default function StudentDetailPage() {
     { key: 'family', label: 'פרטי הורים' },
     { key: 'education', label: 'היסטוריה לימודית' },
     { key: 'donations', label: 'שכר לימוד' },
+    { key: 'scholarships', label: 'מלגות' },
     { key: 'dormitory', label: 'פנימיה' },
   ];
 
@@ -588,6 +590,8 @@ export default function StudentDetailPage() {
                       studentStatus={student.status as any}
                     />
                   )}
+
+                  {activeTab === 'scholarships' && <StudentScholarshipsTab studentId={student.id} />}
 
                   {activeTab === 'dormitory' && (
                     <p className="text-gray-500 text-center py-8">
