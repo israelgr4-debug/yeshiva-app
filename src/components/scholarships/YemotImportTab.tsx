@@ -15,6 +15,7 @@ import {
 } from './shared';
 import { UnmatchedIdsTab } from './UnmatchedIdsTab';
 import { YemotLineCard } from './YemotLineCard';
+import { RecordingPlayer, fetchRecordings } from './RecordingPlayer';
 
 // "יבוא ימות": pick a ימות type + date range (new batch) or an existing ימות batch
 // (continue), upload the xlsx (→ scholarship_yemot_calls), review the preview in
@@ -54,6 +55,8 @@ export function YemotImportTab(props: ScholarshipTabProps) {
   const [msg, setMsg] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // recordings in the preview range, by "ext:record" → ימות path (for the ▶️ buttons)
+  const [recByCall, setRecByCall] = useState<Map<string, string>>(new Map());
 
   const yemotTypes = types.filter((t) => t.source === 'yemot' && t.is_active);
   const type = types.find((t) => t.id === typeId) || null;
@@ -94,6 +97,10 @@ export function YemotImportTab(props: ScholarshipTabProps) {
       await rematchUnmatched(await loadIdIndex());
       const cs = await fetchCallsForRange(rangeFrom, rangeTo, extension);
       setCalls(cs);
+      // recordings are optional — the preview works without them
+      fetchRecordings(rangeFrom, rangeTo)
+        .then((recs) => setRecByCall(new Map(recs.filter((r) => r.record !== null).map((r) => [`${r.folder || ''}:${r.record}`, r.what]))))
+        .catch(() => setRecByCall(new Map()));
       if (mode === 'continue' && contBatch) {
         const ents = await sch.getBatchEntries(contBatch.id);
         setExistingEntries(new Map(ents.map((e) => [e.student_id, Number(e.amount)])));
@@ -276,6 +283,9 @@ export function YemotImportTab(props: ScholarshipTabProps) {
       <span className="tabular-nums">{c.call_at ? `${dmy(israelDate(c.call_at))} ${israelTime(c.call_at)}` : 'ללא תאריך'}</span>
       {c.phone && <span className="tabular-nums text-slate-500" dir="ltr">{c.phone}</span>}
       <span className={`tabular-nums font-semibold ${(Number(c.amount) || 0) === 0 ? 'text-slate-400' : ''}`}>{ils(Number(c.amount) || 0)}</span>
+      {c.record_number !== null && recByCall.get(`${c.extension || ''}:${c.record_number}`) && (
+        <RecordingPlayer what={recByCall.get(`${c.extension || ''}:${c.record_number}`)!} compact />
+      )}
       {c.source === 'manual' && (
         <span className="text-[11px] px-1.5 rounded bg-purple-100 text-purple-800">ידני{c.added_by ? ` · ${c.added_by}` : ''}
           {c.status !== 'included' && <>

@@ -6,7 +6,7 @@ import React from 'react';
 import { SHIURIM } from '@/lib/shiurim';
 import { fetchAll } from '@/lib/supabase-paginate';
 
-export type ScholarshipTabId = 'overview' | 'yemot' | 'unmatched' | 'manual' | 'report' | 'payment' | 'types';
+export type ScholarshipTabId = 'overview' | 'yemot' | 'unmatched' | 'recordings' | 'manual' | 'report' | 'payment' | 'types';
 
 export interface ScholarshipPerms {
   canWrite: boolean;   // import / entry / mark payment — admin + secretary

@@ -8,6 +8,7 @@ import { ScholarshipTabId, ScholarshipPerms, ScholarshipTabProps } from '@/compo
 import { OverviewTab } from '@/components/scholarships/OverviewTab';
 import { YemotImportTab } from '@/components/scholarships/YemotImportTab';
 import { UnmatchedIdsTab } from '@/components/scholarships/UnmatchedIdsTab';
+import { RecordingsTab } from '@/components/scholarships/RecordingsTab';
 import { ManualEntryTab } from '@/components/scholarships/ManualEntryTab';
 import { ReportTab } from '@/components/scholarships/ReportTab';
 import { MarkPaymentTab } from '@/components/scholarships/MarkPaymentTab';
@@ -17,6 +18,7 @@ const TABS: { id: ScholarshipTabId; label: string; icon: string }[] = [
   { id: 'overview', label: 'סקירה', icon: '📊' },
   { id: 'yemot', label: 'יבוא ימות', icon: '📞' },
   { id: 'unmatched', label: 'ת"ז לא מזוהות', icon: '❓' },
+  { id: 'recordings', label: 'הקלטות', icon: '🎙️' },
   { id: 'manual', label: 'הזנה ידנית', icon: '⌨️' },
   { id: 'report', label: 'דוח והדפסה', icon: '🖨️' },
   { id: 'payment', label: 'סימון תשלום', icon: '✅' },
@@ -105,6 +107,7 @@ export default function ScholarshipsPage() {
         {tab === 'overview' && <OverviewTab {...tabProps} />}
         {tab === 'yemot' && <YemotImportTab {...tabProps} />}
         {tab === 'unmatched' && <UnmatchedIdsTab {...tabProps} onCount={setUnmatchedCount} />}
+        {tab === 'recordings' && <RecordingsTab {...tabProps} />}
         {tab === 'manual' && <ManualEntryTab {...tabProps} />}
         {tab === 'report' && <ReportTab {...tabProps} />}
         {tab === 'payment' && <MarkPaymentTab {...tabProps} />}

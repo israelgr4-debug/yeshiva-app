@@ -14,6 +14,7 @@ export function YemotSettings() {
   const { getSetting, setSetting } = useSystemSettings();
   const [path, setPath] = useState('ivr2:/11/ApprovalAll.ymgr');
   const [systemNumber, setSystemNumber] = useState('');
+  const [recPath, setRecPath] = useState('ivr2:/11/Record');
   const [auto, setAuto] = useState(false);
   const [tokenConfigured, setTokenConfigured] = useState<boolean | null>(null);
   const [lastPull, setLastPull] = useState<{ at: string; inserted: number; total: number; auto: boolean } | null>(null);
@@ -24,6 +25,7 @@ export function YemotSettings() {
   const load = useCallback(async () => {
     setPath(await getSetting<string>('yemot_ymgr_path', 'ivr2:/11/ApprovalAll.ymgr'));
     setSystemNumber(await getSetting<string>('yemot_system_number', ''));
+    setRecPath(await getSetting<string>('yemot_recordings_path', 'ivr2:/11/Record'));
     setAuto(await getSetting<boolean>('yemot_auto_enabled', false));
     setLastPull(await getSetting<any>('yemot_last_pull', null));
     fetch('/api/scholarships/yemot-import').then((r) => r.json()).then((j) => setTokenConfigured(!!j.tokenConfigured)).catch(() => setTokenConfigured(null));
@@ -35,6 +37,7 @@ export function YemotSettings() {
     const ok = (await Promise.all([
       setSetting('yemot_ymgr_path', path.trim()),
       setSetting('yemot_system_number', systemNumber.trim()),
+      setSetting('yemot_recordings_path', recPath.trim()),
       setSetting('yemot_auto_enabled', auto),
     ])).every(Boolean);
     setStatus(ok ? '✅ נשמר' : '❌ שגיאה בשמירה');
@@ -73,6 +76,7 @@ export function YemotSettings() {
               : '⚠️ חסר משתנה הסביבה YEMOT_API_TOKEN ב-Vercel (Settings → Environment Variables), ואחריו Redeploy'}
           </div>
           <Input label="נתיב קובץ הנתונים בימות" value={path} onChange={(e) => setPath(e.target.value)} dir="ltr" />
+          <Input label="תיקיית ההקלטות בימות" value={recPath} onChange={(e) => setRecPath(e.target.value)} dir="ltr" />
           <Input label="מספר מערכת (לתצוגה בלבד)" value={systemNumber} onChange={(e) => setSystemNumber(e.target.value)} dir="ltr" />
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
