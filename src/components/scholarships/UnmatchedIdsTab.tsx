@@ -66,7 +66,7 @@ export function UnmatchedIdsTab({ perms, onCount, embedded }: ScholarshipTabProp
         fetchStudentsLite(),
         fetchAll<{ id: string; father_phone: string | null; mother_phone: string | null; home_phone: string | null }>('families', 'id, father_phone, mother_phone, home_phone'),
         embedded ? Promise.resolve([]) : listAliases(),
-        sch.listBatches({ source: 'yemot' }),
+        sch.listBatches(),
       ]);
       setCalls(embedded ? un.filter((c) => embedded.callIds.has(c.id)) : un);
       setIgnored(ign);
@@ -128,8 +128,11 @@ export function UnmatchedIdsTab({ perms, onCount, embedded }: ScholarshipTabProp
 
   // ---------- actions ----------
   const coveringBatch = (g: Group): ScholarshipBatch | null => {
+    // rows imported for a specific batch (e.g. the one-time סיכומים Excel) carry batch_id
+    const tagged = g.calls.find((c) => c.batch_id)?.batch_id;
+    if (tagged) { const b = batches.find((x) => x.id === tagged); if (b) return b; }
     for (const b of batches) {
-      if (!b.date_from || !b.date_to) continue;
+      if (b.source !== 'yemot' || !b.date_from || !b.date_to) continue;
       if (g.calls.some((c) => c.call_at && israelDate(c.call_at) >= b.date_from! && israelDate(c.call_at) <= b.date_to!)) return b;
     }
     return null;
@@ -153,9 +156,18 @@ export function UnmatchedIdsTab({ perms, onCount, embedded }: ScholarshipTabProp
     const { group, student, batch } = afterAssign;
     setBusy(true);
     try {
-      const inRange = group.calls.filter((c) => c.call_at && israelDate(c.call_at) >= batch.date_from! && israelDate(c.call_at) <= batch.date_to!);
+      const inRange = batch.source === 'yemot'
+        ? group.calls.filter((c) => c.call_at && israelDate(c.call_at) >= batch.date_from! && israelDate(c.call_at) <= batch.date_to!)
+        : group.calls.filter((c) => c.batch_id === batch.id);
       const existing = (await sch.getBatchEntries(batch.id)).find((e) => e.student_id === student.id);
-      if (existing) {
+      const add = inRange.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+      if (existing && batch.source !== 'yemot' && !existing.payment_id) {
+        if (confirm(`ל${student.first_name} ${student.last_name} כבר יש ${ils(existing.amount)} בחיוב "${batch.title}". להוסיף ${ils(add)}?`)) {
+          await sch.updateEntry(existing.id, { amount: Math.round((Number(existing.amount) + add) * 100) / 100 });
+          await updateCalls(inRange.map((c) => c.id), { status: 'included', batch_id: batch.id, entry_id: existing.id });
+          alert('✓ עודכן');
+        }
+      } else if (existing) {
         alert(`ל${student.first_name} ${student.last_name} כבר יש זכאות של ${ils(existing.amount)} בחיוב "${batch.title}".\nהשיחות סומנו כממתינות — הכרע עליהן בלשונית "יבוא ימות" ← "המשך חיוב קיים" (שאלות לבירור).`);
       } else {
         const amount = inRange.reduce((s, c) => s + (Number(c.amount) || 0), 0);
