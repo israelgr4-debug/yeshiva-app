@@ -7,6 +7,8 @@ import { Select } from '@/components/ui/Select';
 import { useSupabase } from '@/hooks/useSupabase';
 import { Family, Student } from '@/lib/types';
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
+import { ParentPhonesExcel } from '@/components/families/ParentPhonesExcel';
 
 type ActiveFilter = 'active' | 'inactive' | 'all';
 
@@ -17,6 +19,9 @@ export default function FamiliesPage() {
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active');
   const [cityFilter, setCityFilter] = useState('');
   const { fetchData } = useSupabase();
+  const { permissions } = useAuth();
+  const [phonesOpen, setPhonesOpen] = useState(false);
+  const reloadFamilies = async () => setFamilies(await fetchData<Family>('families'));
 
   useEffect(() => {
     async function loadData() {
@@ -170,12 +175,24 @@ export default function FamiliesPage() {
         </div>
 
         {/* Summary */}
-        <div className="text-sm text-slate-600">
-          <span className="font-bold text-slate-900 text-base">
-            {filteredFamilies.length.toLocaleString('he-IL')}
-          </span>{' '}
-          משפחות
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-slate-600">
+            <span className="font-bold text-slate-900 text-base">
+              {filteredFamilies.length.toLocaleString('he-IL')}
+            </span>{' '}
+            משפחות
+          </div>
+          {permissions.canWrite && (
+            <button type="button" onClick={() => setPhonesOpen(true)}
+              className="text-sm px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 font-medium">
+              📞 טלפוני הורים — תיקון באקסל
+            </button>
+          )}
         </div>
+        {phonesOpen && (
+          <ParentPhonesExcel families={filteredFamilies} studentsByFamily={studentsByFamily}
+            onClose={() => setPhonesOpen(false)} onApplied={reloadFamilies} />
+        )}
 
         {/* Cards grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
