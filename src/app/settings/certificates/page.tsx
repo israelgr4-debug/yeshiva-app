@@ -376,9 +376,7 @@ function PageEditor({ draft, setDraft, hcfg, onHeaderClick, stampUrl, signatureU
               : <div style={al(hcfg.datesAlign)}>{dates.hebrew && <div>{dates.hebrew}</div>}{dates.gregorian && <div>{dates.gregorian}</div>}</div>}
           </button>
 
-          <input value={hcfg.title} onChange={(e) => setDraft({ ...draft, header_config: { ...hcfg, title: e.target.value } })}
-            className="block w-full text-center font-bold underline bg-transparent outline-none hover:bg-blue-50/60 focus:bg-blue-50/60 rounded mt-6 mb-4"
-            style={{ fontSize: '16pt', fontFamily: 'inherit', color: 'inherit' }} title="כותרת האישור" />
+          <TitleEditor cfg={hcfg} onChange={(p) => setDraft({ ...draft, header_config: { ...hcfg, ...p } })} />
 
           <Region label="נמען"><CertEditorArea editor={recipient} /></Region>
           <Region label="גוף האישור" className="mt-5"><CertEditorArea editor={body} minHeight="40mm" /></Region>
@@ -388,6 +386,38 @@ function PageEditor({ draft, setDraft, hcfg, onHeaderClick, stampUrl, signatureU
             <Region label="חתימה"><CertEditorArea editor={signer} /></Region>
           </SignerBlock>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const TITLE_SIZES = [12, 14, 16, 18, 20, 22, 24, 28, 32, 36];
+
+/** "אישור" — edited on the page, with its own size / bold / underline controls. */
+function TitleEditor({ cfg, onChange }: { cfg: CertHeaderConfig; onChange: (p: Partial<CertHeaderConfig>) => void }) {
+  const size = cfg.titleSize || 16;
+  const step = (dir: 1 | -1) => {
+    const next = dir > 0 ? TITLE_SIZES.find((s) => s > size) : [...TITLE_SIZES].reverse().find((s) => s < size);
+    if (next) onChange({ titleSize: next });
+  };
+  const btn = 'h-7 min-w-7 px-1.5 rounded text-xs hover:bg-slate-200';
+  return (
+    <div className="relative group mt-6 mb-4">
+      <input value={cfg.title} onChange={(e) => onChange({ title: e.target.value })} title="כותרת האישור"
+        className="block w-full text-center bg-transparent outline-none hover:bg-blue-50/60 focus:bg-blue-50/60 rounded"
+        style={{
+          fontSize: `${size}pt`, fontFamily: 'inherit', color: 'inherit',
+          fontWeight: cfg.titleBold === false ? 'normal' : 'bold',
+          textDecoration: cfg.titleUnderline === false ? 'none' : 'underline',
+        }} />
+      <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:flex group-focus-within:flex items-center gap-0.5 bg-white rounded-lg shadow ring-1 ring-slate-200 px-1 py-0.5 z-10">
+        <button type="button" className={btn} title="הקטן" onClick={() => step(-1)}>A<sup>−</sup></button>
+        <select value={size} onChange={(e) => onChange({ titleSize: Number(e.target.value) })} className="h-7 text-xs border border-slate-300 rounded px-0.5" title="גודל (נקודות)">
+          {TITLE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button type="button" className={btn} title="הגדל" onClick={() => step(1)}>A<sup>+</sup></button>
+        <button type="button" className={`${btn} ${cfg.titleBold !== false ? 'bg-blue-100 text-blue-800' : ''}`} title="מודגש" onClick={() => onChange({ titleBold: cfg.titleBold === false })}><b>B</b></button>
+        <button type="button" className={`${btn} ${cfg.titleUnderline !== false ? 'bg-blue-100 text-blue-800' : ''}`} title="קו תחתון" onClick={() => onChange({ titleUnderline: cfg.titleUnderline === false })}><u>U</u></button>
       </div>
     </div>
   );

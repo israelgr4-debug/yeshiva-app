@@ -476,9 +476,9 @@ export function EmailSettings() {
 
         {/* Signature upload */}
         <div className="mt-8 pt-6 border-t border-gray-200">
-          <h4 className="text-md font-semibold mb-2">חתימה לאישורים (PNG)</h4>
+          <h4 className="text-md font-semibold mb-2">חתימה לאישורים — חתימה בלבד (PNG)</h4>
           <p className="text-sm text-gray-600 mb-4">
-            החתימה תופיע רק באישורים שנשלחים במייל. בהדפסה לא - תחתום ידנית.
+            רק החתימה, <strong>בלי החותמת</strong> (את החותמת מעלים בנפרד למטה). מופיעה באישורים שנשלחים במייל; בהדפסה מודפסת רק החותמת ואתה חותם ביד.
           </p>
 
           <div className="flex items-center gap-4">
@@ -521,8 +521,7 @@ export function EmailSettings() {
         <div className="mt-8 pt-6 border-t border-gray-200">
           <h4 className="text-md font-semibold mb-2">📘 חתימת חינוך (PNG)</h4>
           <p className="text-sm text-gray-600 mb-4">
-            חתימה חלופית לאישורים של תלמידים המסומנים <strong>חינוך</strong>.
-            תופיע במייל ובהדפסה עבור תלמידים אלו, במקום החתימה הרגילה.
+            חתימה בלבד (בלי חותמת) לאישורים של תלמידים המסומנים <strong>חינוך</strong> — מופיעה במייל, במקום החתימה הרגילה. בהדפסה: חותמת חינוך בלבד.
           </p>
 
           <div className="flex items-center gap-4">

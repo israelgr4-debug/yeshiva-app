@@ -18,6 +18,10 @@ export interface CertHeaderConfig {
   /** short = 28/10/26 (as in the original Word certificates), long = 28/10/2026 */
   gregorianFormat: 'short' | 'long';
   title: string;
+  /** title font size in pt (16 = the original Word certificates) */
+  titleSize: number;
+  titleBold: boolean;
+  titleUnderline: boolean;
 }
 
 export const DEFAULT_HEADER: CertHeaderConfig = {
@@ -30,6 +34,9 @@ export const DEFAULT_HEADER: CertHeaderConfig = {
   showGregorianDate: true,
   gregorianFormat: 'short',
   title: 'אישור',
+  titleSize: 16,
+  titleBold: true,
+  titleUnderline: true,
 };
 
 /** Merge a stored config over the defaults; legacy templates take the title from header_html <h1>. */

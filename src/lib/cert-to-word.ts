@@ -78,7 +78,10 @@ export async function buildCertificateDocx(
     hebrewDate: dates.hebrew,
     gregorianDate: dates.gregorian,
     title: hcfg.title || titleFromHeader(reportType.headerHtml),
-    header: { showBsd: hcfg.showBsd, bsdAlign: hcfg.bsdAlign, datesAlign: hcfg.datesAlign, datesLayout: hcfg.datesLayout },
+    header: {
+      showBsd: hcfg.showBsd, bsdAlign: hcfg.bsdAlign, datesAlign: hcfg.datesAlign, datesLayout: hcfg.datesLayout,
+      titleSize: hcfg.titleSize, titleBold: hcfg.titleBold, titleUnderline: hcfg.titleUnderline,
+    },
     recipient: renderTemplateBody(reportType.recipient || '', student, year, extras, sg),
     bodyHtml: reportType.buildBody(student, year, extras),
     signerHtml,

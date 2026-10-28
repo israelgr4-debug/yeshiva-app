@@ -226,7 +226,11 @@ export function CertificatePreview({
             )
           )}
         </div>
-        <h1 className="certificate-title">{hcfg.title || 'אישור'}</h1>
+        <h1 className="certificate-title" style={{
+          fontSize: `${hcfg.titleSize || 16}pt`,
+          fontWeight: hcfg.titleBold === false ? 'normal' : 'bold',
+          textDecoration: hcfg.titleUnderline === false ? 'none' : 'underline',
+        }}>{hcfg.title || 'אישור'}</h1>
 
         {/* Recipient (plain text or editor HTML) */}
         {recipientHtml && (

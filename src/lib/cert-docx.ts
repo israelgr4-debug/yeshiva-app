@@ -399,7 +399,10 @@ export interface CertificateModel {
   signerLines?: string[];
   emphasize?: string[];
   /** header layout (default = the original Word certificates) */
-  header?: { showBsd: boolean; bsdAlign: 'right' | 'center' | 'left'; datesAlign: 'right' | 'center' | 'left'; datesLayout: 'stacked' | 'inline' };
+  header?: {
+    showBsd: boolean; bsdAlign: 'right' | 'center' | 'left'; datesAlign: 'right' | 'center' | 'left'; datesLayout: 'stacked' | 'inline';
+    titleSize?: number; titleBold?: boolean; titleUnderline?: boolean;
+  };
 }
 
 const H2A = (h: 'right' | 'center' | 'left'): Align => (h === 'right' ? 'start' : h === 'left' ? 'end' : 'center');
@@ -423,7 +426,10 @@ export function certificateBlocks(m: CertificateModel): DocBlock[] {
     if (m.hebrewDate) P({ before: take(), align: H2A(h.datesAlign), runs: [{ text: m.hebrewDate, color: BLACK }] });
     if (m.gregorianDate) P({ before: take(), align: H2A(h.datesAlign), runs: [{ text: m.gregorianDate }] });
   }
-  P({ before: gap === 3795 ? gap : 782, align: 'center', runs: [{ text: m.title || 'אישור', b: true, u: true, sz: 32 }] });
+  P({
+    before: gap === 3795 ? gap : 782, align: 'center',
+    runs: [{ text: m.title || 'אישור', b: h.titleBold !== false, u: h.titleUnderline !== false, sz: Math.round((h.titleSize || 16) * 2) }],
+  });
   if (m.recipient?.trim()) {
     const rb = htmlToBlocks(m.recipient, { lineBefore: 0 });
     rb.forEach((b, i) => {
