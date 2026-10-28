@@ -317,6 +317,107 @@ async function cancelPayment(paymentId: string): Promise<void> {
   if (error) throw new Error(scholarshipError(error));
 }
 
+// ---------------- one-time payments (תשלומים חד פעמיים, mig 058) ----------------
+// Each one-time item = its own batch (title = description) + one entry, under the
+// type with kind='one_time'. So reports, mark-payment and the student ledger just work.
+
+async function getOneTimeType(): Promise<ScholarshipType> {
+  const { data, error } = await supabase.from('scholarship_types').select('*').eq('kind', 'one_time').order('created_at').limit(1);
+  if (error) throw new Error(scholarshipError(error));
+  if (!data?.[0]) throw new Error('חסר סוג "תשלומים חד פעמיים" — יש להריץ את מיגרציה 058');
+  return data[0] as ScholarshipType;
+}
+
+export interface OneTimeItem {
+  entry: ScholarshipEntry;
+  batch: ScholarshipBatch;
+  payment: ScholarshipPayment | null;
+}
+
+async function addOneTime(opts: { studentId: string; amount: number; description: string; date: string; notes?: string | null }): Promise<ScholarshipEntry> {
+  const type = await getOneTimeType();
+  const batch = await createBatch({ type_id: type.id, title: opts.description.trim() || 'תשלום חד פעמי', entry_date: opts.date, source: 'manual' });
+  try {
+    return await addEntry(batch.id, opts.studentId, opts.amount, opts.notes);
+  } catch (e) {
+    await supabase.from('scholarship_batches').delete().eq('id', batch.id);
+    throw e;
+  }
+}
+
+async function listOneTime(): Promise<OneTimeItem[]> {
+  const type = await getOneTimeType();
+  const [batches, entries] = await Promise.all([
+    fetchAll<ScholarshipBatch>('scholarship_batches', '*', (q) => q.eq('type_id', type.id)),
+    fetchAll<ScholarshipEntry>('scholarship_entries', '*', (q) => q.eq('type_id', type.id)),
+  ]);
+  const byBatch = new Map(batches.map((b) => [b.id, b]));
+  const payIds = Array.from(new Set(entries.map((e) => e.payment_id).filter(Boolean))) as string[];
+  const pays = payIds.length ? await fetchPayments({ ids: payIds }) : [];
+  const payById = new Map(pays.map((p) => [p.id, p]));
+  return entries
+    .filter((e) => byBatch.has(e.batch_id))
+    .map((e) => ({ entry: { ...e, amount: Number(e.amount) }, batch: byBatch.get(e.batch_id)!, payment: e.payment_id ? payById.get(e.payment_id) || null : null }))
+    .sort((a, b) => b.entry.entry_date.localeCompare(a.entry.entry_date) || b.entry.created_at.localeCompare(a.entry.created_at));
+}
+
+/** Remove an unpaid one-time item (its batch holds only this entry). */
+async function deleteOneTime(entry: ScholarshipEntry): Promise<void> {
+  if (entry.payment_id) throw new Error('התשלום כבר שולם — לא ניתן למחוק');
+  const { error } = await supabase.from('scholarship_batches').delete().eq('id', entry.batch_id);
+  if (error) throw new Error(scholarshipError(error));
+}
+
+/**
+ * צ'ק בוטל (lost / torn / bounced): the payment is KEPT with status 'cancelled' (history on
+ * the student card) and its entries are released back to open debt. With moveToOneTime the
+ * amount becomes a one-time item ("צ'ק חלופי") and the released entries are closed by a
+ * 'transfer' row, so they are not paid twice.
+ */
+async function cancelCheck(paymentId: string, reason: string, moveToOneTime: boolean): Promise<{ replacement?: ScholarshipEntry }> {
+  const by = await currentEmail();
+  const { data: pay, error } = await supabase.from('scholarship_payments').select('*').eq('id', paymentId).single();
+  if (error || !pay) throw new Error('התשלום לא נמצא');
+  if ((pay.status || 'paid') !== 'paid') throw new Error('הצ\'ק כבר מסומן כמבוטל');
+
+  const { data: ents, error: e1 } = await supabase.from('scholarship_entries')
+    .select('id, amount, scholarship_batches(title)').eq('payment_id', paymentId);
+  if (e1) throw new Error(scholarshipError(e1));
+  const entryIds = (ents || []).map((e: any) => e.id);
+
+  // 1. release the entries (allowed by the lock trigger: only payment_id is cleared)
+  if (entryIds.length) {
+    const { error: e2 } = await supabase.from('scholarship_entries').update({ payment_id: null }).in('id', entryIds);
+    if (e2) throw new Error(scholarshipError(e2));
+  }
+  // 2. mark the check cancelled
+  const { error: e3 } = await supabase.from('scholarship_payments').update({
+    status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: by, cancel_reason: reason || null,
+  }).eq('id', paymentId);
+  if (e3) throw new Error(scholarshipError(e3));
+
+  if (!moveToOneTime || !entryIds.length) return {};
+
+  // 3. replacement one-time item + close the released entries with a 'transfer' row
+  const titles = Array.from(new Set((ents || []).map((e: any) => e.scholarship_batches?.title).filter(Boolean))).join(', ');
+  const today = new Date();
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const replacement = await addOneTime({
+    studentId: pay.student_id, amount: Number(pay.amount), date: iso,
+    description: `צ'ק חלופי${titles ? ` — ${titles}` : ''}`,
+    notes: `במקום צ'ק מ-${String(pay.paid_at).split('-').reverse().join('/')} שבוטל${reason ? ` (${reason})` : ''}`,
+  });
+  const { data: tr, error: e4 } = await supabase.from('scholarship_payments').insert({
+    student_id: pay.student_id, paid_at: iso, amount: Number(pay.amount), status: 'transfer',
+    notes: 'הועבר לתשלום חד פעמי (צ\'ק חלופי)', created_by: by,
+  }).select('id').single();
+  if (e4 || !tr) throw new Error(scholarshipError(e4));
+  const { error: e5 } = await supabase.from('scholarship_entries').update({ payment_id: tr.id }).in('id', entryIds).is('payment_id', null);
+  if (e5) throw new Error(scholarshipError(e5));
+  await supabase.from('scholarship_payments').update({ replacement_entry_id: replacement.id }).eq('id', paymentId);
+  return { replacement };
+}
+
 async function fetchPayments(opts: { studentId?: string; ids?: string[]; runId?: string } = {}): Promise<ScholarshipPayment[]> {
   if (opts.ids) {
     const out: ScholarshipPayment[] = [];
@@ -392,7 +493,8 @@ export function useScholarships() {
     listBatches, getBatch, createBatch, updateBatch, deleteBatch, nextYemotStart, batchStats,
     getBatchEntries, saveBatchAmounts, addEntry, updateEntry, deleteEntry, fetchEntries, fetchEntriesByIds,
     createRun, listRuns, getRun,
-    markPaid, cancelPayment, fetchPayments,
+    markPaid, cancelPayment, cancelCheck, fetchPayments,
+    getOneTimeType, addOneTime, listOneTime, deleteOneTime,
     getBalances, openBalance, getStudentLedger,
   }), []);
 }

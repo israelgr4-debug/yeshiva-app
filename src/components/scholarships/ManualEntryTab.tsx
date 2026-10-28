@@ -45,8 +45,11 @@ function BatchList({ perms, nav }: ScholarshipTabProps) {
   }, [sch]);
 
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
-  const manualTypes = types.filter((t) => t.is_active && t.source === 'manual');
-  const shown = typeFilter ? batches.filter((b) => b.type_id === typeFilter) : batches;
+  // one-time items (תשלומים חד פעמיים) have their own tab — keep them out of this list
+  const oneTimeIds = useMemo(() => new Set(types.filter((t) => t.kind === 'one_time').map((t) => t.id)), [types]);
+  const manualTypes = types.filter((t) => t.is_active && t.source === 'manual' && t.kind !== 'one_time');
+  const regular = batches.filter((b) => !oneTimeIds.has(b.type_id));
+  const shown = typeFilter ? regular.filter((b) => b.type_id === typeFilter) : regular;
 
   const openNew = () => {
     if (!form?.type_id || !form.title.trim() || !form.date) { alert('יש לבחור רכיב, כותרת ותאריך'); return; }
@@ -92,7 +95,7 @@ function BatchList({ perms, nav }: ScholarshipTabProps) {
 
       {types.length > 1 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
-          {[{ id: '', name: 'הכל' }, ...types].map((t) => (
+          {[{ id: '', name: 'הכל' }, ...types.filter((t) => t.kind !== 'one_time')].map((t) => (
             <button key={t.id} type="button" onClick={() => setTypeFilter(t.id)}
               className={`px-3 py-1 rounded-full text-sm border ${typeFilter === t.id ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white border-transparent' : 'bg-white border-slate-200 text-slate-600'}`}>
               {t.name}
@@ -401,6 +404,59 @@ function BatchGrid({ perms, nav, params }: ScholarshipTabProps) {
     if (!d) { alert('לרכיב אין סכום ברירת מחדל (מוגדר בלשונית "סוגי מלגות")'); return; }
     setMany(rows.map((s) => s.id), (sid) => (num(amountsRef.current[sid]) ? null : String(d)));
   };
+  // ---------- blank form: students fill it by hand, then it's typed in the same order ----------
+  const blankTitle = () => `${title.trim() || type?.name || 'טופס מלגה'}${date ? ` · ${dmy(date)}` : ''}`;
+  const printBlank = () => {
+    if (!rows.length) { alert('אין תלמידים בסינון'); return; }
+    const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // one page per shiur, numbering continuous = the row order of the typing grid
+    const groups: { name: string; items: { n: number; s: StudentLite }[] }[] = [];
+    rows.forEach((s, i) => {
+      const g = shiurLabel(s);
+      if (!groups.length || groups[groups.length - 1].name !== g) groups.push({ name: g, items: [] });
+      groups[groups.length - 1].items.push({ n: i + 1, s });
+    });
+    const pages = groups.map((g, gi) => `
+      <section${gi ? ' class="brk"' : ''}>
+        <h1>${esc(blankTitle())}</h1>
+        <h2>${esc(g.name)} · ${g.items.length} תלמידים</h2>
+        <table>
+          <thead><tr><th class="n">#</th><th>שם משפחה</th><th>שם פרטי</th><th class="amt">סכום ₪</th><th class="sig">חתימה</th></tr></thead>
+          <tbody>${g.items.map(({ n, s }) => `<tr><td class="n">${n}</td><td>${esc(s.last_name || '')}</td><td>${esc(s.first_name || '')}</td><td></td><td></td></tr>`).join('')}</tbody>
+        </table>
+      </section>`).join('');
+    const html = `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8"><title>${esc(blankTitle())}</title>
+      <style>
+        @page { size: A4 portrait; margin: 12mm; }
+        body { font-family: David, Arial, sans-serif; color: #111; margin: 0; }
+        h1 { font-size: 18px; margin: 0 0 2px; text-align: center; }
+        h2 { font-size: 15px; margin: 0 0 8px; text-align: center; color: #333; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { border: 1px solid #555; padding: 5px 6px; text-align: right; }
+        th { background: #eee; }
+        td { height: 22px; }
+        .n { width: 34px; text-align: center; color: #555; }
+        .amt { width: 22%; } .sig { width: 22%; }
+        thead { display: table-header-group; } tr { break-inside: avoid; }
+        .brk { break-before: page; page-break-before: always; }
+      </style></head><body>${pages}<script>window.onload = () => { window.print(); };</script></body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) { alert('הדפדפן חסם את החלון — אפשר חלונות קופצים לאתר'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  };
+  const excelBlank = async () => {
+    if (!rows.length) { alert('אין תלמידים בסינון'); return; }
+    const XLSX = await import('xlsx');
+    const aoa: (string | number)[][] = [[blankTitle()], [], ['#', 'שם משפחה', 'שם פרטי', 'שיעור', 'סכום']];
+    rows.forEach((s, i) => aoa.push([i + 1, s.last_name || '', s.first_name || '', shiurLabel(s), '']));
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 5 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    (wb as any).Workbook = { Views: [{ RTL: true }] };
+    XLSX.utils.book_append_sheet(wb, ws, 'טופס');
+    XLSX.writeFile(wb, `טופס ריק - ${blankTitle().replace(/[\\/:*?"<>|]/g, '-')}.xlsx`);
+  };
+
   const clearAll = () => {
     if (!confirm(`לנקות את הסכומים של ${rows.length} התלמידים המסוננים?`)) return;
     setMany(rows.map((s) => s.id), () => '');
@@ -493,6 +549,9 @@ function BatchGrid({ perms, nav, params }: ScholarshipTabProps) {
               מלא ברירת מחדל{type?.default_amount ? ` (${ils(type.default_amount)})` : ''}
             </Button>
             <Button size="sm" variant="ghost" onClick={clearAll}>נקה הכל</Button>
+            <span className="text-slate-300">|</span>
+            <Button size="sm" variant="secondary" onClick={printBlank} title="טופס ריק למילוי ביד — באותו סדר בדיוק כמו הטבלה (לפי הסינון הנוכחי)">🖨️ טופס ריק</Button>
+            <Button size="sm" variant="secondary" onClick={excelBlank} title="אותו טופס ריק כקובץ אקסל">📥 טופס ריק לאקסל</Button>
           </div>
         )}
 

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { useScholarships } from '@/hooks/useScholarships';
 import { ScholarshipPayment, ScholarshipRun } from '@/lib/types';
 import { buildScholarshipReport, ScholarshipReport, ReportRow } from '@/lib/scholarship-report';
+import { CancelCheckDialog } from './CancelCheckDialog';
 import { ScholarshipTabProps, SectionCard, EmptyState, ils, dmy, todayIso, fetchStudentsLite, StudentLite } from './shared';
 
 // "סימון תשלום": open a saved report run, tick the cells that were paid, save with a date.
@@ -122,8 +123,10 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
     setSaving(false);
   };
 
+  const [cancelling, setCancelling] = useState<{ payment: ScholarshipPayment; name: string } | null>(null);
+
   const cancelPayment = async (p: ScholarshipPayment, name: string) => {
-    if (!confirm(`לבטל את התשלום של ${name} מתאריך ${dmy(p.paid_at)} (${ils(p.amount)})?\nכל הזכאויות שהתשלום סגר יחזרו להיות פתוחות.`)) return;
+    if (!confirm(`למחוק את רישום התשלום של ${name} מ-${dmy(p.paid_at)} (${ils(p.amount)})?\nרק כשהתשלום סומן בטעות. לצ׳ק שאבד / נקרע / לא עבר — "צ׳ק בוטל".`)) return;
     try { await sch.cancelPayment(p.id); await loadRun(runId); } catch (e: any) { alert(e.message); }
   };
 
@@ -136,6 +139,10 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
 
   return (
     <div className="space-y-4">
+      {cancelling && (
+        <CancelCheckDialog payment={cancelling.payment} studentName={cancelling.name} onClose={() => setCancelling(null)}
+          onDone={(msg) => { setCancelling(null); alert(msg); loadRun(runId); }} />
+      )}
       <SectionCard title="סימון תשלום לפי הפקה">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs text-slate-600 flex flex-col flex-1 min-w-[260px]">הפקה
@@ -225,10 +232,16 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
                                 ) : null}
                                 {paidPays.map((p) => (
                                   <div key={p.id} className="text-[11px] text-emerald-800 whitespace-nowrap">
-                                    🔒 {ils(cell.entries.filter((e) => e.payment_id === p.id).reduce((s, e) => s + Number(e.amount), 0))} · {dmy(p.paid_at)}
-                                    {perms.canAdmin && (
-                                      <button type="button" title="בטל תשלום (מנהל מערכת)" className="text-red-600 hover:underline ms-1"
-                                        onClick={() => cancelPayment(p, `${row.student.first_name} ${row.student.last_name}`)}>ביטול</button>
+                                    {p.status === 'transfer'
+                                      ? <>↪ {ils(cell.entries.filter((e) => e.payment_id === p.id).reduce((s, e) => s + Number(e.amount), 0))} · הועבר לחד פעמי</>
+                                      : <>🔒 {ils(cell.entries.filter((e) => e.payment_id === p.id).reduce((s, e) => s + Number(e.amount), 0))} · {dmy(p.paid_at)}</>}
+                                    {(p.status || 'paid') === 'paid' && (
+                                      <button type="button" title="צ׳ק אבד / נקרע / לא עבר בבנק" className="text-red-600 hover:underline ms-1"
+                                        onClick={() => setCancelling({ payment: p, name: `${row.student.first_name} ${row.student.last_name}` })}>צ׳ק בוטל</button>
+                                    )}
+                                    {perms.canAdmin && (p.status || 'paid') === 'paid' && (
+                                      <button type="button" title="מחיקת התשלום — רק כשסומן בטעות (מנהל מערכת)" className="text-slate-400 hover:text-red-600 hover:underline ms-1"
+                                        onClick={() => cancelPayment(p, `${row.student.first_name} ${row.student.last_name}`)}>מחק</button>
                                     )}
                                   </div>
                                 ))}

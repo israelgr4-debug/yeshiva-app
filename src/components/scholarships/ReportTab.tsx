@@ -12,7 +12,7 @@ import {
 
 const monthStart = () => todayIso().slice(0, 8) + '01';
 
-export function ReportTab({ perms, nav }: ScholarshipTabProps) {
+export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
   const sch = useScholarships();
   const [types, setTypes] = useState<ScholarshipType[]>([]);
   const [batches, setBatches] = useState<ScholarshipBatch[]>([]);
@@ -33,6 +33,7 @@ export function ReportTab({ perms, nav }: ScholarshipTabProps) {
   const [title, setTitle] = useState('');
   const [rangeLabel, setRangeLabel] = useState('');
   const [savedRun, setSavedRun] = useState<string | null>(null);
+  const [autoGen, setAutoGen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -40,13 +41,27 @@ export function ReportTab({ perms, nav }: ScholarshipTabProps) {
         const [t, b] = await Promise.all([sch.listTypes(true), sch.listBatches({ limit: 200 })]);
         setTypes(t);
         setBatches(b);
-        setSelTypes(new Set(t.filter((x) => x.is_active).map((x) => x.id)));
+        if (params.type && t.some((x) => x.id === params.type)) {
+          setSelTypes(new Set([params.type]));
+          if (params.all) setFrom('2000-01-01');
+          setAutoGen(true);
+        } else {
+          // one-time payments have their own tab — not part of the regular default selection
+          setSelTypes(new Set(t.filter((x) => x.is_active && x.kind !== 'one_time').map((x) => x.id)));
+        }
       } catch (e: any) { alert('שגיאה בטעינה: ' + e.message); }
     })();
     fetchStudentsLite({ activeOnly: false }).then((s) => {
       setInstitutions(Array.from(new Set(s.map((x) => x.institution_name).filter(Boolean) as string[])).sort());
     }).catch(() => {});
-  }, [sch]);
+  }, [sch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // arrived from "הפק לתשלום" (one-time tab): generate right away with the preset filters
+  useEffect(() => {
+    if (!autoGen || !types.length || !perms.canReport) return;
+    setAutoGen(false);
+    generate();
+  }, [autoGen, types]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, v: string) => {
@@ -89,7 +104,7 @@ export function ReportTab({ perms, nav }: ScholarshipTabProps) {
       const rep = buildScholarshipReport(kept, keep, types);
 
       let range = '';
-      if (mode === 'types') range = `${dmy(from)} – ${dmy(to)}`;
+      if (mode === 'types' && from !== '2000-01-01') range = `${dmy(from)} – ${dmy(to)}`;
       else if (kept.length) {
         const ds = kept.map((e) => e.entry_date).sort();
         range = ds[0] === ds[ds.length - 1] ? dmy(ds[0]) : `${dmy(ds[0])} – ${dmy(ds[ds.length - 1])}`;
@@ -188,7 +203,7 @@ export function ReportTab({ perms, nav }: ScholarshipTabProps) {
             {savedRun && perms.canWrite && (
               <Button variant="ghost" onClick={() => nav('payment', { run: savedRun })}>✅ לסימון תשלום של ההפקה ←</Button>
             )}
-            <span className="text-xs text-slate-500">{report.studentCount} תלמידים · {ils(report.total)} · {landscape ? 'A4 לרוחב' : 'A4 לאורך'}</span>
+            <span className="text-xs text-slate-500"><b className="text-slate-800">{report.studentCount} צ׳קים להדפסה</b> · {ils(report.total)} · {landscape ? 'A4 לרוחב' : 'A4 לאורך'}</span>
           </div>
 
           {report.studentCount === 0 ? (
@@ -229,7 +244,7 @@ export function ScholarshipReportView({ report, title, rangeLabel, landscape }: 
           <thead>
             <tr>
               <th className={`${th} text-start`}>שיעור</th>
-              <th className={th}>תלמידים</th>
+              <th className={th}>צ׳קים</th>
               {cols.map((c) => <th key={c.id} className={th}>{c.name}</th>)}
               <th className={th}>סה״כ</th>
             </tr>
@@ -251,6 +266,7 @@ export function ScholarshipReportView({ report, title, rangeLabel, landscape }: 
             </tr>
           </tbody>
         </table>
+        <p className="mt-4 text-center text-base font-bold">סה״כ צ׳קים להדפסה: <span className="tabular-nums">{report.studentCount}</span> · סה״כ לתשלום: <span className="tabular-nums">{ils(report.total)}</span></p>
       </div>
 
       {/* one page per shiur */}
@@ -265,7 +281,6 @@ export function ScholarshipReportView({ report, title, rangeLabel, landscape }: 
               <tr>
                 <th className={`${th} text-start`}>שם משפחה</th>
                 <th className={`${th} text-start`}>שם פרטי</th>
-                <th className={th}>ת״ז</th>
                 {cols.map((c) => <th key={c.id} className={th}>{c.name}</th>)}
                 <th className={th}>סה״כ</th>
                 <th className={`${th} w-32`}>חתימה</th>
@@ -276,14 +291,13 @@ export function ScholarshipReportView({ report, title, rangeLabel, landscape }: 
                 <tr key={r.student.id}>
                   <td className={td}>{r.student.last_name}</td>
                   <td className={td}>{r.student.first_name}</td>
-                  <td className={`${td} text-center tabular-nums`}>{r.student.id_number || r.student.passport_number || ''}</td>
                   {cols.map((c) => <td key={c.id} className={`${td} text-center tabular-nums`}>{r.cells[c.id] ? ils(r.cells[c.id].amount) : ''}</td>)}
                   <td className={`${td} text-center tabular-nums font-semibold`}>{ils(r.total)}</td>
                   <td className={td}></td>
                 </tr>
               ))}
               <tr className="font-bold bg-slate-50">
-                <td className={td} colSpan={3}>סה״כ {g.name} ({g.rows.length})</td>
+                <td className={td} colSpan={2}>סה״כ {g.name} · {g.rows.length} צ׳קים</td>
                 {cols.map((c) => <td key={c.id} className={`${td} text-center tabular-nums`}>{g.totals[c.id] ? ils(g.totals[c.id]) : ''}</td>)}
                 <td className={`${td} text-center tabular-nums`}>{ils(g.total)}</td>
                 <td className={td}></td>

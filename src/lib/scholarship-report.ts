@@ -80,24 +80,25 @@ export async function exportScholarshipReportXlsx(rep: ScholarshipReport, title:
   const wb = XLSX.utils.book_new();
   const cols = rep.columns;
 
-  const summary: (string | number)[][] = [[title], [], ['שיעור', ...cols.map((c) => c.name), 'סה"כ']];
-  for (const g of rep.groups) summary.push([g.name, ...cols.map((c) => g.totals[c.id] || 0), g.total]);
-  summary.push(['סה"כ', ...cols.map((c) => rep.totals[c.id] || 0), rep.total]);
+  const summary: (string | number)[][] = [[title], [], ['שיעור', 'צ\'קים', ...cols.map((c) => c.name), 'סה"כ']];
+  for (const g of rep.groups) summary.push([g.name, g.rows.length, ...cols.map((c) => g.totals[c.id] || 0), g.total]);
+  summary.push(['סה"כ', rep.studentCount, ...cols.map((c) => rep.totals[c.id] || 0), rep.total]);
+  summary.push([], ['סה"כ צ\'קים להדפסה', rep.studentCount]);
   const ws1 = XLSX.utils.aoa_to_sheet(summary);
   ws1['!rtl' as any] = true;
   (wb as any).Workbook = { Views: [{ RTL: true }] };
   XLSX.utils.book_append_sheet(wb, ws1, 'סיכום');
 
-  const detail: (string | number)[][] = [['שיעור', 'שם משפחה', 'שם פרטי', 'ת"ז', ...cols.map((c) => c.name), 'סה"כ']];
+  const detail: (string | number)[][] = [['שיעור', 'שם משפחה', 'שם פרטי', ...cols.map((c) => c.name), 'סה"כ']];
   for (const g of rep.groups) {
     for (const r of g.rows) {
-      detail.push([g.name, r.student.last_name || '', r.student.first_name || '', r.student.id_number || r.student.passport_number || '',
+      detail.push([g.name, r.student.last_name || '', r.student.first_name || '',
         ...cols.map((c) => r.cells[c.id]?.amount || ''), r.total]);
     }
-    detail.push([`סה"כ ${g.name}`, '', '', '', ...cols.map((c) => g.totals[c.id] || 0), g.total]);
+    detail.push([`סה"כ ${g.name} (${g.rows.length} צ'קים)`, '', '', ...cols.map((c) => g.totals[c.id] || 0), g.total]);
   }
   const ws2 = XLSX.utils.aoa_to_sheet(detail);
-  ws2['!cols'] = detail[0].map((_, i) => ({ wch: i < 4 ? 14 : 10 }));
+  ws2['!cols'] = detail[0].map((_, i) => ({ wch: i < 3 ? 14 : 10 }));
   XLSX.utils.book_append_sheet(wb, ws2, 'פירוט');
   XLSX.writeFile(wb, filename);
 }

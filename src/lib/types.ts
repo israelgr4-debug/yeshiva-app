@@ -330,6 +330,8 @@ export interface ScholarshipType {
   default_amount: number | null;
   sort_order: number;
   is_active: boolean;
+  /** 'one_time' = the "תשלומים חד פעמיים" list (mig 058) */
+  kind?: 'regular' | 'one_time';
   created_at: string;
   updated_at: string;
 }
@@ -361,6 +363,8 @@ export interface ScholarshipEntry {
   updated_at: string;
 }
 
+export type ScholarshipPaymentStatus = 'paid' | 'cancelled' | 'transfer';
+
 export interface ScholarshipPayment {
   id: string;
   student_id: string;
@@ -368,6 +372,12 @@ export interface ScholarshipPayment {
   amount: number;
   run_id: string | null;
   notes: string | null;
+  /** mig 058: 'cancelled' = check lost/torn/bounced (kept for history), 'transfer' = moved to a one-time payment */
+  status?: ScholarshipPaymentStatus;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  cancel_reason?: string | null;
+  replacement_entry_id?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

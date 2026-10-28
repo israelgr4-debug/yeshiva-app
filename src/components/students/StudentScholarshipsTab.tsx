@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import { useScholarships, StudentLedger } from '@/hooks/useScholarships';
 import { ScholarshipBatch, ScholarshipType } from '@/lib/types';
-import { ils, dmy, todayIso } from '@/components/scholarships/shared';
+import { ils, dmy, todayIso, fetchStudentsLite } from '@/components/scholarships/shared';
+import { CancelCheckDialog } from '@/components/scholarships/CancelCheckDialog';
+import { ScholarshipPayment } from '@/lib/types';
 
 // Student card → "מלגות": balance cards + a ledger (charge per batch entry, credit per
 // payment, running balance). Writers can add a single entry and mark entries as paid.
@@ -22,6 +24,9 @@ interface LedgerLine {
   paid?: boolean;
   paymentId?: string;
   typeId?: string;
+  /** credit rows: 'paid' check, 'cancelled' check (shown struck, not counted), 'transfer' to one-time */
+  status?: 'paid' | 'cancelled' | 'transfer';
+  shownAmount?: number;
 }
 
 export function StudentScholarshipsTab({ studentId }: { studentId: string }) {
@@ -41,13 +46,16 @@ export function StudentScholarshipsTab({ studentId }: { studentId: string }) {
   const [paidAt, setPaidAt] = useState(todayIso());
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cancelling, setCancelling] = useState<ScholarshipPayment | null>(null);
+  const [studentName, setStudentName] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [l, t] = await Promise.all([sch.getStudentLedger(studentId), sch.listTypes(true)]);
+      const [l, t, st] = await Promise.all([sch.getStudentLedger(studentId), sch.listTypes(true), fetchStudentsLite({ ids: [studentId] })]);
       setLedger(l);
       setTypes(t);
+      if (st[0]) setStudentName(`${st[0].first_name || ''} ${st[0].last_name || ''}`.trim());
     } catch (e: any) { alert('שגיאה בטעינת מלגות: ' + e.message); }
     setLoading(false);
   }, [sch, studentId]);
@@ -64,12 +72,27 @@ export function StudentScholarshipsTab({ studentId }: { studentId: string }) {
     }));
     if (!onlyOpen) {
       for (const p of ledger.payments) {
+        const status = p.status || 'paid';
+        if (status === 'cancelled') {
+          // kept for history: struck through, not counted (its entries were released)
+          if (typeFilter) continue;
+          raw.push({
+            key: 'p' + p.id, date: p.paid_at, kind: 'credit', status, debit: 0, credit: 0, shownAmount: Number(p.amount), paymentId: p.id,
+            description: `צ׳ק מ-${dmy(p.paid_at)} בוטל${p.cancel_reason ? ` (${p.cancel_reason})` : ''}${p.replacement_entry_id ? ' · הועבר לתשלום חד פעמי' : ''}`,
+          });
+          continue;
+        }
         // under a type filter, a payment counts only for that type's entries
         const amt = typeFilter
           ? entries.filter((e) => e.payment_id === p.id).reduce((s, e) => s + Number(e.amount), 0)
           : Number(p.amount);
         if (amt <= 0) continue;
-        raw.push({ key: 'p' + p.id, date: p.paid_at, kind: 'credit', description: `תשלום ${dmy(p.paid_at)}${p.notes ? ` · ${p.notes}` : ''}`, debit: 0, credit: amt, paymentId: p.id });
+        raw.push({
+          key: 'p' + p.id, date: p.paid_at, kind: 'credit', status, debit: 0, credit: amt, paymentId: p.id,
+          description: status === 'transfer'
+            ? 'הועבר לתשלום חד פעמי (צ׳ק חלופי)'
+            : `צ׳ק ${dmy(p.paid_at)}${p.notes ? ` · ${p.notes}` : ''}`,
+        });
       }
     }
     const filtered = onlyOpen ? raw.filter((l) => l.kind === 'charge' && !l.paid) : raw;
@@ -104,7 +127,7 @@ export function StudentScholarshipsTab({ studentId }: { studentId: string }) {
 
   const cancelPayment = async (paymentId: string) => {
     const p = ledger?.payments.find((x) => x.id === paymentId);
-    if (!p || !confirm(`לבטל את התשלום מ-${dmy(p.paid_at)} (${ils(p.amount)})? הזכאויות יחזרו להיות פתוחות.`)) return;
+    if (!p || !confirm(`למחוק את רישום התשלום מ-${dmy(p.paid_at)} (${ils(p.amount)})?\nלשימוש רק כשהתשלום סומן בטעות. לצ׳ק שאבד / נקרע / לא עבר — השתמש ב"צ׳ק בוטל".`)) return;
     try { await sch.cancelPayment(paymentId); await load(); } catch (e: any) { alert(e.message); }
   };
 
@@ -117,6 +140,10 @@ export function StudentScholarshipsTab({ studentId }: { studentId: string }) {
 
   return (
     <div className="space-y-4">
+      {cancelling && (
+        <CancelCheckDialog payment={cancelling} studentName={studentName} onClose={() => setCancelling(null)}
+          onDone={(msg) => { setCancelling(null); alert(msg); load(); }} />
+      )}
       {/* summary */}
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3 text-center">
@@ -191,7 +218,7 @@ export function StudentScholarshipsTab({ studentId }: { studentId: string }) {
             <tbody>
               {lines.map((l) => (
                 <React.Fragment key={l.key}>
-                  <tr className={`border-b border-slate-50 hover:bg-blue-50/40 ${l.kind === 'credit' ? 'bg-emerald-50/40 cursor-pointer' : ''}`}
+                  <tr className={`border-b border-slate-50 hover:bg-blue-50/40 ${l.status === 'cancelled' ? 'bg-red-50/40 text-slate-400' : l.kind === 'credit' ? 'bg-emerald-50/40 cursor-pointer' : ''}`}
                     onClick={() => l.kind === 'credit' && setOpenPayment(openPayment === l.paymentId ? null : l.paymentId!)}>
                     {canWrite && (
                       <td className="px-2" onClick={(e) => e.stopPropagation()}>
@@ -205,25 +232,30 @@ export function StudentScholarshipsTab({ studentId }: { studentId: string }) {
                       </td>
                     )}
                     <td className="px-3 py-2 tabular-nums">{dmy(l.date)}</td>
-                    <td className="px-3 py-2">{l.kind === 'charge' ? <span className="text-slate-700">חיוב</span> : <span className="text-emerald-700 font-medium">זיכוי</span>}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2">{l.kind === 'charge' ? <span className="text-slate-700">חיוב</span> : l.status === 'cancelled' ? <span className="text-red-600 font-medium">צ׳ק בוטל</span> : <span className="text-emerald-700 font-medium">זיכוי</span>}</td>
+                    <td className={`px-3 py-2 ${l.status === 'cancelled' ? 'line-through decoration-red-400' : ''}`}>
                       {l.description}
                       {l.kind === 'charge' && l.paid && <span className="ms-2 text-[11px] text-emerald-700">✓ שולם</span>}
                       {l.kind === 'credit' && <span className="ms-2 text-[11px] text-slate-400">{openPayment === l.paymentId ? '▲' : '▼ פירוט'}</span>}
                     </td>
                     <td className="px-3 py-2 tabular-nums">{l.debit ? ils(l.debit) : ''}</td>
-                    <td className="px-3 py-2 tabular-nums text-emerald-700">{l.credit ? ils(l.credit) : ''}</td>
+                    <td className="px-3 py-2 tabular-nums text-emerald-700">{l.credit ? ils(l.credit) : l.shownAmount ? <s className="text-slate-400">{ils(l.shownAmount)}</s> : ''}</td>
                     <td className="px-3 py-2 tabular-nums font-semibold">{ils(l.balance)}</td>
                     <td className="px-3 py-2 text-end" onClick={(e) => e.stopPropagation()}>
                       {canWrite && l.kind === 'charge' && !l.paid && (
                         <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => deleteEntry(l.entryId!)}>מחק</button>
                       )}
-                      {canAdmin && l.kind === 'credit' && (
-                        <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => cancelPayment(l.paymentId!)}>בטל תשלום</button>
+                      {canWrite && l.kind === 'credit' && l.status === 'paid' && (
+                        <button type="button" className="text-xs text-red-600 hover:underline whitespace-nowrap"
+                          onClick={() => setCancelling(ledger!.payments.find((x) => x.id === l.paymentId) || null)}>🚫 צ׳ק בוטל</button>
+                      )}
+                      {canAdmin && l.kind === 'credit' && l.status === 'paid' && (
+                        <button type="button" className="text-xs text-slate-400 hover:text-red-600 hover:underline ms-2" title="רק כשהתשלום סומן בטעות"
+                          onClick={() => cancelPayment(l.paymentId!)}>מחק</button>
                       )}
                     </td>
                   </tr>
-                  {l.kind === 'credit' && openPayment === l.paymentId && (
+                  {l.kind === 'credit' && l.status !== 'cancelled' && openPayment === l.paymentId && (
                     <tr className="bg-emerald-50/60">
                       <td colSpan={canWrite ? 8 : 7} className="px-6 py-2 text-xs">
                         <div className="font-semibold text-emerald-900 mb-1">הזכאויות שהתשלום סגר:</div>
@@ -253,13 +285,15 @@ function AddEntryForm({ studentId, types, batches, existingBatchIds, onDone }: {
   const sch = useScholarships();
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [batchId, setBatchId] = useState('');
-  const manualTypes = types.filter((t) => t.is_active && t.source === 'manual');
+  // one-time items are added from the "תשלומים חד פעמיים" tab, not as regular batches here
+  const oneTimeIds = new Set(types.filter((t) => t.kind === 'one_time').map((t) => t.id));
+  const manualTypes = types.filter((t) => t.is_active && t.source === 'manual' && t.kind !== 'one_time');
   const [typeId, setTypeId] = useState(manualTypes[0]?.id || '');
   const [title, setTitle] = useState(manualTypes[0] ? `${manualTypes[0].name} ` : '');
   const [date, setDate] = useState(todayIso());
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
-  const available = batches.filter((b) => !existingBatchIds.has(b.id));
+  const available = batches.filter((b) => !existingBatchIds.has(b.id) && !oneTimeIds.has(b.type_id));
 
   const submit = async () => {
     const amt = Number(amount);

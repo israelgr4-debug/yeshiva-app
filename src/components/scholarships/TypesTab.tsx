@@ -138,7 +138,7 @@ export function TypesTab({ perms }: ScholarshipTabProps) {
               {types.map((t) => (
                 <tr key={t.id} className={`border-b border-slate-50 hover:bg-blue-50/40 ${t.is_active ? '' : 'opacity-50'}`}>
                   <td className="px-3 py-2 tabular-nums text-slate-500">{t.sort_order}</td>
-                  <td className="px-3 py-2 font-medium">{t.name}</td>
+                  <td className="px-3 py-2 font-medium">{t.name}{t.kind === 'one_time' && <span className="ms-2 text-[11px] px-1.5 rounded bg-orange-100 text-orange-800">חד פעמי</span>}</td>
                   <td className="px-3 py-2">{SOURCE_LABEL[t.source]}</td>
                   <td className="px-3 py-2 tabular-nums" dir="ltr">{t.yemot_extension || '—'}</td>
                   <td className="px-3 py-2 tabular-nums">{t.default_amount != null ? ils(t.default_amount) : '—'}</td>
@@ -151,7 +151,7 @@ export function TypesTab({ perms }: ScholarshipTabProps) {
                     {canEdit && (
                       <>
                         <button type="button" onClick={() => setEdit(toDraft(t))} className="text-xs text-blue-600 hover:underline">✏️ עריכה</button>
-                        <button type="button" onClick={() => remove(t)} disabled={busy} className="text-xs text-red-600 hover:underline ms-3">🗑️ הסר</button>
+                        {t.kind !== 'one_time' && <button type="button" onClick={() => remove(t)} disabled={busy} className="text-xs text-red-600 hover:underline ms-3">🗑️ הסר</button>}
                       </>
                     )}
                   </td>
