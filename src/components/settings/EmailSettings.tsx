@@ -1,5 +1,6 @@
 'use client';
 
+import { ImageSettingUpload } from './ImageSettingUpload';
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -559,6 +560,12 @@ export function EmailSettings() {
             </div>
           </div>
         </div>
+        {/* Stamp — separate from the signature: print shows the stamp only, email shows both */}
+        <ImageSettingUpload settingKey="stamp_url" title="חותמת הישיבה"
+          hint="חותמת בלבד, בלי חתימה (PNG עם רקע שקוף מומלץ). בהדפסת אישור מופיעה החותמת בלבד — חותמים ביד. במייל מופיעות חותמת + חתימה. את המיקום קובעים בגרירה בעורך האישורים." />
+        <ImageSettingUpload settingKey="stamp_chinuch_url" title="חותמת חינוך" tone="purple"
+          hint="לתלמידים המסומנים חינוך. אם לא תועלה — תשמש חותמת הישיבה." />
+
         {/* Graduate update email templates */}
         <div className="mt-8 pt-6 border-t border-gray-200">
           <h4 className="text-md font-semibold mb-2">📨 תבניות מייל - בקשת עדכון מבוגרים</h4>

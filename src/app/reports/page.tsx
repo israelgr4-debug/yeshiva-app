@@ -7,6 +7,7 @@ import { PageGuard } from '@/components/ui/PageGuard';
 import { ReportSelector } from '@/components/reports/ReportSelector';
 import { CertificatePreview } from '@/components/reports/CertificatePreview';
 import { SendEmailDialog } from '@/components/email/SendEmailDialog';
+import { SignLayout, DEFAULT_SIGN_LAYOUT, signLayoutOf } from '@/lib/cert-layout';
 import { useStudents } from '@/hooks/useStudents';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { Student } from '@/lib/types';
@@ -30,6 +31,9 @@ export default function ReportsPage() {
   const [signatureChinuchUrl, setSignatureChinuchUrl] = useState<string>('');
   const [letterheadUrl, setLetterheadUrl] = useState<string>('');
   const [letterheadChinuchUrl, setLetterheadChinuchUrl] = useState<string>('');
+  const [stampUrl, setStampUrl] = useState<string>('');
+  const [stampChinuchUrl, setStampChinuchUrl] = useState<string>('');
+  const [signLayout, setSignLayout] = useState<SignLayout>(DEFAULT_SIGN_LAYOUT);
   const [emailOpen, setEmailOpen] = useState(false);
   const [showMobilePreview, setShowMobilePreview] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
@@ -44,12 +48,16 @@ export default function ReportsPage() {
     getSetting<string>('signature_chinuch_url', '').then(setSignatureChinuchUrl);
     getSetting<string>('letterhead_url', '').then(setLetterheadUrl);
     getSetting<string>('letterhead_chinuch_url', '').then(setLetterheadChinuchUrl);
+    getSetting<string>('stamp_url', '').then(setStampUrl);
+    getSetting<string>('stamp_chinuch_url', '').then(setStampChinuchUrl);
+    getSetting<any>('cert_sign_layout', null).then((v) => setSignLayout(signLayoutOf(v)));
   }, [getSetting]);
 
   // Pick the letterhead + signature based on whether the selected student is marked "חינוך"
   const isChinuch = !!(certificate?.student as any)?.is_chinuch;
   const activeLetterheadUrl = isChinuch && letterheadChinuchUrl ? letterheadChinuchUrl : letterheadUrl;
   const activeSignatureUrl = isChinuch && signatureChinuchUrl ? signatureChinuchUrl : signatureUrl;
+  const activeStampUrl = isChinuch && stampChinuchUrl ? stampChinuchUrl : stampUrl;
 
   const handleGenerate = useCallback(
     async (student: Student, reportType: ReportType, year: string, extras: Record<string, string>) => {
@@ -229,10 +237,12 @@ export default function ReportsPage() {
                   reportType={certificate.reportType}
                   year={certificate.year}
                   extras={certificate.extras}
-                  // For חינוך students: print the digital letterhead + signature onto the page
-                  // For regular students: leave blank space for a pre-printed letterhead, no signature
+                  // Print: the STAMP only (the signature is signed by hand on paper).
+                  // חינוך students get the digital chinuch letterhead; others leave space for the printed one.
                   letterheadUrl={isChinuch && letterheadChinuchUrl ? letterheadChinuchUrl : null}
-                  signatureUrl={isChinuch && signatureChinuchUrl ? signatureChinuchUrl : null}
+                  stampUrl={activeStampUrl || null}
+                  signatureUrl={null}
+                  signLayout={signLayout}
                   reserveLetterheadSpace={!(isChinuch && letterheadChinuchUrl)}
                   isChinuch={isChinuch}
                 />
@@ -252,6 +262,8 @@ export default function ReportsPage() {
                     year={certificate.year}
                     extras={certificate.extras}
                     signatureUrl={activeSignatureUrl || null}
+                    stampUrl={activeStampUrl || null}
+                    signLayout={signLayout}
                     letterheadUrl={activeLetterheadUrl || null}
                     isChinuch={isChinuch}
                   />
@@ -259,11 +271,12 @@ export default function ReportsPage() {
               )}
 
               <div className="text-xs mt-2 text-center no-print space-y-1">
-                {signatureUrl ? (
-                  <p className="text-gray-500">ℹ️ החתימה תוצג רק במייל</p>
+                {activeStampUrl ? (
+                  <p className="text-gray-500">ℹ️ בהדפסה: חותמת בלבד (חותמים ביד). במייל: חותמת + חתימה.</p>
                 ) : (
-                  <p className="text-amber-600">⚠️ אין חתימה - העלה בהגדרות</p>
+                  <p className="text-amber-600">⚠️ לא הועלתה חותמת - העלה בהגדרות → דוא״ל ומסמכים</p>
                 )}
+                {!activeSignatureUrl && <p className="text-amber-600">⚠️ אין חתימה למייל - העלה בהגדרות</p>}
                 {isChinuch && letterheadChinuchUrl ? (
                   <p className="text-purple-700">📘 <strong>תלמיד חינוך</strong> - בלאנק חינוך יוצג גם במייל וגם בהדפסה (מודפס על הדף).</p>
                 ) : isChinuch && !letterheadChinuchUrl ? (

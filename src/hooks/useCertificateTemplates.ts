@@ -12,6 +12,7 @@ import {
   getGregorianDate,
 } from '@/lib/certificates';
 import { toHebrewDate } from '@/lib/utils';
+import { CertHeaderConfig, headerConfigOf } from '@/lib/cert-layout';
 
 export interface CertificateTemplate {
   id: string;
@@ -23,6 +24,8 @@ export interface CertificateTemplate {
   body: string;
   /** Editable signer block HTML. Null = use builtin. Hidden for chinuch students. */
   signer_html: string | null;
+  /** Header settings (mig 059). Null = classic layout. */
+  header_config?: Partial<CertHeaderConfig> | null;
   extra_fields: ExtraField[];
   signer_name: string | null;
   signer_title: string | null;
@@ -96,6 +99,7 @@ export function templateToReportType(t: CertificateTemplate): ReportType {
       renderTemplateBody(t.body, student, year, extras, signer),
     headerHtml: t.header_html || null,
     signerHtml: t.signer_html || null,
+    headerConfig: headerConfigOf(t.header_config, t.header_html),
   };
 }
 

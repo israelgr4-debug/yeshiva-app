@@ -9,7 +9,9 @@ import {
   ReportType,
 } from '@/lib/certificates';
 import { toHebrewDate } from '@/lib/utils';
-import { formatCertDate } from '@/hooks/useCertificateTemplates';
+import { renderTemplateBody } from '@/hooks/useCertificateTemplates';
+import { headerConfigOf, certDates, SignLayout, DEFAULT_SIGN_LAYOUT } from '@/lib/cert-layout';
+import { SignerBlock } from './SignerBlock';
 
 interface CertificatePreviewProps {
   student: Student;
@@ -17,7 +19,9 @@ interface CertificatePreviewProps {
   year: string;
   extras: Record<string, string>;
   signer?: SignerInfo;
-  signatureUrl?: string | null; // email only - show signature above signer info
+  signatureUrl?: string | null; // email only - the signature image
+  stampUrl?: string | null;     // print + email - the stamp image (separate from the signature)
+  signLayout?: SignLayout;      // where stamp / signature sit (settings → editor drag)
   letterheadUrl?: string | null; // email only - show letterhead image at top
   reserveLetterheadSpace?: boolean; // print - leave blank top area for pre-printed letterhead
   isChinuch?: boolean; // chinuch sub-institution: hide signer name/id, center signature
@@ -30,6 +34,8 @@ export function CertificatePreview({
   extras,
   signer,
   signatureUrl,
+  stampUrl,
+  signLayout,
   letterheadUrl,
   reserveLetterheadSpace,
   isChinuch,
@@ -171,41 +177,20 @@ export function CertificatePreview({
     );
   }
 
-  // Standard certificate layout
+  // Standard certificate layout — same structure as the Word export (lib/cert-docx)
   const body = reportType.buildBody(student, year, extras);
+  const hcfg = reportType.headerConfig || headerConfigOf(null, reportType.headerHtml);
+  const dates = certDates(hcfg);
+  const alignCss = (a: string) => ({ textAlign: a as 'right' | 'center' | 'left' });
 
-  // Resolve header / signer placeholders if template provides them
-  const renderPlaceholders = (html: string): string => {
-    if (!html) return '';
-    const sg = activeSigner;
-    const replacements: Record<string, string> = {
-      first_name: student?.first_name || '',
-      last_name: student?.last_name || '',
-      full_name: student ? `${student.last_name} ${student.first_name}`.trim() : '',
-      full_name_with_id: student
-        ? `${student.last_name} ${student.first_name} ת.ז. ${student.id_number || ''}`.trim()
-        : '',
-      id_number: student?.id_number || '',
-      passport_number: student?.passport_number || '',
-      shiur: student?.shiur || '',
-      year: year || '',
-      admission_date: student?.admission_date || '',
-      date_of_birth: student?.date_of_birth || '',
-      hebrew_date: hebrewDate,
-      gregorian_date: gregorianDate,
-      signer_name: sg.name || '',
-      signer_title: sg.title || '',
-      signer_id_number: sg.idNumber || '',
-      ...extras,
-    };
-    return html.replace(/\{\{\s*([a-zA-Z_]\w*)\s*\}\}/g, (_m, key) => {
-      const v = replacements[key];
-      return v === undefined || v === '' ? '' : formatCertDate(String(v));
-    });
-  };
-
-  const customHeaderHtml = reportType.headerHtml ? renderPlaceholders(reportType.headerHtml) : null;
-  const customSignerHtml = reportType.signerHtml ? renderPlaceholders(reportType.signerHtml) : null;
+  // signer: template HTML, else the default lines; chinuch students → only "בכבוד רב,"
+  const sg = activeSigner;
+  const signerHtml = isChinuch
+    ? '<p>בכבוד רב,</p>'
+    : reportType.signerHtml
+      ? renderTemplateBody(reportType.signerHtml, student, year, extras, sg)
+      : ['בכבוד רב,', sg.name ? `<strong>${sg.name}</strong>` : '', sg.idNumber, sg.title].filter(Boolean).map((l) => `<p>${l}</p>`).join('');
+  const recipientHtml = renderTemplateBody(reportType.recipient || '', student, year, extras, sg);
 
   return (
     <div id="certificate-preview" className="certificate-container">
@@ -225,25 +210,29 @@ export function CertificatePreview({
         {/* Top spacer - for pre-printed letterhead (print) OR when using full-page background (email) */}
         {(reserveLetterheadSpace || letterheadUrl) && <div className="letterhead-top-space" aria-hidden="true" />}
 
-        {/* Header - editable HTML from template if provided, else legacy בס"ד+date+title */}
-        {customHeaderHtml ? (
-          <div className="certificate-header-custom" dangerouslySetInnerHTML={{ __html: customHeaderHtml }} />
-        ) : (
-          <>
-            <div className="certificate-header">
-              <div className="bsd">בס&quot;ד</div>
-              <div className="date-line">
-                <span>{hebrewDate}</span>
-                <span>{gregorianDate}</span>
+        {/* Header — from the template's header settings */}
+        <div className="certificate-header-cfg">
+          {hcfg.showBsd && <div className="bsd" style={alignCss(hcfg.bsdAlign)}>בס&quot;ד</div>}
+          {(dates.hebrew || dates.gregorian) && (
+            hcfg.datesLayout === 'inline' ? (
+              <div className="date-line-cfg" style={alignCss(hcfg.datesAlign)}>
+                {[dates.hebrew, dates.gregorian].filter(Boolean).join('\u00A0\u00A0\u00A0\u00A0')}
               </div>
-            </div>
-            <h1 className="certificate-title">אישור</h1>
-          </>
-        )}
+            ) : (
+              <div className="date-line-cfg" style={alignCss(hcfg.datesAlign)}>
+                {dates.hebrew && <div>{dates.hebrew}</div>}
+                {dates.gregorian && <div>{dates.gregorian}</div>}
+              </div>
+            )
+          )}
+        </div>
+        <h1 className="certificate-title">{hcfg.title || 'אישור'}</h1>
 
-        {/* Recipient */}
-        {reportType.recipient && (
-          <p className="certificate-recipient">{reportType.recipient}</p>
+        {/* Recipient (plain text or editor HTML) */}
+        {recipientHtml && (
+          /<[a-z]/i.test(recipientHtml)
+            ? <div className="certificate-recipient" dangerouslySetInnerHTML={{ __html: recipientHtml }} />
+            : <p className="certificate-recipient">{recipientHtml}</p>
         )}
 
         {/* Body - render HTML when present, else split into lines */}
@@ -259,51 +248,8 @@ export function CertificatePreview({
           )}
         </div>
 
-        {/* Signature - hidden entirely for chinuch students (they use the chinuch signature image) */}
-        {!isChinuch && (
-          customSignerHtml ? (
-            <div className="certificate-signature">
-              {signatureUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={signatureUrl}
-                  alt="חתימה"
-                  className="signature-image"
-                  style={{ height: '80px', margin: '8px auto', display: 'block' }}
-                />
-              )}
-              <div dangerouslySetInnerHTML={{ __html: customSignerHtml }} />
-            </div>
-          ) : (
-            <div className="certificate-signature">
-              <p>בכבוד רב,</p>
-              {signatureUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={signatureUrl}
-                  alt="חתימה"
-                  className="signature-image"
-                  style={{ height: '80px', margin: '8px auto', display: 'block' }}
-                />
-              )}
-              {activeSigner.name && <p className="signer-name">{activeSigner.name}</p>}
-              {activeSigner.idNumber && <p>{activeSigner.idNumber}</p>}
-              {activeSigner.title && <p>{activeSigner.title}</p>}
-            </div>
-          )
-        )}
-        {isChinuch && signatureUrl && (
-          <div className="certificate-signature">
-            <p>בכבוד רב,</p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={signatureUrl}
-              alt="חתימה"
-              className="signature-image"
-              style={{ height: '80px', margin: '8px auto', display: 'block' }}
-            />
-          </div>
-        )}
+        {/* Signer block + stamp / signature images at the saved positions */}
+        <SignerBlock html={signerHtml} stampUrl={stampUrl} signatureUrl={signatureUrl} layout={signLayout || DEFAULT_SIGN_LAYOUT} />
 
         {/* Bottom spacer - for pre-printed letterhead footer */}
         {(reserveLetterheadSpace || letterheadUrl) && <div className="letterhead-bottom-space" aria-hidden="true" />}
@@ -370,6 +316,13 @@ export function CertificatePreview({
           font-size: 13px;
           color: #555;
           margin-bottom: 10px;
+        }
+        .certificate-header-cfg {
+          font-size: 15px;
+          line-height: 1.7;
+        }
+        .date-line-cfg {
+          margin-top: 2px;
         }
         .date-line {
           display: flex;

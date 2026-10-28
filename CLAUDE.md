@@ -321,6 +321,14 @@ The Sidebar hides `/settings` from non-admins.
    LOGICAL (jc="left" = right edge); Latin runs need explicit `<w:rtl w:val="0"/>` because
    Normal defaults runs to RTL. Editor has "📝 בדיקה בוורד" (exports the unsaved draft).
    Placeholder dates render dd/mm/yyyy (`formatCertDate`).
+   **Editor (2026-10-28)**: TipTap v3 (`components/settings/CertEditor.tsx`) on an A4 page —
+   font/size(pt)/B/I/U/colour/align/lists/tables/undo + "הכנס שדה". Header is CONFIG
+   (`certificate_templates.header_config`, mig 059, `lib/cert-layout.ts`: בס"ד/dates
+   alignment, stacked/inline, weekday, yy/yyyy, title), NOT free HTML. Signer block: no
+   alignment anywhere = classic left block, else exactly as aligned (same rule in
+   `SignerBlock` and cert-docx). Stamp (`stamp_url`, `stamp_chinuch_url`) is separate from
+   the signature: print = stamp only, email = stamp + signature; positions in mm in setting
+   `cert_sign_layout`, dragged on the editor page.
 
 ## Design system rules
 

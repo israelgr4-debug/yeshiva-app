@@ -95,6 +95,8 @@ export interface ReportType {
   headerHtml?: string | null;
   /** Editable signer HTML (with placeholders) - if null, fall back to legacy. Hidden for chinuch students. */
   signerHtml?: string | null;
+  /** Header settings (בס"ד / dates / title) — see lib/cert-layout. Undefined = classic layout. */
+  headerConfig?: import('./cert-layout').CertHeaderConfig;
 }
 
 function studentLine(student: Student): string {

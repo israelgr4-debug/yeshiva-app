@@ -135,7 +135,7 @@ function tableXml(t: DocTable): string {
 
 // ---------------------------------------------------------------- tiny HTML → blocks
 
-interface Style { b?: boolean; i?: boolean; u?: boolean; sz?: number; align?: Align }
+interface Style { b?: boolean; i?: boolean; u?: boolean; sz?: number; align?: Align; font?: string; color?: string }
 
 const BLOCK_TAGS = new Set(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'section', 'article', 'header', 'footer']);
 const HEADING_SZ: Record<string, number> = { h1: 32, h2: 30, h3: 28, h4: 26, h5: 24, h6: 24 };
@@ -166,6 +166,17 @@ function styleFrom(tag: string, attrs: string, parent: Style): Style {
   if (/font-weight\s*:\s*(normal|[1-4]00)/i.test(css)) s.b = false;
   if (/font-style\s*:\s*italic/i.test(css)) s.i = true;
   if (/text-decoration[^;]*underline/i.test(css)) s.u = true;
+  const ff = css.match(/font-family\s*:\s*([^;]+)/i);
+  if (ff) s.font = ff[1].split(',')[0].replace(/["']/g, '').trim() || s.font;
+  const col = css.match(/(?:^|;|\s)color\s*:\s*(#[0-9a-f]{3,6}|rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\))/i);
+  if (col) {
+    if (col[1].startsWith('#')) {
+      const h = col[1].slice(1);
+      s.color = (h.length === 3 ? h.split('').map((c) => c + c).join('') : h).toUpperCase();
+    } else {
+      s.color = [col[2], col[3], col[4]].map((n) => Number(n).toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+  }
   const ta = (css.match(/text-align\s*:\s*(\w+)/i)?.[1] || attr(attrs, 'align') || '').toLowerCase();
   if (ta) s.align = ta === 'center' ? 'center' : ta === 'left' ? 'end' : ta === 'justify' ? 'both' : 'start';
   if (tag === 'font') {
@@ -196,6 +207,8 @@ export function htmlToBlocks(input: string, opts: { emphasize?: string[]; baseSz
   let table: DocTable | null = null;
   let row: DocTable['rows'][number] | null = null;
   let cell: { paras: DocPara[]; header?: boolean } | null = null;
+  const lists: { ordered: boolean; n: number }[] = [];
+  let liFresh = false; // a list item just opened its paragraph (bullet only)
 
   const style = () => stack[stack.length - 1].style;
   const target = (p: DocPara) => { if (cell) cell.paras.push(p); else blocks.push({ para: p }); };
@@ -210,6 +223,7 @@ export function htmlToBlocks(input: string, opts: { emphasize?: string[]; baseSz
     const text = decodeEntities(raw).replace(/[\r\n]+/g, ' ');
     if (!text) return;
     if (!cur && !text.trim()) return; // whitespace between blocks
+    if (text.trim()) liFresh = false;
     const p = ensurePara();
     const st = style();
     // split around emphasized values → bold
@@ -225,7 +239,7 @@ export function htmlToBlocks(input: string, opts: { emphasize?: string[]; baseSz
         return out;
       });
     }
-    for (const pc of pieces) p.runs.push({ text: pc.t, b: st.b || pc.b, i: st.i, u: st.u, sz: st.sz });
+    for (const pc of pieces) p.runs.push({ text: pc.t, b: st.b || pc.b, i: st.i, u: st.u, sz: st.sz, font: st.font, color: st.color });
   };
 
   const re = /<!--[\s\S]*?-->|<\s*(\/?)\s*([a-zA-Z0-9]+)([^>]*?)(\/?)\s*>|([^<]+)/g;
@@ -258,6 +272,11 @@ export function htmlToBlocks(input: string, opts: { emphasize?: string[]; baseSz
       continue;
     }
     if (['thead', 'tbody', 'tfoot', 'colgroup', 'col', 'caption'].includes(tag)) continue;
+    if (tag === 'ul' || tag === 'ol') {
+      if (!closing) lists.push({ ordered: tag === 'ol', n: 0 }); else lists.pop();
+      closePara();
+      continue;
+    }
 
     if (closing) {
       // pop to the matching tag
@@ -274,8 +293,18 @@ export function htmlToBlocks(input: string, opts: { emphasize?: string[]; baseSz
     const st = styleFrom(tag, attrs, style());
     stack.push({ tag, style: st });
     if (BLOCK_TAGS.has(tag)) {
+      // <li><p>text</p></li>: the <p> continues the list item's line
+      const open = cur as DocPara | null; // assigned inside closures — TS can't follow it
+      if (tag === 'p' && liFresh && open) { liFresh = false; if (st.align) open.align = st.align; continue; }
       newPara();
-      if (tag === 'li') cur!.runs.push({ text: '• ', sz: st.sz });
+      liFresh = false;
+      if (tag === 'li') {
+        const L = lists[lists.length - 1];
+        const mark = L?.ordered ? `${++L.n}. ` : '• ';
+        cur!.runs.push({ text: mark, sz: st.sz });
+        cur!.indStart = 360 * Math.max(1, lists.length);
+        liFresh = true;
+      }
     }
   }
 
@@ -361,15 +390,19 @@ export function docxParts(blocks: DocBlock[]): Record<string, string> {
 // ---------------------------------------------------------------- certificate / receipt layouts
 
 export interface CertificateModel {
-  hebrewDate: string;        // "יום שלישי ט"ז חשון תשפ"ז"
-  gregorianDate: string;     // "27/10/26"
+  hebrewDate: string;        // "יום שלישי ט"ז חשון תשפ"ז" ('' = hidden)
+  gregorianDate: string;     // "27/10/26" ('' = hidden)
   title: string;             // "אישור"
   recipient: string;
   bodyHtml: string;          // rendered body (HTML or plain text)
   signerHtml?: string | null; // rendered signer block (HTML) — or use signerLines
   signerLines?: string[];
   emphasize?: string[];
+  /** header layout (default = the original Word certificates) */
+  header?: { showBsd: boolean; bsdAlign: 'right' | 'center' | 'left'; datesAlign: 'right' | 'center' | 'left'; datesLayout: 'stacked' | 'inline' };
 }
+
+const H2A = (h: 'right' | 'center' | 'left'): Align => (h === 'right' ? 'start' : h === 'left' ? 'end' : 'center');
 
 /** Signer block sits centred around x≈4.3cm from the left edge, like the originals. */
 const SIGNER_IND_START = 4300;
@@ -378,11 +411,19 @@ export function certificateBlocks(m: CertificateModel): DocBlock[] {
   const blocks: DocBlock[] = [];
   const P = (p: DocPara) => blocks.push({ para: p });
 
-  // header — positions taken from the originals
-  P({ before: 3795, indStart: 340, runs: [{ text: 'בס"ד', color: BLACK }] });
-  P({ before: 120, align: 'end', runs: [{ text: m.hebrewDate, color: BLACK }] });
-  P({ before: 120, align: 'end', runs: [{ text: m.gregorianDate }] });
-  P({ before: 782, align: 'center', runs: [{ text: m.title || 'אישור', b: true, u: true, sz: 32 }] });
+  // header — positions taken from the originals; layout from the template's header settings
+  const h = m.header || { showBsd: true, bsdAlign: 'right', datesAlign: 'left', datesLayout: 'stacked' };
+  let gap = 3795; // letterhead space before the first header line
+  const take = () => { const g = gap; gap = 120; return g; };
+  if (h.showBsd) P({ before: take(), align: H2A(h.bsdAlign), indStart: h.bsdAlign === 'right' ? 340 : 0, runs: [{ text: 'בס"ד', color: BLACK }] });
+  const dates = [m.hebrewDate, m.gregorianDate].filter(Boolean);
+  if (h.datesLayout === 'inline' && dates.length) {
+    P({ before: take(), align: H2A(h.datesAlign), runs: [{ text: dates.join('     '), color: BLACK }] });
+  } else {
+    if (m.hebrewDate) P({ before: take(), align: H2A(h.datesAlign), runs: [{ text: m.hebrewDate, color: BLACK }] });
+    if (m.gregorianDate) P({ before: take(), align: H2A(h.datesAlign), runs: [{ text: m.gregorianDate }] });
+  }
+  P({ before: gap === 3795 ? gap : 782, align: 'center', runs: [{ text: m.title || 'אישור', b: true, u: true, sz: 32 }] });
   if (m.recipient?.trim()) {
     const rb = htmlToBlocks(m.recipient, { lineBefore: 0 });
     rb.forEach((b, i) => {
@@ -405,10 +446,16 @@ export function certificateBlocks(m: CertificateModel): DocBlock[] {
   const signerBlocks = m.signerHtml
     ? htmlToBlocks(m.signerHtml, { lineBefore: 0 })
     : (m.signerLines || []).filter(Boolean).map((t) => ({ para: { runs: [{ text: t }] } as DocPara }));
+  // classic left block only when the editor set no alignment anywhere in the signer
+  // (same rule as the print preview's SignerBlock)
+  const anyAlign = signerBlocks.some((b) => 'para' in b && !!b.para.align);
   signerBlocks.forEach((b, i) => {
     if ('para' in b) {
-      b.para.align = b.para.align === 'start' || !b.para.align ? 'center' : b.para.align;
-      b.para.indStart = SIGNER_IND_START;
+      if (!anyAlign) {
+        // no alignment chosen in the editor → the classic block on the left, like the originals
+        b.para.align = 'center';
+        b.para.indStart = SIGNER_IND_START;
+      } // otherwise exactly what the editor says (center = true page centre)
       b.para.before = i === 0 ? 1092 : (b.para.before || 0) + 60;
     }
     blocks.push(b);

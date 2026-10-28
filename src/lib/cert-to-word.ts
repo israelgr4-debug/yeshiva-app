@@ -10,9 +10,8 @@ import { Student } from './types';
 import { ReportType, SignerInfo, DEFAULT_SIGNER } from './certificates';
 import { toHebrewDate } from './utils';
 import { renderTemplateBody, formatCertDate } from '@/hooks/useCertificateTemplates';
-import {
-  certificateBlocks, receiptBlocks, docxParts, hebrewWeekday, shortGregorian, DocBlock,
-} from './cert-docx';
+import { certificateBlocks, receiptBlocks, docxParts, DocBlock } from './cert-docx';
+import { headerConfigOf, certDates } from './cert-layout';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -73,10 +72,13 @@ export async function buildCertificateDocx(
   else if (reportType.signerHtml) signerHtml = renderTemplateBody(reportType.signerHtml, student, year, extras, sg);
   else signerLines = ['בכבוד רב,', sg.name, sg.idNumber, sg.title].filter(Boolean) as string[];
 
+  const hcfg = reportType.headerConfig || headerConfigOf(null, reportType.headerHtml);
+  const dates = certDates(hcfg, now);
   const blocks = certificateBlocks({
-    hebrewDate: `${hebrewWeekday(now)} ${toHebrewDate(now)}`,
-    gregorianDate: shortGregorian(now),
-    title: titleFromHeader(reportType.headerHtml),
+    hebrewDate: dates.hebrew,
+    gregorianDate: dates.gregorian,
+    title: hcfg.title || titleFromHeader(reportType.headerHtml),
+    header: { showBsd: hcfg.showBsd, bsdAlign: hcfg.bsdAlign, datesAlign: hcfg.datesAlign, datesLayout: hcfg.datesLayout },
     recipient: renderTemplateBody(reportType.recipient || '', student, year, extras, sg),
     bodyHtml: reportType.buildBody(student, year, extras),
     signerHtml,
