@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { useScholarships } from '@/hooks/useScholarships';
-import { ScholarshipBatch, ScholarshipRunFilters, ScholarshipType } from '@/lib/types';
-import { buildScholarshipReport, exportScholarshipReportXlsx, ScholarshipReport } from '@/lib/scholarship-report';
+import { ScholarshipBatch, ScholarshipEntry, ScholarshipRunFilters, ScholarshipType } from '@/lib/types';
+import { buildScholarshipReport, exportScholarshipReportXlsx, ScholarshipReport, ReportRow } from '@/lib/scholarship-report';
 import {
   ScholarshipTabProps, SectionCard, EmptyState, ils, dmy, todayIso,
   StudentLite, fetchStudentsLite, ShiurPicker, matchesShiurSelection,
@@ -27,8 +27,9 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
   const [institutions, setInstitutions] = useState<string[]>([]);
 
   const [busy, setBusy] = useState(false);
-  const [report, setReport] = useState<ScholarshipReport | null>(null);
-  const [entryIds, setEntryIds] = useState<string[]>([]);
+  // everything the filters found; the printed report = pool minus the deferred students
+  const [pool, setPool] = useState<{ entries: ScholarshipEntry[]; students: Map<string, StudentLite> } | null>(null);
+  const [deferred, setDeferred] = useState<Set<string>>(new Set());   // student ids left out of this run
   const [filtersUsed, setFiltersUsed] = useState<ScholarshipRunFilters | null>(null);
   const [title, setTitle] = useState('');
   const [rangeLabel, setRangeLabel] = useState('');
@@ -65,6 +66,10 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
   }, [autoGen, types]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+  const fullReport = useMemo(() => (pool ? buildScholarshipReport(pool.entries, pool.students, types) : null), [pool, types]);
+  const runEntries = useMemo(() => (pool ? pool.entries.filter((e) => !deferred.has(e.student_id)) : []), [pool, deferred]);
+  const report = useMemo(() => (pool ? buildScholarshipReport(runEntries, pool.students, types) : null), [pool, runEntries, types]);
+  const entryIds = useMemo(() => runEntries.map((e) => e.id), [runEntries]);
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, v: string) => {
     const n = new Set(set);
     if (n.has(v)) n.delete(v); else n.add(v);
@@ -102,7 +107,6 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
         keep.set(s.id, s);
       }
       const kept = entries.filter((e) => keep.has(e.student_id));
-      const rep = buildScholarshipReport(kept, keep, types);
 
       let range = '';
       if (mode === 'types' && from !== '2000-01-01') range = `${dmy(from)} – ${dmy(to)}`;
@@ -114,8 +118,8 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
         ? [...selTypes].map((id) => typeById.get(id)?.name).filter(Boolean).join(' + ')
         : batches.filter((b) => selBatches.has(b.id)).map((b) => b.title).join(' + ');
 
-      setReport(rep);
-      setEntryIds(kept.map((e) => e.id));
+      setPool({ entries: kept, students: keep });
+      setDeferred(new Set());
       setFiltersUsed(filters);
       setRangeLabel(range);
       setTitle(`מלגות ${names}${range ? ` · ${range}` : ''}`);
@@ -125,9 +129,16 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
 
   const printAndSave = async () => {
     if (!report || !filtersUsed) return;
-    // printing the same report again doesn't save another run
-    if (savedRun) { setTimeout(() => window.print(), 50); return; }
     if (savingRun.current) return;
+    // printing the same report again (even after deferring / deleting) updates the saved
+    // run instead of saving another one
+    if (savedRun) {
+      savingRun.current = true;
+      try { await sch.updateRun(savedRun, title, entryIds); } catch (e: any) { alert('עדכון ההפקה נכשל: ' + e.message); }
+      savingRun.current = false;
+      setTimeout(() => window.print(), 50);
+      return;
+    }
     savingRun.current = true;
     try {
       const run = await sch.createRun(title, filtersUsed, entryIds);
@@ -213,6 +224,18 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
             <span className="text-xs text-slate-500"><b className="text-slate-800">{report.studentCount} צ׳קים להדפסה</b> · {ils(report.total)} · {landscape ? 'A4 לרוחב' : 'A4 לאורך'}</span>
           </div>
 
+          {fullReport && pool && fullReport.studentCount > 0 && (
+            <ReviewPanel full={fullReport} deferred={deferred} setDeferred={setDeferred}
+              canDelete={perms.canWrite}
+              onDeleteEntries={async (ids) => {
+                const n = await sch.deleteEntries(ids);
+                const gone = new Set(ids);
+                // paid ones were skipped by the server — drop only what was really unpaid
+                setPool((p) => p && { ...p, entries: p.entries.filter((e) => !(gone.has(e.id) && !e.payment_id)) });
+                return n;
+              }} />
+          )}
+
           {report.studentCount === 0 ? (
             <SectionCard><EmptyState icon="📭" text="אין זכאויות שמתאימות לסינון" /></SectionCard>
           ) : (
@@ -221,6 +244,123 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
         </>
       )}
     </div>
+  );
+}
+
+// "סיכום לפני הפקה": every student the filters found, with an amount filter (inside / outside
+// a range). Checked = goes into this run (check to print). Deferred = left out of this run
+// only — the entitlement stays an open debt and comes back in the next report. Delete =
+// removes the (unpaid) entitlements themselves.
+function ReviewPanel({ full, deferred, setDeferred, canDelete, onDeleteEntries }: {
+  full: ScholarshipReport;
+  deferred: Set<string>;
+  setDeferred: React.Dispatch<React.SetStateAction<Set<string>>>;
+  canDelete: boolean;
+  onDeleteEntries: (entryIds: string[]) => Promise<number>;
+}) {
+  const [open, setOpen] = useState(true);
+  const [amtMin, setAmtMin] = useState('');
+  const [amtMax, setAmtMax] = useState('');
+  const [outside, setOutside] = useState(false);
+  const [view, setView] = useState<'all' | 'in' | 'out'>('all');
+  const [busy, setBusy] = useState(false);
+
+  const rows = useMemo(() => full.groups.flatMap((g) => g.rows.map((r) => ({ row: r, group: g.name }))), [full]);
+  const lo = amtMin.trim() === '' ? null : Number(amtMin);
+  const hi = amtMax.trim() === '' ? null : Number(amtMax);
+  const filtering = lo !== null || hi !== null;
+  const inAmt = (v: number) => {
+    if (!filtering) return true;
+    const inside = (lo === null || v >= lo) && (hi === null || v <= hi);
+    return outside ? !inside : inside;
+  };
+  const shown = rows.filter(({ row }) => inAmt(row.total)
+    && (view === 'all' || (view === 'in') === !deferred.has(row.student.id)));
+  const shownIds = shown.map(({ row }) => row.student.id);
+  const shownTotal = shown.reduce((s, { row }) => s + row.total, 0);
+  const deferredTotal = rows.filter(({ row }) => deferred.has(row.student.id)).reduce((s, { row }) => s + row.total, 0);
+
+  const setMany = (ids: string[], defer: boolean) => setDeferred((p) => {
+    const n = new Set(p);
+    for (const id of ids) { if (defer) n.add(id); else n.delete(id); }
+    return n;
+  });
+  const unpaidOf = (r: ReportRow) => Object.values(r.cells).flatMap((c) => c.entries).filter((e) => !e.payment_id).map((e) => e.id);
+  const del = async (rs: ReportRow[]) => {
+    const ids = rs.flatMap(unpaidOf);
+    if (!ids.length) { alert('אין זכאויות פתוחות למחיקה (זכאות ששולמה לא נמחקת)'); return; }
+    const sum = rs.reduce((s, r) => s + Object.values(r.cells).flatMap((c) => c.entries).filter((e) => !e.payment_id)
+      .reduce((a, e) => a + Number(e.amount), 0), 0);
+    const who = rs.length === 1 ? `של ${rs[0].student.last_name} ${rs[0].student.first_name}` : `של ${rs.length} תלמידים`;
+    if (!confirm(`למחוק לצמיתות את הזכאויות ${who} (${ids.length} זכאויות · ${ils(sum)})?\nהן יימחקו מהחיובים עצמם — לא רק מהדוח. לדחייה להפקה הבאה השתמש ב"דחה".`)) return;
+    setBusy(true);
+    try {
+      const n = await onDeleteEntries(ids);
+      if (n < ids.length) alert(`נמחקו ${n} מתוך ${ids.length} זכאויות`);
+    } catch (e: any) { alert(e.message); }
+    setBusy(false);
+  };
+
+  const act = 'text-xs px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 disabled:opacity-50';
+  const chip = (on: boolean) => `px-2.5 py-0.5 rounded-full text-xs border ${on ? 'bg-orange-600 text-white border-orange-600' : 'bg-white border-slate-300 text-slate-700'}`;
+  const numIn = 'w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm';
+
+  return (
+    <SectionCard className="no-print" title={`סיכום לפני הפקה · ${full.studentCount - deferred.size} בהפקה${deferred.size ? ` · ${deferred.size} נדחו (${ils(deferredTotal)})` : ''}`}
+      actions={<button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => setOpen(!open)}>{open ? 'הסתר' : 'הצג'}</button>}>
+      {open && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+            <span className="text-slate-600">💰 סכום לתלמיד:</span>
+            <span className="text-xs text-slate-500">מ-</span>
+            <input value={amtMin} inputMode="decimal" dir="ltr" placeholder="₪" className={numIn} onChange={(e) => setAmtMin(e.target.value.replace(/[^\d.]/g, ''))} />
+            <span className="text-xs text-slate-500">עד</span>
+            <input value={amtMax} inputMode="decimal" dir="ltr" placeholder="₪" className={numIn} onChange={(e) => setAmtMax(e.target.value.replace(/[^\d.]/g, ''))} />
+            <button type="button" className={chip(!outside)} onClick={() => setOutside(false)}>בתוך הטווח</button>
+            <button type="button" className={chip(outside)} onClick={() => setOutside(true)} title="מתחת ל'מ-' או מעל ל'עד'">מחוץ לטווח</button>
+            {filtering && <button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => { setAmtMin(''); setAmtMax(''); }}>נקה</button>}
+            <span className="mx-1 text-slate-300">|</span>
+            <button type="button" className={chip(view === 'all')} onClick={() => setView('all')}>הכל</button>
+            <button type="button" className={chip(view === 'in')} onClick={() => setView('in')}>✅ בהפקה</button>
+            <button type="button" className={chip(view === 'out')} onClick={() => setView('out')}>⏸️ נדחו</button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-slate-600">מוצגים <b>{shown.length}</b> · {ils(shownTotal)}</span>
+            <div className="flex-1" />
+            {shown.length > 0 && <>
+              <button type="button" className={act} onClick={() => setMany(shownIds, false)}>☑️ כלול הכל בהפקה</button>
+              <button type="button" className={act} onClick={() => setMany(shownIds, true)}>⏸️ דחה הכל ({shown.length})</button>
+              {canDelete && <button type="button" className={`${act} text-red-700`} disabled={busy} onClick={() => del(shown.map((x) => x.row))}>🗑️ מחק זכאויות ({shown.length})</button>}
+            </>}
+          </div>
+
+          {shown.length === 0 ? <EmptyState icon="📭" text="אין תלמידים בסינון" /> : (
+            <div className="max-h-[420px] overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
+              {shown.map(({ row, group }) => {
+                const out = deferred.has(row.student.id);
+                return (
+                  <div key={row.student.id} className={`flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-1 text-sm ${out ? 'bg-slate-50 text-slate-400' : ''}`}>
+                    <input type="checkbox" title="בהפקה / להעברה לתשלום" checked={!out} onChange={() => setMany([row.student.id], !out)} />
+                    <span className="w-48 truncate"><b>{row.student.last_name}</b> {row.student.first_name}</span>
+                    <span className="w-20 text-xs text-slate-500 truncate">{group}</span>
+                    <span className="text-xs text-slate-500 flex-1 min-w-[140px] truncate">
+                      {full.columns.filter((c) => row.cells[c.id]).map((c) => `${c.name} ${ils(row.cells[c.id].amount)}`).join(' · ')}
+                    </span>
+                    <span className="tabular-nums font-semibold w-20 text-end">{ils(row.total)}</span>
+                    {out
+                      ? <button type="button" className={act} onClick={() => setMany([row.student.id], false)}>↩️ החזר</button>
+                      : <button type="button" className={act} onClick={() => setMany([row.student.id], true)}>⏸️ דחה</button>}
+                    {canDelete && <button type="button" className={act} disabled={busy} onClick={() => del([row])}>🗑️</button>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-[11px] text-slate-500">מסומן = נכנס להפקה ולדוח המודפס. &quot;דחה&quot; = לא בהפקה הזו בלבד — הזכאות נשארת פתוחה ותופיע בדוח הבא. &quot;מחק&quot; = מוחק את הזכאות עצמה מהחיוב.</p>
+        </div>
+      )}
+    </SectionCard>
   );
 }
 

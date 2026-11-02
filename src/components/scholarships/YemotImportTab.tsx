@@ -60,6 +60,7 @@ export function YemotImportTab(props: ScholarshipTabProps) {
   const seenRef = useRef<Set<string>>(new Set());   // calls that already got their default checkbox
   const [amtMin, setAmtMin] = useState('');
   const [amtMax, setAmtMax] = useState('');
+  const [amtOut, setAmtOut] = useState(false);   // match amounts OUTSIDE the range
   const [cat, setCat] = useState<Category>('ready');
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -224,9 +225,11 @@ export function YemotImportTab(props: ScholarshipTabProps) {
   const amtHi = amtMax.trim() === '' ? null : Number(amtMax);
   const filtering = amtLo !== null || amtHi !== null;
   const inAmt = useCallback((c: ScholarshipYemotCall) => {
+    if (amtLo === null && amtHi === null) return true;
     const a = Number(c.amount) || 0;
-    return (amtLo === null || a >= amtLo) && (amtHi === null || a <= amtHi);
-  }, [amtLo, amtHi]);
+    const inside = (amtLo === null || a >= amtLo) && (amtHi === null || a <= amtHi);
+    return amtOut ? !inside : inside;
+  }, [amtLo, amtHi, amtOut]);
   const shown = (k: Category) => model.out[k].filter((it) => it.calls.some(inAmt));
   const targetIds = (k: Category) => shown(k).flatMap((it) => it.calls.filter(inAmt).map((c) => c.id));
 
@@ -474,7 +477,9 @@ export function YemotImportTab(props: ScholarshipTabProps) {
               <span className="text-xs text-slate-500">עד</span>
               <input value={amtMax} inputMode="decimal" dir="ltr" placeholder="₪" onChange={(e) => setAmtMax(e.target.value.replace(/[^\d.]/g, ''))}
                 className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm" />
-              <button type="button" className={act} onClick={() => { setAmtMin('0'); setAmtMax('0'); }}>₪0 בלבד</button>
+              <button type="button" className={chip(!amtOut)} onClick={() => setAmtOut(false)}>בתוך הטווח</button>
+              <button type="button" className={chip(amtOut)} onClick={() => setAmtOut(true)} title="מתחת ל'מ-' או מעל ל'עד'">מחוץ לטווח</button>
+              <button type="button" className={act} onClick={() => { setAmtMin('0'); setAmtMax('0'); setAmtOut(false); }}>₪0 בלבד</button>
               {filtering && <button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => { setAmtMin(''); setAmtMax(''); }}>נקה סינון</button>}
               {filtering && <span className="text-xs text-slate-500">· {bulkIds.length} שיחות בסינון</span>}
               <div className="flex-1" />

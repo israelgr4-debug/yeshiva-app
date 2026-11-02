@@ -219,6 +219,18 @@ async function deleteEntry(id: string): Promise<void> {
   if (error) throw new Error(scholarshipError(error));
 }
 
+/** Delete several entitlements — unpaid only (paid ones are skipped). Returns how many were deleted. */
+async function deleteEntries(ids: string[]): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await supabase.from('scholarship_entries').delete()
+      .in('id', ids.slice(i, i + 150)).is('payment_id', null).select('id');
+    if (error) throw new Error(scholarshipError(error));
+    n += data?.length || 0;
+  }
+  return n;
+}
+
 export interface EntryFilter {
   typeIds?: string[];
   batchIds?: string[];
@@ -277,6 +289,12 @@ async function getRun(id: string): Promise<ScholarshipRun | null> {
   const { data, error } = await supabase.from('scholarship_runs').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   return (data as ScholarshipRun) || null;
+}
+
+/** Re-save a run's title / entries (the same report printed again after changes). */
+async function updateRun(id: string, title: string, entryIds: string[]) {
+  const { error } = await supabase.from('scholarship_runs').update({ title, entry_ids: entryIds }).eq('id', id);
+  if (error) throw new Error(scholarshipError(error));
 }
 
 /** How many payments were saved from this run (they stay — run_id is SET NULL on delete). */
@@ -505,7 +523,7 @@ export function useScholarships() {
     listTypes, saveType, removeType, typeHasEntries,
     listBatches, getBatch, createBatch, updateBatch, deleteBatch, nextYemotStart, batchStats,
     getBatchEntries, saveBatchAmounts, addEntry, updateEntry, deleteEntry, fetchEntries, fetchEntriesByIds,
-    createRun, listRuns, getRun, runPaymentCount, deleteRun,
+    createRun, listRuns, getRun, updateRun, runPaymentCount, deleteRun, deleteEntries,
     markPaid, cancelPayment, cancelCheck, fetchPayments,
     getOneTimeType, addOneTime, listOneTime, deleteOneTime,
     getBalances, openBalance, getStudentLedger,
