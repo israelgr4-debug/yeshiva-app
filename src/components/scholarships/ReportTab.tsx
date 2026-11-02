@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { useScholarships } from '@/hooks/useScholarships';
 import { ScholarshipBatch, ScholarshipRunFilters, ScholarshipType } from '@/lib/types';
@@ -33,6 +33,7 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
   const [title, setTitle] = useState('');
   const [rangeLabel, setRangeLabel] = useState('');
   const [savedRun, setSavedRun] = useState<string | null>(null);
+  const savingRun = useRef(false);   // guards a quick double click
   const [autoGen, setAutoGen] = useState(false);
 
   useEffect(() => {
@@ -124,12 +125,18 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
 
   const printAndSave = async () => {
     if (!report || !filtersUsed) return;
+    // printing the same report again doesn't save another run
+    if (savedRun) { setTimeout(() => window.print(), 50); return; }
+    if (savingRun.current) return;
+    savingRun.current = true;
     try {
       const run = await sch.createRun(title, filtersUsed, entryIds);
       setSavedRun(run.id);
     } catch (e: any) {
+      savingRun.current = false;
       if (!confirm('שמירת ההפקה נכשלה (' + e.message + ').\nלהדפיס בכל זאת?')) return;
     }
+    savingRun.current = false;
     setTimeout(() => window.print(), 50);
   };
 
@@ -198,7 +205,7 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
         <>
           <div className="no-print flex flex-wrap items-center gap-2 bg-white rounded-2xl border border-slate-200/70 elevation-1 p-3">
             <input value={title} onChange={(e) => setTitle(e.target.value)} className={`${input} flex-1 min-w-[240px]`} />
-            <Button onClick={printAndSave} disabled={report.studentCount === 0}>🖨️ הדפס ושמור הפקה</Button>
+            <Button onClick={printAndSave} disabled={report.studentCount === 0}>{savedRun ? '🖨️ הדפס שוב' : '🖨️ הדפס ושמור הפקה'}</Button>
             <Button variant="secondary" onClick={() => exportScholarshipReportXlsx(report, title, `${title.replace(/[\\/:*?"<>|]/g, '-')}.xlsx`)} disabled={report.studentCount === 0}>📥 ייצוא לאקסל</Button>
             {savedRun && perms.canWrite && (
               <Button variant="ghost" onClick={() => nav('payment', { run: savedRun })}>✅ לסימון תשלום של ההפקה ←</Button>

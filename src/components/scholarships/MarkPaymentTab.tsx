@@ -130,6 +130,26 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
     try { await sch.cancelPayment(p.id); await loadRun(runId); } catch (e: any) { alert(e.message); }
   };
 
+  // a run produced twice by mistake → delete the extra one. Only the saved report goes away;
+  // entries and payments stay. A run that payments were saved from needs an admin.
+  const deleteRun = async () => {
+    const run = runs.find((r) => r.id === runId);
+    if (!run) return;
+    try {
+      const paid = await sch.runPaymentCount(run.id);
+      const twin = runs.find((r) => r.id !== run.id && r.title === run.title);
+      if (paid && !perms.canAdmin) { alert(`מהפקה זו כבר נשמרו ${paid} תשלומים — מחיקה רק למנהל מערכת`); return; }
+      if (!confirm(`למחוק את ההפקה "${run.title}" מ-${new Date(run.created_at).toLocaleString('he-IL')}?\n` +
+        `נמחק רק רישום ההפקה — הזכאויות והתשלומים לא משתנים.` +
+        (twin ? `\nיש עוד הפקה באותו שם.` : '') +
+        (paid ? `\n⚠️ מהפקה זו נשמרו ${paid} תשלומים — הם יישארו, אבל לא יהיו משויכים להפקה.` : ''))) return;
+      await sch.deleteRun(run.id);
+      const rest = runs.filter((r) => r.id !== run.id);
+      setRuns(rest);
+      setRunId(rest[0]?.id || '');
+    } catch (e: any) { alert(e.message); }
+  };
+
   if (!perms.canWrite) {
     return <SectionCard><EmptyState icon="🔒" text="סימון תשלום — למזכירות ולמנהל מערכת" /></SectionCard>;
   }
@@ -149,10 +169,11 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
             <select className={input} value={runId} onChange={(e) => setRunId(e.target.value)}>
               {runs.length === 0 && <option value="">אין הפקות — הפק דוח בלשונית &quot;דוח והדפסה&quot;</option>}
               {runs.map((r) => (
-                <option key={r.id} value={r.id}>{r.title} · {new Date(r.created_at).toLocaleDateString('he-IL')} · {r.entry_ids?.length || 0} זכאויות</option>
+                <option key={r.id} value={r.id}>{r.title} · {new Date(r.created_at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })} · {r.entry_ids?.length || 0} זכאויות</option>
               ))}
             </select>
           </label>
+          {runId && <Button variant="secondary" onClick={deleteRun}>🗑️ מחק הפקה</Button>}
           <label className="text-xs text-slate-600 flex flex-col">תאריך תשלום
             <input type="date" className={input} value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
           </label>

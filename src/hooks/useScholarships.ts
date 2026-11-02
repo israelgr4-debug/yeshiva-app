@@ -279,6 +279,19 @@ async function getRun(id: string): Promise<ScholarshipRun | null> {
   return (data as ScholarshipRun) || null;
 }
 
+/** How many payments were saved from this run (they stay — run_id is SET NULL on delete). */
+async function runPaymentCount(id: string): Promise<number> {
+  const { count, error } = await supabase.from('scholarship_payments').select('id', { count: 'exact', head: true }).eq('run_id', id);
+  if (error) throw error;
+  return count || 0;
+}
+
+/** Delete a saved report run (e.g. produced twice by mistake). Entries and payments are untouched. */
+async function deleteRun(id: string) {
+  const { error } = await supabase.from('scholarship_runs').delete().eq('id', id);
+  if (error) throw new Error(scholarshipError(error));
+}
+
 // ---------------- payments (תשלומים) ----------------
 
 /**
@@ -492,7 +505,7 @@ export function useScholarships() {
     listTypes, saveType, removeType, typeHasEntries,
     listBatches, getBatch, createBatch, updateBatch, deleteBatch, nextYemotStart, batchStats,
     getBatchEntries, saveBatchAmounts, addEntry, updateEntry, deleteEntry, fetchEntries, fetchEntriesByIds,
-    createRun, listRuns, getRun,
+    createRun, listRuns, getRun, runPaymentCount, deleteRun,
     markPaid, cancelPayment, cancelCheck, fetchPayments,
     getOneTimeType, addOneTime, listOneTime, deleteOneTime,
     getBalances, openBalance, getStudentLedger,
