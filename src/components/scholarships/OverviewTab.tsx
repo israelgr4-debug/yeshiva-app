@@ -23,7 +23,7 @@ export function OverviewTab({ nav, perms }: ScholarshipTabProps) {
       try {
         const [t, bal, b, r, pend] = await Promise.all([
           sch.listTypes(true), sch.getBalances(), sch.listBatches({ limit: 10 }), sch.listRuns(8),
-          supabase.from('scholarship_yemot_calls').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+          supabase.from('scholarship_yemot_calls').select('id', { count: 'exact', head: true }).in('status', ['pending', 'deferred']),
         ]);
         const agg: Record<string, { charged: number; paid: number; balance: number }> = {};
         for (const x of bal) {

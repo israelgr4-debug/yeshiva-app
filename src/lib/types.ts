@@ -403,7 +403,7 @@ export interface ScholarshipRun {
   updated_at: string;
 }
 
-export type YemotCallStatus = 'pending' | 'included' | 'excluded' | 'unmatched';
+export type YemotCallStatus = 'pending' | 'included' | 'excluded' | 'unmatched' | 'deferred';
 
 export interface ScholarshipYemotCall {
   id: string;

@@ -79,18 +79,21 @@ export async function rematchUnmatched(idx: IdIndex): Promise<number> {
   return n;
 }
 
-/** Calls in [from..to] (Israel dates), plus undated hand-typed rows that are still unmatched. */
+/** Calls in [from..to] (Israel dates), plus undated hand-typed rows that are still unmatched,
+ *  plus every deferred call of the extension (whatever its date — it waits for a later batch). */
 export async function fetchCallsForRange(from: string, to: string, extension: string | null): Promise<ScholarshipYemotCall[]> {
   const [fy, fm, fd] = from.split('-').map(Number);
   const [ty, tm, td] = to.split('-').map(Number);
   const lo = israelIso(fy, fm, fd, 0, 0, 0);
   const hi = israelIso(ty, tm, td, 23, 59, 59);
   const ext = (q: any) => (extension ? q.or(`extension.eq.${extension},extension.is.null`) : q);
-  const [dated, undated] = await Promise.all([
+  const [dated, undated, deferred] = await Promise.all([
     fetchAll<ScholarshipYemotCall>('scholarship_yemot_calls', '*', (q) => ext(q.gte('call_at', lo).lte('call_at', hi))),
     fetchAll<ScholarshipYemotCall>('scholarship_yemot_calls', '*', (q) => ext(q.is('call_at', null).eq('status', 'unmatched'))),
+    fetchAll<ScholarshipYemotCall>('scholarship_yemot_calls', '*', (q) => ext(q.eq('status', 'deferred'))),
   ]);
-  return [...dated, ...undated];
+  const seen = new Set<string>();
+  return [...dated, ...undated, ...deferred].filter((c) => !seen.has(c.id) && !!seen.add(c.id));
 }
 
 export async function addManualCall(opts: {
@@ -119,6 +122,9 @@ export async function updateCalls(ids: string[], patch: Partial<Pick<Scholarship
     if (error) throw error;
   }
 }
+
+/** notes marker for calls removed from the import list by hand (status 'excluded', restorable). */
+export const REMOVED_NOTE = 'הוסר מרשימת היבוא';
 
 export async function deleteCall(id: string) {
   const { error } = await supabase.from('scholarship_yemot_calls').delete().eq('id', id).neq('status', 'included');

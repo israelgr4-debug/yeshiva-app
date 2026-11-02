@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { ScholarshipBatch, ScholarshipType, ScholarshipYemotCall } from '@/lib/types';
 import { readYemotFile, israelDate } from '@/lib/yemot-parse';
 import {
-  loadIdIndex, storeCalls, rematchUnmatched, fetchCallsForRange, addManualCall, updateCall, updateCalls, deleteCall, israelTime,
+  loadIdIndex, storeCalls, rematchUnmatched, fetchCallsForRange, addManualCall, updateCall, updateCalls, israelTime, REMOVED_NOTE,
 } from '@/lib/yemot-import';
 import {
   ScholarshipTabProps, SectionCard, EmptyState, ils, dmy, todayIso,
@@ -21,7 +21,11 @@ import { RecordingPlayer, fetchRecordings } from './RecordingPlayer';
 // (continue), upload the xlsx (→ scholarship_yemot_calls), review the preview in
 // categories, then create the batch. The API source (stage 8b) will feed the same table.
 
-type Category = 'ready' | 'questions' | 'inactive' | 'unmatched' | 'already';
+// The checkbox on a call = "להעברה לתשלום" (goes into the batch). Besides that a call can be
+// deferred (status 'deferred' — waits for a later import, shown there whatever its date) or
+// removed from the list (status 'excluded' + REMOVED_NOTE). Both are saved at once and undoable.
+type Category = 'ready' | 'questions' | 'inactive' | 'unmatched' | 'already' | 'deferred' | 'removed';
+const ACTIVE_CATS: Category[] = ['ready', 'questions', 'inactive'];
 
 interface StudentCalls {
   student: StudentLite;
@@ -31,6 +35,7 @@ interface StudentCalls {
 
 const CAT_LABEL: Record<Category, string> = {
   ready: '✅ מוכנים', questions: '❓ שאלות לבירור', inactive: '💤 לא פעילים', unmatched: '🔍 לא מזוהים', already: '📦 כבר בחיוב אחר',
+  deferred: '⏸️ נדחו', removed: '🗑️ הוסרו',
 };
 
 export function YemotImportTab(props: ScholarshipTabProps) {
@@ -50,6 +55,11 @@ export function YemotImportTab(props: ScholarshipTabProps) {
   const [existingEntries, setExistingEntries] = useState<Map<string, number>>(new Map());
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [decided, setDecided] = useState<Set<string>>(new Set());
+  // deferred calls brought back into THIS import (local until the batch is created)
+  const [restored, setRestored] = useState<Set<string>>(new Set());
+  const seenRef = useRef<Set<string>>(new Set());   // calls that already got their default checkbox
+  const [amtMin, setAmtMin] = useState('');
+  const [amtMax, setAmtMax] = useState('');
   const [cat, setCat] = useState<Category>('ready');
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -93,6 +103,10 @@ export function YemotImportTab(props: ScholarshipTabProps) {
   const loadPreview = useCallback(async () => {
     if (!rangeFrom || !rangeTo) { alert('בחר טווח תאריכים'); return; }
     setBusy('preview');
+    seenRef.current = new Set();
+    setChecked(new Set());
+    setDecided(new Set());
+    setRestored(new Set());
     try {
       await rematchUnmatched(await loadIdIndex());
       const cs = await fetchCallsForRange(rangeFrom, rangeTo, extension);
@@ -144,17 +158,33 @@ export function YemotImportTab(props: ScholarshipTabProps) {
 
   // categorize
   const model = useMemo(() => {
-    const out: Record<Category, StudentCalls[]> = { ready: [], questions: [], inactive: [], unmatched: [], already: [] };
+    const out: Record<Category, StudentCalls[]> = { ready: [], questions: [], inactive: [], unmatched: [], already: [], deferred: [], removed: [] };
     const unmatchedIds = new Set<string>();
     if (!calls) return { out, unmatchedIds };
     const pendingByStudent = new Map<string, ScholarshipYemotCall[]>();
     const alreadyByStudent = new Map<string, ScholarshipYemotCall[]>();
+    const deferredByStudent = new Map<string, ScholarshipYemotCall[]>();
+    const removedByStudent = new Map<string, ScholarshipYemotCall[]>();
     for (const c of calls) {
       if (c.status === 'unmatched') { unmatchedIds.add(c.id); continue; }
-      if (c.status === 'excluded' || !c.student_id) continue;
-      const m = c.status === 'included' ? alreadyByStudent : pendingByStudent;
+      if (!c.student_id) continue;
+      let m: Map<string, ScholarshipYemotCall[]>;
+      if (c.status === 'excluded') {
+        if (c.notes !== REMOVED_NOTE) continue;
+        m = removedByStudent;
+      } else if (c.status === 'included') m = alreadyByStudent;
+      else if (c.status === 'deferred' && !restored.has(c.id)) m = deferredByStudent;
+      else m = pendingByStudent;
       if (!m.has(c.student_id)) m.set(c.student_id, []);
       m.get(c.student_id)!.push(c);
+    }
+    for (const [k, m] of [['deferred', deferredByStudent], ['removed', removedByStudent]] as const) {
+      for (const [sid, cs] of m) {
+        const s = studentById.get(sid);
+        if (!s) continue;
+        cs.sort((a, b) => (a.call_at || '').localeCompare(b.call_at || ''));
+        out[k].push({ student: s, calls: cs });
+      }
     }
     for (const [sid, cs] of pendingByStudent) {
       const s = studentById.get(sid);
@@ -172,15 +202,74 @@ export function YemotImportTab(props: ScholarshipTabProps) {
     }
     for (const k of Object.keys(out) as Category[]) out[k].sort((a, b) => compareStudents(a.student, b.student));
     return { out, unmatchedIds };
-  }, [calls, studentById, existingEntries]);
+  }, [calls, studentById, existingEntries, restored]);
 
-  // defaults: ready rows checked when amount > 0
+  // defaults: a ready row is checked when amount > 0 — only the first time it shows up, so
+  // deferring / removing a row doesn't reset what was already marked
   useEffect(() => {
-    const next = new Set<string>();
-    for (const it of model.out.ready) for (const c of it.calls) if ((Number(c.amount) || 0) > 0) next.add(c.id);
-    setChecked(next);
-    setDecided(new Set());
+    const live = new Set<string>();
+    for (const k of ACTIVE_CATS) for (const it of model.out[k]) for (const c of it.calls) live.add(c.id);
+    const fresh = model.out.ready.flatMap((it) => it.calls)
+      .filter((c) => !seenRef.current.has(c.id) && (Number(c.amount) || 0) > 0).map((c) => c.id);
+    for (const id of live) seenRef.current.add(id);
+    setChecked((p) => {
+      const n = new Set([...p].filter((id) => live.has(id)));
+      for (const id of fresh) n.add(id);
+      return n;
+    });
   }, [model]);
+
+  // ---------- amount filter ----------
+  const amtLo = amtMin.trim() === '' ? null : Number(amtMin);
+  const amtHi = amtMax.trim() === '' ? null : Number(amtMax);
+  const filtering = amtLo !== null || amtHi !== null;
+  const inAmt = useCallback((c: ScholarshipYemotCall) => {
+    const a = Number(c.amount) || 0;
+    return (amtLo === null || a >= amtLo) && (amtHi === null || a <= amtHi);
+  }, [amtLo, amtHi]);
+  const shown = (k: Category) => model.out[k].filter((it) => it.calls.some(inAmt));
+  const targetIds = (k: Category) => shown(k).flatMap((it) => it.calls.filter(inAmt).map((c) => c.id));
+
+  // ---------- defer / remove / restore (saved at once) ----------
+  const patchLocal = (ids: string[], patch: Partial<ScholarshipYemotCall>) => {
+    const s = new Set(ids);
+    setCalls((p) => p && p.map((c) => (s.has(c.id) ? { ...c, ...patch } : c)));
+  };
+  const dropFromSelection = (ids: string[]) => {
+    setChecked((p) => { const n = new Set(p); for (const id of ids) n.delete(id); return n; });
+    setRestored((p) => { const n = new Set(p); for (const id of ids) n.delete(id); return n; });
+  };
+  const deferCalls = async (ids: string[]) => {
+    if (!ids.length) return;
+    if (ids.length > 1 && !confirm(`לדחות ${ids.length} שיחות? הן לא ייכנסו לחיוב הזה ויופיעו בלשונית "נדחו" ביבוא הבא.`)) return;
+    try {
+      await updateCalls(ids, { status: 'deferred', notes: null });
+      patchLocal(ids, { status: 'deferred', notes: null });
+      dropFromSelection(ids);
+    } catch (e: any) { alert(e.message); }
+  };
+  const removeCalls = async (ids: string[]) => {
+    if (!ids.length) return;
+    if (ids.length > 1 && !confirm(`להסיר ${ids.length} שיחות מהרשימה? אפשר להחזיר אותן מלשונית "הוסרו".`)) return;
+    try {
+      await updateCalls(ids, { status: 'excluded', notes: REMOVED_NOTE, batch_id: null });
+      patchLocal(ids, { status: 'excluded', notes: REMOVED_NOTE, batch_id: null });
+      dropFromSelection(ids);
+    } catch (e: any) { alert(e.message); }
+  };
+  const restoreDeferred = (ids: string[]) => setRestored((p) => { const n = new Set(p); for (const id of ids) n.add(id); return n; });
+  const restoreRemoved = async (ids: string[]) => {
+    if (!ids.length) return;
+    try {
+      await updateCalls(ids, { status: 'pending', notes: null });
+      patchLocal(ids, { status: 'pending', notes: null });
+    } catch (e: any) { alert(e.message); }
+  };
+  const markForPayment = (k: Category, on: boolean) => {
+    const ids = targetIds(k);
+    setChecked((p) => { const n = new Set(p); for (const id of ids) { if (on) n.add(id); else n.delete(id); } return n; });
+    if (k === 'questions') setDecided((p) => { const n = new Set(p); for (const it of shown(k)) n.add(it.student.id); return n; });
+  };
 
   const embedded = useMemo(() => ({ callIds: model.unmatchedIds, onChanged: () => { loadPreview(); } }), [model.unmatchedIds, loadPreview]);
 
@@ -267,19 +356,16 @@ export function YemotImportTab(props: ScholarshipTabProps) {
     if (!(n >= 0)) { alert('סכום לא תקין'); return; }
     try { await updateCall(c.id, { amount: n }); await loadPreview(); } catch (e: any) { alert(e.message); }
   };
-  const removeManual = async (c: ScholarshipYemotCall) => {
-    if (!confirm('למחוק את השורה הידנית?')) return;
-    try { await deleteCall(c.id); await loadPreview(); } catch (e: any) { alert(e.message); }
-  };
 
   if (!perms.canWrite) return <SectionCard><EmptyState icon="🔒" text="יבוא ימות — למזכירות ולמנהל מערכת" /></SectionCard>;
 
   const input = 'px-2 py-1.5 border border-slate-300 rounded-lg text-sm';
   const chip = (on: boolean) => `px-3 py-1 rounded-full text-sm border ${on ? 'bg-orange-600 text-white border-orange-600' : 'bg-white border-slate-300 text-slate-700'}`;
 
-  const callRow = (it: StudentCalls, c: ScholarshipYemotCall, opts: { checkbox: boolean }) => (
-    <div key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm py-0.5">
-      {opts.checkbox && <input type="checkbox" checked={checked.has(c.id)} onChange={() => toggleCall(it.student.id, c.id)} />}
+  const act = 'text-xs px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-600';
+  const callRow = (it: StudentCalls, c: ScholarshipYemotCall, opts: { checkbox: boolean; actions?: 'pending' | 'deferred' | 'removed'; dim?: boolean }) => (
+    <div key={c.id} className={`flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm py-0.5 ${opts.dim ? 'opacity-40' : ''}`}>
+      {opts.checkbox && <input type="checkbox" title="להעברה לתשלום" checked={checked.has(c.id)} onChange={() => toggleCall(it.student.id, c.id)} />}
       <span className="tabular-nums">{c.call_at ? `${dmy(israelDate(c.call_at))} ${israelTime(c.call_at)}` : 'ללא תאריך'}</span>
       {c.phone && <span className="tabular-nums text-slate-500" dir="ltr">{c.phone}</span>}
       <span className={`tabular-nums font-semibold ${(Number(c.amount) || 0) === 0 ? 'text-slate-400' : ''}`}>{ils(Number(c.amount) || 0)}</span>
@@ -288,14 +374,27 @@ export function YemotImportTab(props: ScholarshipTabProps) {
       )}
       {c.source === 'manual' && (
         <span className="text-[11px] px-1.5 rounded bg-purple-100 text-purple-800">ידני{c.added_by ? ` · ${c.added_by}` : ''}
-          {c.status !== 'included' && <>
-            <button type="button" className="ms-1 hover:underline" onClick={() => editManual(c)}>✏️</button>
-            <button type="button" className="ms-1 hover:underline" onClick={() => removeManual(c)}>🗑️</button>
-          </>}
+          {c.status !== 'included' && <button type="button" className="ms-1 hover:underline" onClick={() => editManual(c)}>✏️</button>}
         </span>
+      )}
+      {opts.actions === 'pending' && <>
+        <button type="button" className={act} title="לא בחיוב הזה — יופיע ביבוא הבא" onClick={() => deferCalls([c.id])}>⏸️ דחה</button>
+        <button type="button" className={act} title="הסר מהרשימה (ניתן להחזיר)" onClick={() => removeCalls([c.id])}>✕ הסר</button>
+      </>}
+      {opts.actions === 'deferred' && <>
+        <button type="button" className={act} onClick={() => restoreDeferred([c.id])}>↩️ החזר לחיוב הזה</button>
+        <button type="button" className={act} onClick={() => removeCalls([c.id])}>✕ הסר</button>
+      </>}
+      {opts.actions === 'removed' && (
+        <button type="button" className={act} onClick={() => restoreRemoved([c.id])}>↩️ החזר לרשימה</button>
       )}
     </div>
   );
+
+  const nameCell = (it: StudentCalls, extra?: string) => (
+    <span><b>{it.student.last_name}</b> {it.student.first_name} <span className="text-xs text-slate-500">· {shiurLabel(it.student)}{extra ? ` · ${extra}` : ''}</span></span>
+  );
+  const bulkIds = targetIds(cat);
 
   return (
     <div className="space-y-4">
@@ -354,7 +453,8 @@ export function YemotImportTab(props: ScholarshipTabProps) {
         <SectionCard title={`תצוגה מקדימה · ${dmy(rangeFrom)}–${dmy(rangeTo)}`}>
           <div className="flex flex-wrap gap-1.5 mb-3">
             {(Object.keys(CAT_LABEL) as Category[]).map((k) => {
-              const n = k === 'unmatched' ? model.unmatchedIds.size : model.out[k].length;
+              const n = k === 'unmatched' ? model.unmatchedIds.size : shown(k).length;
+              if ((k === 'deferred' || k === 'removed') && n === 0 && model.out[k].length === 0 && cat !== k) return null;
               return (
                 <button key={k} type="button" onClick={() => setCat(k)}
                   className={`px-3 py-1.5 rounded-xl text-sm border ${cat === k ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white border-transparent' : 'bg-white border-slate-200 text-slate-700'}`}>
@@ -365,20 +465,48 @@ export function YemotImportTab(props: ScholarshipTabProps) {
             })}
           </div>
 
-          {cat === 'ready' && (model.out.ready.length === 0 ? <EmptyState icon="📭" text="אין" /> : (
+          {cat !== 'unmatched' && (
+            <div className="flex flex-wrap items-center gap-2 mb-3 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+              <span className="text-slate-600">💰 סינון לפי סכום:</span>
+              <span className="text-xs text-slate-500">מ-</span>
+              <input value={amtMin} inputMode="decimal" dir="ltr" placeholder="₪" onChange={(e) => setAmtMin(e.target.value.replace(/[^\d.]/g, ''))}
+                className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm" />
+              <span className="text-xs text-slate-500">עד</span>
+              <input value={amtMax} inputMode="decimal" dir="ltr" placeholder="₪" onChange={(e) => setAmtMax(e.target.value.replace(/[^\d.]/g, ''))}
+                className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm" />
+              <button type="button" className={act} onClick={() => { setAmtMin('0'); setAmtMax('0'); }}>₪0 בלבד</button>
+              {filtering && <button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => { setAmtMin(''); setAmtMax(''); }}>נקה סינון</button>}
+              {filtering && <span className="text-xs text-slate-500">· {bulkIds.length} שיחות בסינון</span>}
+              <div className="flex-1" />
+              {ACTIVE_CATS.includes(cat) && bulkIds.length > 0 && <>
+                <button type="button" className={act} onClick={() => markForPayment(cat, true)}>☑️ סמן הכל לתשלום</button>
+                <button type="button" className={act} onClick={() => markForPayment(cat, false)}>⬜ בטל סימון</button>
+                <button type="button" className={act} onClick={() => deferCalls(bulkIds)}>⏸️ דחה הכל ({bulkIds.length})</button>
+                <button type="button" className={`${act} text-red-700`} onClick={() => removeCalls(bulkIds)}>✕ הסר הכל ({bulkIds.length})</button>
+              </>}
+              {cat === 'deferred' && bulkIds.length > 0 && (
+                <button type="button" className={act} onClick={() => restoreDeferred(bulkIds)}>↩️ החזר הכל לחיוב הזה ({bulkIds.length})</button>
+              )}
+              {cat === 'removed' && bulkIds.length > 0 && (
+                <button type="button" className={act} onClick={() => restoreRemoved(bulkIds)}>↩️ החזר הכל לרשימה ({bulkIds.length})</button>
+              )}
+            </div>
+          )}
+
+          {cat === 'ready' && (shown('ready').length === 0 ? <EmptyState icon="📭" text={filtering ? 'אין שיחות בסינון' : 'אין'} /> : (
             <div className="divide-y divide-slate-100">
-              {model.out.ready.map((it) => (
+              {shown('ready').map((it) => (
                 <div key={it.student.id} className="flex flex-wrap items-center gap-x-4 py-1">
-                  <span className="w-56 truncate"><b>{it.student.last_name}</b> {it.student.first_name} <span className="text-xs text-slate-500">· {shiurLabel(it.student)}</span></span>
-                  {callRow(it, it.calls[0], { checkbox: true })}
+                  <span className="w-56 truncate">{nameCell(it)}</span>
+                  {callRow(it, it.calls[0], { checkbox: true, actions: 'pending' })}
                 </div>
               ))}
             </div>
           ))}
 
-          {cat === 'questions' && (model.out.questions.length === 0 ? <EmptyState icon="✅" text="אין שאלות" /> : (
+          {cat === 'questions' && (shown('questions').length === 0 ? <EmptyState icon="✅" text={filtering ? 'אין שיחות בסינון' : 'אין שאלות'} /> : (
             <div className="space-y-2">
-              {model.out.questions.map((it) => {
+              {shown('questions').map((it) => {
                 const sum = it.calls.filter((c) => checked.has(c.id)).reduce((s, c) => s + (Number(c.amount) || 0), 0);
                 const done = decided.has(it.student.id);
                 return (
@@ -392,35 +520,53 @@ export function YemotImportTab(props: ScholarshipTabProps) {
                       <button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => setStudentCalls(it, 'all')}>הכל</button>
                       <button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => setStudentCalls(it, 'none')}>אף אחת</button>
                     </div>
-                    <div className="ps-2">{it.calls.map((c) => callRow(it, c, { checkbox: true }))}</div>
+                    <div className="ps-2">{it.calls.map((c) => callRow(it, c, { checkbox: true, actions: 'pending', dim: filtering && !inAmt(c) }))}</div>
                   </div>
                 );
               })}
             </div>
           ))}
 
-          {cat === 'inactive' && (model.out.inactive.length === 0 ? <EmptyState icon="📭" text="אין" /> : (
+          {cat === 'inactive' && (shown('inactive').length === 0 ? <EmptyState icon="📭" text={filtering ? 'אין שיחות בסינון' : 'אין'} /> : (
             <div className="divide-y divide-slate-100">
-              {model.out.inactive.map((it) => (
+              {shown('inactive').map((it) => (
                 <div key={it.student.id} className="py-1">
-                  <span><b>{it.student.last_name}</b> {it.student.first_name} <span className="text-xs text-slate-500">· {shiurLabel(it.student)} · סטטוס {it.student.status}</span></span>
-                  <div className="ps-4">{it.calls.map((c) => callRow(it, c, { checkbox: true }))}</div>
+                  {nameCell(it, `סטטוס ${it.student.status}`)}
+                  <div className="ps-4">{it.calls.filter(inAmt).map((c) => callRow(it, c, { checkbox: true, actions: 'pending' }))}</div>
                 </div>
               ))}
             </div>
           ))}
 
+          {(cat === 'deferred' || cat === 'removed') && (shown(cat).length === 0
+            ? <EmptyState icon="📭" text={filtering ? 'אין שיחות בסינון' : cat === 'deferred' ? 'אין שיחות שנדחו' : 'לא הוסרו שיחות'} />
+            : (
+              <div className="divide-y divide-slate-100">
+                <p className="text-[11px] text-slate-500 pb-2">
+                  {cat === 'deferred'
+                    ? 'שיחות שנדחו לא נכנסות לחיוב ומופיעות כאן בכל יבוא (גם מחוץ לטווח התאריכים) עד שמחזירים אותן לחיוב.'
+                    : 'שיחות שהוסרו מהרשימה בטווח הזה. אפשר להחזיר אותן לרשימה.'}
+                </p>
+                {shown(cat).map((it) => (
+                  <div key={it.student.id} className="py-1">
+                    {nameCell(it)}
+                    <div className="ps-4">{it.calls.filter(inAmt).map((c) => callRow(it, c, { checkbox: false, actions: cat }))}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
           {cat === 'unmatched' && (model.unmatchedIds.size === 0
             ? <EmptyState icon="✅" text="כל הת״ז זוהו" />
             : <UnmatchedIdsTab {...props} embedded={embedded} />)}
 
-          {cat === 'already' && (model.out.already.length === 0 ? <EmptyState icon="📭" text="אין" /> : (
+          {cat === 'already' && (shown('already').length === 0 ? <EmptyState icon="📭" text="אין" /> : (
             <div className="divide-y divide-slate-100 opacity-80">
-              {model.out.already.map((it) => (
+              {shown('already').map((it) => (
                 <div key={it.student.id} className="py-1">
-                  <span><b>{it.student.last_name}</b> {it.student.first_name} <span className="text-xs text-slate-500">· {shiurLabel(it.student)}</span></span>
+                  {nameCell(it)}
                   <span className="text-xs text-slate-500 ms-2">{batches.find((b) => b.id === it.calls[0].batch_id)?.title || ''}</span>
-                  <div className="ps-4">{it.calls.map((c) => callRow(it, c, { checkbox: false }))}</div>
+                  <div className="ps-4">{it.calls.filter(inAmt).map((c) => callRow(it, c, { checkbox: false }))}</div>
                 </div>
               ))}
             </div>
