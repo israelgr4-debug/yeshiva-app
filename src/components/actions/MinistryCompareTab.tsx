@@ -155,48 +155,86 @@ function parseDatCsv(text: string): MinistryRow[] {
  *  col 0: מספר זהות, col 1: שם התלמיד (last first), col 3: שכבה, col 4: סטטוס,
  *  col 5: הצהרת מנהל, col 7: תקינות מצבת
  */
+/**
+ * Ministry of Education list. Accepts the ministry export AND the simple template
+ * (A ת"ז · B שם · C כיתה בחינוך): reads EVERY sheet, finds the header row anywhere in the
+ * first rows (title rows above the table are fine), and without a header falls back to A/B/C.
+ */
 async function parseChinuchXlsx(file: File): Promise<MinistryRow[]> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-  if (data.length < 2) return [];
-  const header = data[0].map((h) => String(h || '').trim());
-
-  // Find columns by Hebrew headers (robust to column order)
-  const findCol = (...names: string[]): number => {
-    for (const n of names) {
-      const i = header.findIndex((h) => h.includes(n));
-      if (i >= 0) return i;
-    }
-    return -1;
-  };
-  const idCol = findCol('מספר זהות', 'זהות');
-  const nameCol = findCol('שם התלמיד', 'שם');
-  const classCol = findCol('שכבה', 'כיתת');
-  const statusCol = findCol('סטטוס');
-  const declCol = findCol('הצהרת');
-  const validCol = findCol('תקינות');
-
   const rows: MinistryRow[] = [];
-  for (let i = 1; i < data.length; i++) {
-    const r = data[i];
-    if (!r || r.length === 0) continue;
-    const id = String(r[idCol] || '').trim();
-    const fullName = String(r[nameCol] || '').trim();
-    if (!id || !fullName) continue;
-    const { firstName, lastName } = splitHebrewName(fullName);
-    rows.push({
-      firstName,
-      lastName,
-      idNumber: id,
-      classroom: classCol >= 0 ? String(r[classCol] || '').trim() : '',
-      validity: validCol >= 0 ? String(r[validCol] || '').trim() : '',
-      declared: declCol >= 0 ? String(r[declCol] || '').trim() : '',
-      entitlement: statusCol >= 0 ? String(r[statusCol] || '').trim() : '',
-    });
+  const seen = new Set<string>();
+  const cell = (r: any[], i: number) => (i >= 0 ? String(r[i] ?? '').trim() : '');
+
+  for (const sheetName of wb.SheetNames) {
+    const data: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: false, defval: '' });
+    if (!data.length) continue;
+
+    // header row = first row (of the top 20) with an ID column title
+    let headerIdx = -1;
+    for (let i = 0; i < Math.min(20, data.length); i++) {
+      if ((data[i] || []).some((h) => /זהות|ת\.?["״']?ז/.test(String(h || '')))) { headerIdx = i; break; }
+    }
+    const header = headerIdx >= 0 ? data[headerIdx].map((h) => String(h || '').trim()) : [];
+    const findCol = (...patterns: RegExp[]): number => {
+      for (const p of patterns) {
+        const i = header.findIndex((h) => p.test(h));
+        if (i >= 0) return i;
+      }
+      return -1;
+    };
+    let idCol = 0, nameCol = 1, classCol = 2, firstCol = -1, lastCol = -1;
+    let statusCol = -1, declCol = -1, validCol = -1;
+    if (headerIdx >= 0) {
+      idCol = findCol(/מספר זהות/, /זהות/, /ת\.?["״']?ז/);
+      firstCol = findCol(/שם פרטי/);
+      lastCol = findCol(/שם משפחה/);
+      nameCol = findCol(/שם התלמיד/, /שם מלא/, /^שם$/, /^שם[^ ]/, /שם/);
+      classCol = findCol(/כית/, /שכבה/);
+      statusCol = findCol(/סטטוס/);
+      declCol = findCol(/הצהרת/);
+      validCol = findCol(/תקינות/);
+    }
+
+    for (let i = headerIdx + 1; i < data.length; i++) {
+      const r = data[i];
+      if (!r || r.length === 0) continue;
+      const id = cell(r, idCol);
+      if (!/\d{5,}/.test(id.replace(/\D/g, ''))) continue;   // not a student row (title / total / empty)
+      let firstName: string, lastName: string;
+      if (firstCol >= 0 || lastCol >= 0) {
+        firstName = cell(r, firstCol);
+        lastName = cell(r, lastCol);
+      } else ({ firstName, lastName } = splitHebrewName(cell(r, nameCol)));
+      const key = normalizeId(id);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({
+        firstName,
+        lastName,
+        idNumber: id,
+        classroom: cell(r, classCol),
+        validity: cell(r, validCol),
+        declared: cell(r, declCol),
+        entitlement: cell(r, statusCol),
+      });
+    }
   }
   return rows;
+}
+
+/** Empty template for the chinuch list: A ת"ז · B שם · C כיתה בחינוך. */
+function downloadChinuchTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([['ת"ז', 'שם (משפחה ופרטי)', 'כיתה בחינוך']]);
+  ws['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 14 }];
+  // ID column as text so leading zeros survive typing
+  for (let r = 1; r <= 400; r++) ws[XLSX.utils.encode_cell({ r, c: 0 })] = { t: 's', v: '', z: '@' };
+  ws['!ref'] = 'A1:C401';
+  const wb = XLSX.utils.book_new();
+  wb.Workbook = { Views: [{ RTL: true }] };
+  XLSX.utils.book_append_sheet(wb, ws, 'תלמידי חינוך');
+  XLSX.writeFile(wb, 'רשימת תלמידי חינוך - דוגמא.xlsx');
 }
 
 export function MinistryCompareTab() {
@@ -780,6 +818,14 @@ export function MinistryCompareTab() {
         )}
         <p className="text-xs text-gray-500 mb-2">
           {isDragging ? '🎯 שחרר כאן...' : `גרור לכאן קובץ ${ext} או השתמש בכפתור`}
+          {type === 'chinuch' && (
+            <>
+              {' · '}
+              <button type="button" className="text-blue-600 hover:underline" onClick={downloadChinuchTemplate}>
+                📥 הורד קובץ דוגמא (A ת״ז · B שם · C כיתה)
+              </button>
+            </>
+          )}
         </p>
         {canWrite ? (
           <div className="flex gap-2">
