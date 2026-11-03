@@ -237,11 +237,11 @@ export default function ReportsPage() {
                   reportType={certificate.reportType}
                   year={certificate.year}
                   extras={certificate.extras}
-                  // Print: the STAMP only (the signature is signed by hand on paper).
-                  // חינוך students get the digital chinuch letterhead; others leave space for the printed one.
+                  // Print, regular students: the STAMP only (signed by hand on the pre-printed letterhead).
+                  // חינוך students: the digital chinuch letterhead + the chinuch signature are printed on the page.
                   letterheadUrl={isChinuch && letterheadChinuchUrl ? letterheadChinuchUrl : null}
                   stampUrl={activeStampUrl || null}
-                  signatureUrl={null}
+                  signatureUrl={isChinuch && signatureChinuchUrl ? signatureChinuchUrl : null}
                   signLayout={signLayout}
                   reserveLetterheadSpace={!(isChinuch && letterheadChinuchUrl)}
                   isChinuch={isChinuch}
@@ -271,7 +271,11 @@ export default function ReportsPage() {
               )}
 
               <div className="text-xs mt-2 text-center no-print space-y-1">
-                {activeStampUrl ? (
+                {isChinuch ? (
+                  signatureChinuchUrl
+                    ? <p className="text-gray-500">ℹ️ תלמיד חינוך: חתימת חינוך {stampChinuchUrl ? '+ חותמת ' : ''}מודפסות על הדף וגם נשלחות במייל.</p>
+                    : <p className="text-amber-600">⚠️ תלמיד חינוך אבל לא הועלתה חתימת חינוך - העלה בהגדרות → דוא״ל ומסמכים</p>
+                ) : activeStampUrl ? (
                   <p className="text-gray-500">ℹ️ בהדפסה: חותמת בלבד (חותמים ביד). במייל: חותמת + חתימה.</p>
                 ) : (
                   <p className="text-amber-600">⚠️ לא הועלתה חותמת - העלה בהגדרות → דוא״ל ומסמכים</p>
