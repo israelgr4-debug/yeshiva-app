@@ -30,7 +30,22 @@ export interface DocPara {
   after?: number;       // twips
   indStart?: number;    // twips from the right edge (RTL start)
   indEnd?: number;      // twips from the left edge
+  anchors?: DocAnchor[]; // floating pictures anchored to this paragraph
 }
+
+/** An embedded picture (index into the `media` list passed to docxParts). */
+export interface DocMedia { data: Uint8Array; ext: 'png' | 'jpeg' }
+
+/** A floating picture, in EMU from the page's left edge / the page or paragraph top. */
+export interface DocAnchor {
+  media: number;
+  x: number; y: number; cx: number; cy: number;
+  fromV: 'page' | 'paragraph';
+  behind?: boolean;     // behind the text (letterhead)
+}
+
+export const EMU_MM = 36000;
+const EMU_TWIP = 635;
 
 export interface DocTable {
   rows: { cells: { paras: DocPara[]; header?: boolean }[] }[];
@@ -105,7 +120,25 @@ function paraXml(p: DocPara): string {
     ind +
     `<w:jc w:val="${JC[p.align || 'start']}"/>` +
     '<w:rPr><w:rtl/></w:rPr></w:pPr>';
-  return `<w:p>${pPr}${p.runs.map(runXml).join('')}</w:p>`;
+  return `<w:p>${pPr}${(p.anchors || []).map(anchorXml).join('')}${p.runs.map(runXml).join('')}</w:p>`;
+}
+
+let drawingId = 0;
+function anchorXml(a: DocAnchor): string {
+  const id = ++drawingId;
+  const ext = `cx="${Math.round(a.cx)}" cy="${Math.round(a.cy)}"`;
+  return '<w:r><w:drawing>' +
+    `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="${a.behind ? 1 : 10 + id}" behindDoc="${a.behind ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="1">` +
+    '<wp:simplePos x="0" y="0"/>' +
+    `<wp:positionH relativeFrom="page"><wp:posOffset>${Math.round(a.x)}</wp:posOffset></wp:positionH>` +
+    `<wp:positionV relativeFrom="${a.fromV}"><wp:posOffset>${Math.round(a.y)}</wp:posOffset></wp:positionV>` +
+    `<wp:extent ${ext}/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/>` +
+    `<wp:docPr id="${id}" name="Picture ${id}"/><wp:cNvGraphicFramePr/>` +
+    '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="Picture ${id}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="rIdImg${a.media}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext ${ext}/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>` +
+    '</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>';
 }
 
 function tableXml(t: DocTable): string {
@@ -325,7 +358,8 @@ export function htmlToBlocks(input: string, opts: { emphasize?: string[]; baseSz
 function documentXml(blocks: DocBlock[]): string {
   const body = blocks.map((b) => ('para' in b ? paraXml(b.para) : tableXml(b.table))).join('');
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"' +
+    ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">' +
     `<w:body>${body}` +
     `<w:sectPr><w:pgSz w:w="${PAGE.w}" w:h="${PAGE.h}" w:code="9"/>` +
     `<w:pgMar w:top="${PAGE.top}" w:right="${PAGE.right}" w:bottom="${PAGE.bottom}" w:left="${PAGE.left}" w:header="720" w:footer="720" w:gutter="0"/>` +
@@ -357,6 +391,8 @@ const CONTENT_TYPES_XML =
   '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
   '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
   '<Default Extension="xml" ContentType="application/xml"/>' +
+  '<Default Extension="png" ContentType="image/png"/>' +
+  '<Default Extension="jpeg" ContentType="image/jpeg"/>' +
   '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
   '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
   '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' +
@@ -368,23 +404,26 @@ const RELS_XML =
   '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
   '</Relationships>';
 
-const DOC_RELS_XML =
+const docRelsXml = (media: DocMedia[]) =>
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
   '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
   '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' +
+  media.map((m, i) => `<Relationship Id="rIdImg${i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${i}.${m.ext}"/>`).join('') +
   '</Relationships>';
 
-/** All package parts (path → XML) for the given blocks. */
-export function docxParts(blocks: DocBlock[]): Record<string, string> {
-  return {
+/** All package parts (path → XML, or bytes for pictures) for the given blocks. */
+export function docxParts(blocks: DocBlock[], media: DocMedia[] = []): Record<string, string | Uint8Array> {
+  const parts: Record<string, string | Uint8Array> = {
     '[Content_Types].xml': CONTENT_TYPES_XML,
     '_rels/.rels': RELS_XML,
     'word/document.xml': documentXml(blocks),
-    'word/_rels/document.xml.rels': DOC_RELS_XML,
+    'word/_rels/document.xml.rels': docRelsXml(media),
     'word/styles.xml': STYLES_XML,
     'word/settings.xml': SETTINGS_XML,
   };
+  media.forEach((m, i) => { parts[`word/media/image${i}.${m.ext}`] = m.data; });
+  return parts;
 }
 
 // ---------------------------------------------------------------- certificate / receipt layouts
@@ -398,6 +437,12 @@ export interface CertificateModel {
   signerHtml?: string | null; // rendered signer block (HTML) — or use signerLines
   signerLines?: string[];
   emphasize?: string[];
+  /** pictures printed on the page (chinuch: digital letterhead + signature + stamp), sizes in mm */
+  images?: {
+    letterhead?: { media: number };
+    /** x = centre offset from the page centre, y = below the top of the signer block (as SignLayout) */
+    signer?: { media: number; x: number; y: number; w: number; h: number }[];
+  };
   /** header layout (default = the original Word certificates) */
   header?: {
     showBsd: boolean; bsdAlign: 'right' | 'center' | 'left'; datesAlign: 'right' | 'center' | 'left'; datesLayout: 'stacked' | 'inline';
@@ -418,6 +463,7 @@ export function certificateBlocks(m: CertificateModel): DocBlock[] {
   const h = m.header || { showBsd: true, bsdAlign: 'right', datesAlign: 'left', datesLayout: 'stacked' };
   let gap = 3795; // letterhead space before the first header line
   const take = () => { const g = gap; gap = 120; return g; };
+  const first = blocks.length;
   if (h.showBsd) P({ before: take(), align: H2A(h.bsdAlign), indStart: h.bsdAlign === 'right' ? 340 : 0, runs: [{ text: 'בס"ד', color: BLACK }] });
   const dates = [m.hebrewDate, m.gregorianDate].filter(Boolean);
   if (h.datesLayout === 'inline' && dates.length) {
@@ -430,6 +476,14 @@ export function certificateBlocks(m: CertificateModel): DocBlock[] {
     before: gap === 3795 ? gap : 782, align: 'center',
     runs: [{ text: m.title || 'אישור', b: h.titleBold !== false, u: h.titleUnderline !== false, sz: Math.round((h.titleSize || 16) * 2) }],
   });
+  // digital letterhead — as in the print preview: from 20mm below the top, full width, to the bottom
+  const fb = blocks[first];
+  if (m.images?.letterhead && fb && 'para' in fb) {
+    fb.para.anchors = [{
+      media: m.images.letterhead.media, behind: true, fromV: 'page',
+      x: 0, y: 20 * EMU_MM, cx: PAGE.w * EMU_TWIP, cy: PAGE.h * EMU_TWIP - 20 * EMU_MM,
+    }];
+  }
   if (m.recipient?.trim()) {
     const rb = htmlToBlocks(m.recipient, { lineBefore: 0 });
     rb.forEach((b, i) => {
@@ -466,6 +520,16 @@ export function certificateBlocks(m: CertificateModel): DocBlock[] {
     }
     blocks.push(b);
   });
+  // signature / stamp: centred at page centre + x, y below the top of the signer block
+  const sb = signerBlocks.find((b): b is { para: DocPara } => 'para' in b);
+  if (sb && m.images?.signer?.length) {
+    sb.para.anchors = m.images.signer.map((im) => ({
+      media: im.media, fromV: 'paragraph' as const,
+      x: (PAGE.w * EMU_TWIP) / 2 + (im.x - im.w / 2) * EMU_MM,
+      y: (sb.para.before || 0) * EMU_TWIP + im.y * EMU_MM,
+      cx: im.w * EMU_MM, cy: im.h * EMU_MM,
+    }));
+  }
   return blocks;
 }
 

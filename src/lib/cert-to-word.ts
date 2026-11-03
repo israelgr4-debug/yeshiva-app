@@ -10,15 +10,58 @@ import { Student } from './types';
 import { ReportType, SignerInfo, DEFAULT_SIGNER } from './certificates';
 import { toHebrewDate } from './utils';
 import { renderTemplateBody, formatCertDate } from '@/hooks/useCertificateTemplates';
-import { certificateBlocks, receiptBlocks, docxParts, DocBlock } from './cert-docx';
-import { headerConfigOf, certDates } from './cert-layout';
+import { certificateBlocks, receiptBlocks, docxParts, DocBlock, DocMedia, CertificateModel } from './cert-docx';
+import { headerConfigOf, certDates, SignLayout, DEFAULT_SIGN_LAYOUT } from './cert-layout';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-async function zipBlocks(blocks: DocBlock[]): Promise<Blob> {
+async function zipBlocks(blocks: DocBlock[], media: DocMedia[] = []): Promise<Blob> {
   const zip = new JSZip();
-  for (const [path, xml] of Object.entries(docxParts(blocks))) zip.file(path, xml);
+  for (const [path, data] of Object.entries(docxParts(blocks, media))) zip.file(path, data);
   return zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME });
+}
+
+/** Pictures printed on the page — chinuch students get them in Word exactly as in print. */
+export interface CertWordImages {
+  letterheadUrl?: string | null;
+  signatureUrl?: string | null;
+  stampUrl?: string | null;
+  layout?: SignLayout;
+}
+
+/** Fetch an image as PNG/JPEG bytes + its aspect ratio (other formats are re-encoded as PNG). */
+async function loadImage(url: string): Promise<{ media: DocMedia; ratio: number }> {
+  const blob = await (await fetch(url)).blob();
+  const bmp = await createImageBitmap(blob);
+  const ratio = bmp.width / bmp.height || 1;
+  let data = new Uint8Array(await blob.arrayBuffer());
+  let ext: DocMedia['ext'] | null = data[0] === 0x89 && data[1] === 0x50 ? 'png' : data[0] === 0xff && data[1] === 0xd8 ? 'jpeg' : null;
+  if (!ext) {
+    const c = document.createElement('canvas');
+    c.width = bmp.width; c.height = bmp.height;
+    c.getContext('2d')!.drawImage(bmp, 0, 0);
+    const png = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('image'))), 'image/png'));
+    data = new Uint8Array(await png.arrayBuffer());
+    ext = 'png';
+  }
+  bmp.close();
+  return { media: { data, ext }, ratio };
+}
+
+async function loadCertImages(img: CertWordImages | undefined): Promise<{ media: DocMedia[]; images: CertificateModel['images'] }> {
+  const media: DocMedia[] = [];
+  const images: NonNullable<CertificateModel['images']> = {};
+  if (!img) return { media, images };
+  const layout = img.layout || DEFAULT_SIGN_LAYOUT;
+  const add = async (url: string) => { const r = await loadImage(url); media.push(r.media); return { i: media.length - 1, ratio: r.ratio }; };
+  if (img.letterheadUrl) images.letterhead = { media: (await add(img.letterheadUrl)).i };
+  // stamp first, signature on top of it (as in the print preview)
+  for (const [url, pos] of [[img.stampUrl, layout.stamp], [img.signatureUrl, layout.signature]] as const) {
+    if (!url) continue;
+    const r = await add(url);
+    (images.signer ||= []).push({ media: r.i, x: pos.x, y: pos.y, h: pos.h, w: pos.h * r.ratio });
+  }
+  return { media, images };
 }
 
 /** Title from the template header (<h1>…</h1>), default "אישור". */
@@ -50,6 +93,7 @@ export async function buildCertificateDocx(
   extras: Record<string, string>,
   signer: SignerInfo = reportType.signer || DEFAULT_SIGNER,
   isChinuch = false,
+  pictures?: CertWordImages,
 ): Promise<Blob> {
   const now = new Date();
 
@@ -74,7 +118,9 @@ export async function buildCertificateDocx(
 
   const hcfg = reportType.headerConfig || headerConfigOf(null, reportType.headerHtml);
   const dates = certDates(hcfg, now);
+  const { media, images } = await loadCertImages(pictures);
   const blocks = certificateBlocks({
+    images,
     hebrewDate: dates.hebrew,
     gregorianDate: dates.gregorian,
     title: hcfg.title || titleFromHeader(reportType.headerHtml),
@@ -88,7 +134,7 @@ export async function buildCertificateDocx(
     signerLines,
     emphasize: emphasisFor(student, year, extras),
   });
-  return zipBlocks(blocks);
+  return zipBlocks(blocks, media);
 }
 
 export async function exportCertificateToWord(
@@ -98,8 +144,9 @@ export async function exportCertificateToWord(
   extras: Record<string, string>,
   signer: SignerInfo = reportType.signer || DEFAULT_SIGNER,
   isChinuch = false,
+  pictures?: CertWordImages,
 ): Promise<void> {
-  const blob = await buildCertificateDocx(student, reportType, year, extras, signer, isChinuch);
+  const blob = await buildCertificateDocx(student, reportType, year, extras, signer, isChinuch, pictures);
   const who = reportType.isReceipt ? (extras.donorName || 'תורם') : `${student.last_name || ''}_${student.first_name || ''}`;
   saveAs(blob, `${reportType.name}_${who}.docx`.replace(/[\\/:*?"<>|]/g, ''));
 }

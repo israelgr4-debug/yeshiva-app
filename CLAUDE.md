@@ -329,6 +329,10 @@ The Sidebar hides `/settings` from non-admins.
    `SignerBlock` and cert-docx). Stamp (`stamp_url`, `stamp_chinuch_url`) is separate from
    the signature: print = stamp only, email = stamp + signature; positions in mm in setting
    `cert_sign_layout`, dragged on the editor page.
+   **חינוך students** (B&W digital letterhead): print AND Word carry `letterhead_chinuch_url` +
+   chinuch signature + stamp (Word: floating pictures via `CertificateModel.images` /
+   `CertWordImages`, letterhead behind text from 20mm down). Regular students: print = stamp
+   only, Word = no pictures (they print on the pre-printed letterhead).
 
 ## Design system rules
 

@@ -165,7 +165,15 @@ export default function ReportsPage() {
         certificate.year,
         certificate.extras,
         signerForExport,
-        isChinuch
+        isChinuch,
+        // חינוך: black-and-white digital letterhead + chinuch signature/stamp, same as the print;
+        // regular students print on the pre-printed letterhead → no pictures in Word
+        isChinuch ? {
+          letterheadUrl: letterheadChinuchUrl || null,
+          signatureUrl: signatureChinuchUrl || null,
+          stampUrl: activeStampUrl || null,
+          layout: signLayout,
+        } : undefined,
       );
     } catch (err) {
       alert('שגיאה ביצירת קובץ Word: ' + (err instanceof Error ? err.message : err));
