@@ -834,6 +834,10 @@ export function MinistryCompareTab() {
             </div>
           )}
 
+          {canWrite && chinuchData && students && (
+            <ChinuchSyncPanel rows={chinuchData.rows} students={students} fileName={chinuchData.fileName} onDone={loadStudents} />
+          )}
+
           {/* View selector */}
           <div className="flex gap-1 md:gap-2 border-b border-gray-200 mb-4 overflow-x-auto whitespace-nowrap">
             {(['dat', 'chinuch', 'combined'] as const).map((v) => {
@@ -916,6 +920,130 @@ export function MinistryCompareTab() {
 }
 
 /* -------- Comparison display component -------- */
+// ---------- "סמן חינוך לפי הקובץ": the Ministry of Education file is the source of truth ----------
+
+const SYNC_UNMARK_STATUSES = new Set(['active', 'chizuk']);
+const nameKey = (s: string) => s.replace(/[״”“"׳’'`]/g, '').replace(/\s+/g, ' ').trim();
+
+interface ChinuchSyncPlan {
+  mark: { s: Student; byName: boolean }[];   // in the file, not flagged yet
+  unmark: Student[];                         // flagged, active/chizuk, not in the file
+  already: number;                           // in the file and already flagged
+  notFound: MinistryRow[];                   // file rows with no student
+}
+
+function planChinuchSync(rows: MinistryRow[], students: Student[]): ChinuchSyncPlan {
+  const byId = new Map<string, Student>();
+  const byName = new Map<string, Student | null>();   // null = ambiguous name
+  for (const s of students) {
+    for (const v of [s.id_number, s.passport_number, (s as any).govt_id_number]) {
+      const k = normalizeId(v);
+      if (k) byId.set(k, s);
+    }
+    for (const k of [nameKey(`${s.last_name || ''} ${s.first_name || ''}`), nameKey(`${s.first_name || ''} ${s.last_name || ''}`)]) {
+      if (!k) continue;
+      byName.set(k, byName.has(k) && byName.get(k)?.id !== s.id ? null : s);
+    }
+  }
+  const inFile = new Map<string, { s: Student; byName: boolean }>();
+  const notFound: MinistryRow[] = [];
+  for (const r of rows) {
+    const idHit = byId.get(normalizeId(r.idNumber));
+    if (idHit) { inFile.set(idHit.id, { s: idHit, byName: false }); continue; }
+    // fallback: a unique exact name (passport students whose id differs)
+    const nameHit = byName.get(nameKey(`${r.lastName} ${r.firstName}`));
+    if (nameHit && !inFile.has(nameHit.id)) inFile.set(nameHit.id, { s: nameHit, byName: true });
+    else if (!nameHit) notFound.push(r);
+  }
+  const mark = [...inFile.values()].filter((x) => !x.s.is_chinuch);
+  const already = inFile.size - mark.length;
+  const unmark = students.filter((s) => s.is_chinuch && !inFile.has(s.id) && SYNC_UNMARK_STATUSES.has(s.status));
+  const byShiur = (a: Student, b: Student) => shiurRank(a.shiur || undefined) - shiurRank(b.shiur || undefined)
+    || (a.last_name || '').localeCompare(b.last_name || '', 'he');
+  mark.sort((a, b) => byShiur(a.s, b.s));
+  unmark.sort(byShiur);
+  return { mark, unmark, already, notFound };
+}
+
+function ChinuchSyncPanel({ rows, students, fileName, onDone }: {
+  rows: MinistryRow[]; students: Student[]; fileName: string; onDone: () => Promise<void>;
+}) {
+  const plan = useMemo(() => planChinuchSync(rows, students), [rows, students]);
+  const [withNames, setWithNames] = useState(true);
+  const [show, setShow] = useState<'mark' | 'unmark' | 'notFound' | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const toMark = plan.mark.filter((x) => withNames || !x.byName).map((x) => x.s.id);
+  const nameOnly = plan.mark.filter((x) => x.byName).length;
+  const changes = toMark.length + plan.unmark.length;
+
+  const apply = async () => {
+    if (!confirm(`לעדכן את סימון החינוך לפי "${fileName}"?\n` +
+      `✅ יסומנו כחינוך: ${toMark.length}\n❌ יוסר סימון חינוך: ${plan.unmark.length}`)) return;
+    setBusy(true);
+    try {
+      for (const [ids, val] of [[toMark, true], [plan.unmark.map((s) => s.id), false]] as const) {
+        for (let i = 0; i < ids.length; i += 200) {
+          const { error } = await supabase.from('students').update({ is_chinuch: val }).in('id', ids.slice(i, i + 200));
+          if (error) throw error;
+        }
+      }
+      await onDone();
+      alert(`✓ עודכן: ${toMark.length} סומנו כחינוך · ${plan.unmark.length} הוסר מהם הסימון`);
+      setShow(null);
+    } catch (e: any) { alert('שגיאה בעדכון: ' + e.message); }
+    setBusy(false);
+  };
+
+  const list = (items: { name: string; extra: string }[]) => (
+    <div className="mt-2 max-h-72 overflow-y-auto bg-white border border-purple-100 rounded divide-y divide-gray-100 text-sm">
+      {items.map((x, i) => (
+        <div key={i} className="px-3 py-1 flex justify-between gap-2"><span>{x.name}</span><span className="text-xs text-gray-500">{x.extra}</span></div>
+      ))}
+    </div>
+  );
+  const stLabel = (s: Student) => [s.shiur, ({ chizuk: 'חיזוק', inactive: 'לא פעיל', graduated: 'סיים' } as any)[s.status]].filter(Boolean).join(' · ');
+  const tab = (k: 'mark' | 'unmark' | 'notFound', label: string, n: number, tone: string) => (
+    <button type="button" disabled={!n} onClick={() => setShow(show === k ? null : k)}
+      className={`px-3 py-1.5 rounded text-sm border ${show === k ? 'bg-purple-600 text-white border-purple-600' : `bg-white ${tone} border-gray-200`} disabled:opacity-50`}>
+      {label} <b>{n}</b>
+    </button>
+  );
+
+  return (
+    <div className="border border-purple-200 bg-purple-50/60 rounded-lg p-4 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <h4 className="font-semibold text-purple-900">📘 סימון חינוך לפי קובץ משרד החינוך</h4>
+        <span className="text-xs text-gray-500">({fileName} · {rows.length} רשומות · {plan.already} כבר מסומנים)</span>
+      </div>
+      <p className="text-xs text-gray-600 mb-3">
+        כל מי שבקובץ יסומן &quot;חינוך&quot;, ומתלמידים פעילים / חיזוק שמסומנים חינוך ואינם בקובץ יוסר הסימון.
+        תלמידים שעזבו או סיימו לא משתנים (הסימון שלהם נדרש לאישורים על התקופה שלמדו).
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {tab('mark', '✅ יסומנו כחינוך', toMark.length, 'text-green-800')}
+        {tab('unmark', '❌ יוסר הסימון', plan.unmark.length, 'text-red-800')}
+        {tab('notFound', '🔍 בקובץ ולא נמצאו אצלנו', plan.notFound.length, 'text-amber-800')}
+        {nameOnly > 0 && (
+          <label className="flex items-center gap-1 text-xs text-gray-700">
+            <input type="checkbox" checked={withNames} onChange={(e) => setWithNames(e.target.checked)} />
+            כולל {nameOnly} שזוהו לפי שם בלבד (ת״ז שונה)
+          </label>
+        )}
+        <div className="flex-1" />
+        <Button onClick={apply} disabled={busy || changes === 0}>
+          {busy ? 'מעדכן…' : changes === 0 ? '✓ הסימון כבר תואם לקובץ' : `🔄 עדכן סימון חינוך (${changes})`}
+        </Button>
+      </div>
+      {show === 'mark' && list(plan.mark.filter((x) => withNames || !x.byName).map(({ s, byName }) => ({
+        name: `${s.last_name || ''} ${s.first_name || ''}`, extra: [stLabel(s), byName ? 'זוהה לפי שם' : ''].filter(Boolean).join(' · '),
+      })))}
+      {show === 'unmark' && list(plan.unmark.map((s) => ({ name: `${s.last_name || ''} ${s.first_name || ''}`, extra: stLabel(s) })))}
+      {show === 'notFound' && list(plan.notFound.map((r) => ({ name: `${r.lastName} ${r.firstName}`, extra: `ת״ז ${r.idNumber}${r.classroom ? ` · ${r.classroom}` : ''}` })))}
+    </div>
+  );
+}
+
 function ComparisonView({
   title,
   stats,
