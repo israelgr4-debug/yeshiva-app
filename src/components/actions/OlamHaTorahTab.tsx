@@ -27,6 +27,17 @@ function normalizeId(id: string | null | undefined): string {
   return String(id).replace(/\D/g, '').replace(/^0+/, '');
 }
 
+/** Keys to match a passport / foreign id: letters+digits as typed, and digits only (≥6). */
+function altIdKeys(id: string | null | undefined): string[] {
+  if (!id) return [];
+  const out: string[] = [];
+  const alnum = String(id).toUpperCase().replace(/[^0-9A-Z]/g, '').replace(/^0+/, '');
+  if (alnum) out.push('A:' + alnum);
+  const digits = normalizeId(id);
+  if (digits.length >= 6) out.push('D:' + digits);
+  return out;
+}
+
 /** Parse address "רחוב 12" -> { street: "רחוב", house: "12" } */
 function splitAddress(addr: string | null | undefined): { street: string; house: string } {
   if (!addr) return { street: '', house: '' };
@@ -159,21 +170,40 @@ export function OlamHaTorahTab() {
       studentId: string;
     }> = [];
 
-    // Secondary lookup just so we can report which DAT entries belong to passport-holders
+    // Secondary lookup by EVERY id a student has (id_number / passport_number / govt_id_number),
+    // letters kept (passports like AAG613459) and also digits-only — passport students often
+    // have the passport in id_number, or a govt id the ministry uses instead.
     const passportLookup = new Map<string, Student>();
     for (const s of students) {
+      for (const v of [s.id_number, s.passport_number, (s as any).govt_id_number]) {
+        for (const k of altIdKeys(v)) if (!passportLookup.has(k)) passportLookup.set(k, s);
+      }
+    }
+
+    // last resort for passport-holders: a unique exact name (the ministry may use a number
+    // we don't have stored at all)
+    const nk = (a?: string | null, b?: string | null) => `${a || ''} ${b || ''}`.replace(/[״"׳']/g, '').replace(/\s+/g, ' ').trim();
+    const passportByName = new Map<string, Student | null>();
+    for (const s of students) {
       if (String(s.id_type || '') !== '1') continue;
-      const k = normalizeId(s.passport_number) || normalizeId((s as any).govt_id_number);
-      if (k) passportLookup.set(k, s);
+      for (const key of [nk(s.last_name, s.first_name), nk(s.first_name, s.last_name)]) {
+        if (key) passportByName.set(key, passportByName.has(key) && passportByName.get(key)?.id !== s.id ? null : s);
+      }
     }
 
     for (const m of datData.rows) {
       const k = normalizeId(m.idNumber);
-      if (!k) continue;
-      const s = studentByMinistryId.get(k);
+      if (!k && !altIdKeys(m.idNumber).length) continue;
+      let s = k ? studentByMinistryId.get(k) : undefined;
+      if (!s) {
+        const alt = altIdKeys(m.idNumber).map((x) => passportLookup.get(x)).find(Boolean);
+        // an Israeli-ID student found through another id → a normal row
+        if (alt && String(alt.id_type || '') !== '1') s = alt;
+      }
       if (!s) {
         // Check if this DAT row corresponds to a passport-holder we're skipping on purpose
-        const ps = passportLookup.get(k);
+        const ps = altIdKeys(m.idNumber).map((x) => passportLookup.get(x)).find(Boolean)
+          || passportByName.get(nk(m.lastName, m.firstName)) || undefined;
         if (ps) {
           skippedPassport.push({
             idNumber: m.idNumber,
