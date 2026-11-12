@@ -311,6 +311,19 @@ The Sidebar hides `/settings` from non-admins.
    calls (never batches); filtered to active ימות types' extensions (file has old tests
    from שלוחה 1). Daily via cron-sync when `yemot_auto_enabled`. Settings card
    `YemotSettings` (path, auto, connection test).
+   **Workflow layout (2026-11-12)**: the page nav follows the work order — סקירה · ① קליטת
+   זכאויות (sub-tabs: ימות / ת"ז לא מזוהות / הקלטות / חיובים·הזנה ידנית / חד פעמיים) → ② הפקה
+   לתשלום (`report`) → ③ סימון תשלום (`payment`) · דוחות (`analysis`) · סוגי מלגות · מדריך
+   (`guide`). Tab ids are still the `?tab=` param. `components/scholarships/workflow.ts`
+   (`loadWorkflowStatus`) = what is waiting per step (pending calls, unmatched IDs, open
+   entries not in any run, runs with unpaid checks) → nav badges + the overview board.
+   `AnalysisTab` = read-only pivots (rows: type/shiur/month/batch/student × optional columns,
+   by charge date or payment date, Excel with detail sheet, print); saves nothing. Entries
+   closed by a 'transfer' payment are excluded there (the money is on the one-time item).
+   `ReportTab` guards: "already in an earlier unpaid run" (double check) and "open entries
+   before the date range"; date range is optional. `MarkPaymentTab`: run list shows what is
+   left, defaults to the newest unfinished run, "הדפס שוב" reprints the saved run.
+   `GuideTab` = the printable client guide — keep it in sync when the flow changes.
 
 23. **Certificates → Word** (`lib/cert-docx.ts` + `lib/cert-to-word.ts`): native RTL
    .docx built with jszip that reproduces the original Word certificates in

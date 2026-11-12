@@ -19,7 +19,8 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
   const [mode, setMode] = useState<'types' | 'batches'>('types');
   const [selTypes, setSelTypes] = useState<Set<string>>(new Set());
   const [selBatches, setSelBatches] = useState<Set<string>>(new Set());
-  const [from, setFrom] = useState(monthStart());
+  const [fromState, setFrom] = useState(monthStart());
+  const from = fromState;
   const [to, setTo] = useState(todayIso());
   const [onlyUnpaid, setOnlyUnpaid] = useState(true);
   const [shiurSel, setShiurSel] = useState<Set<string>>(new Set());
@@ -35,6 +36,10 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
   const [rangeLabel, setRangeLabel] = useState('');
   const [savedRun, setSavedRun] = useState<string | null>(null);
   const savingRun = useRef(false);   // guards a quick double click
+  // students whose open entitlements already sit in an earlier run (a second check would be printed)
+  const [prevRun, setPrevRun] = useState<Map<string, string>>(new Map());
+  // open entitlements dated before the chosen range (easy to forget: deferred / late ones)
+  const [older, setOlder] = useState<{ students: number; total: number } | null>(null);
   const [autoGen, setAutoGen] = useState(false);
 
   useEffect(() => {
@@ -45,7 +50,7 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
         setBatches(b);
         if (params.type && t.some((x) => x.id === params.type)) {
           setSelTypes(new Set([params.type]));
-          if (params.all) setFrom('2000-01-01');
+          if (params.all) setFrom('');
           setAutoGen(true);
         } else {
           // one-time payments have their own tab — not part of the regular default selection
@@ -80,17 +85,18 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
     return <SectionCard><EmptyState icon="🔒" text="אין הרשאה להפקת דוחות" /></SectionCard>;
   }
 
-  const generate = async () => {
+  const generate = async (fromOverride?: string) => {
+    const from = fromOverride ?? fromState;
     if (mode === 'types') {
       if (selTypes.size === 0) { alert('בחר לפחות רכיב אחד'); return; }
-      if (!from || !to) { alert('בבחירה לפי רכיב חובה לבחור טווח תאריכים'); return; }
     } else if (selBatches.size === 0) { alert('בחר לפחות חיוב תקופתי אחד'); return; }
 
     setBusy(true);
     setSavedRun(null);
+    setOlder(null);
     try {
       const filters: ScholarshipRunFilters = mode === 'types'
-        ? { type_ids: [...selTypes], date_from: from, date_to: to, only_unpaid: onlyUnpaid }
+        ? { type_ids: [...selTypes], date_from: from || null, date_to: to || null, only_unpaid: onlyUnpaid }
         : { batch_ids: [...selBatches], only_unpaid: onlyUnpaid };
       if (shiurSel.size) filters.shiurim = [...shiurSel];
       if (instSel.size) filters.institutions = [...instSel];
@@ -108,8 +114,31 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
       }
       const kept = entries.filter((e) => keep.has(e.student_id));
 
+      // guard 1: open entitlements that an earlier run already holds
+      const runs = await sch.listRuns(40);
+      const runOf = new Map<string, string>();
+      for (const r of runs) for (const id of r.entry_ids || []) if (!runOf.has(id)) runOf.set(id, r.title);
+      const prev = new Map<string, string>();
+      for (const e of kept) if (!e.payment_id && runOf.has(e.id) && !prev.has(e.student_id)) prev.set(e.student_id, runOf.get(e.id)!);
+      setPrevRun(prev);
+
+      // guard 2: open entitlements from before the range
+      if (mode === 'types' && from && onlyUnpaid) {
+        const day = new Date(from + 'T00:00:00');
+        day.setDate(day.getDate() - 1);
+        const before = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+        const old = await sch.fetchEntries({ typeIds: filters.type_ids, dateTo: before, onlyUnpaid: true });
+        if (old.length) {
+          const oldStuds = await fetchStudentsLite({ ids: Array.from(new Set(old.map((e) => e.student_id))) });
+          const ok = new Set(oldStuds.filter((s) => matchesShiurSelection(s, shiurSel)
+            && (!instSel.size || (s.institution_name && instSel.has(s.institution_name)))).map((s) => s.id));
+          const rel = old.filter((e) => ok.has(e.student_id));
+          if (rel.length) setOlder({ students: new Set(rel.map((e) => e.student_id)).size, total: rel.reduce((a, e) => a + Number(e.amount), 0) });
+        }
+      }
+
       let range = '';
-      if (mode === 'types' && from !== '2000-01-01') range = `${dmy(from)} – ${dmy(to)}`;
+      if (mode === 'types' && from && to) range = `${dmy(from)} – ${dmy(to)}`;
       else if (kept.length) {
         const ds = kept.map((e) => e.entry_date).sort();
         range = ds[0] === ds[ds.length - 1] ? dmy(ds[0]) : `${dmy(ds[0])} – ${dmy(ds[ds.length - 1])}`;
@@ -154,11 +183,14 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
   const landscape = (report?.columns.length || 0) > 3;
   const chip = (on: boolean) => `px-3 py-1 rounded-full text-sm border ${on ? 'bg-orange-600 text-white border-orange-600' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`;
   const input = 'px-2 py-1.5 border border-slate-300 rounded-lg text-sm';
+  const preset = (on: boolean) => `px-2 py-0.5 rounded-lg text-xs border ${on ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`;
 
   return (
     <div className="space-y-4">
-      <SectionCard title="דוח מלגות להדפסה" className="no-print">
+      <SectionCard title="הפקה לתשלום — דוח צ׳קים להדפסה" className="no-print"
+        actions={<button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => nav('analysis')}>רק לראות נתונים ופילוחים? לדוחות ←</button>}>
         <div className="space-y-3">
+          <p className="text-xs text-slate-500">בוחרים מה לשלם → בודקים בסיכום → &quot;הדפס ושמור הפקה&quot;. ההפקה נשמרת, ואחרי חלוקת הצ׳קים מסמנים אותה כשולמה בשלב 3.</p>
           <div className="flex gap-2">
             <button type="button" className={chip(mode === 'types')} onClick={() => setMode('types')}>לפי רכיבים + טווח תאריכים</button>
             <button type="button" className={chip(mode === 'batches')} onClick={() => setMode('batches')}>לפי חיובים תקופתיים</button>
@@ -173,12 +205,16 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
                   </button>
                 ))}
               </div>
-              <label className="text-xs text-slate-600 flex flex-col">מתאריך
+              <label className="text-xs text-slate-600 flex flex-col">מתאריך חיוב
                 <input type="date" className={input} value={from} onChange={(e) => setFrom(e.target.value)} />
               </label>
               <label className="text-xs text-slate-600 flex flex-col">עד תאריך
                 <input type="date" className={input} value={to} onChange={(e) => setTo(e.target.value)} />
               </label>
+              <div className="flex gap-1 pb-1">
+                <button type="button" className={preset(!from)} title="כל הזכאויות, בלי הגבלת תאריך התחלה" onClick={() => { setFrom(''); setTo(todayIso()); }}>הכל עד היום</button>
+                <button type="button" className={preset(from === monthStart())} onClick={() => { setFrom(monthStart()); setTo(todayIso()); }}>החודש</button>
+              </div>
             </div>
           ) : (
             <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
@@ -207,7 +243,7 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={onlyUnpaid} onChange={(e) => setOnlyUnpaid(e.target.checked)} /> רק לא שולם
             </label>
-            <Button onClick={generate} disabled={busy}>{busy ? 'מפיק…' : '📄 הפק דוח'}</Button>
+            <Button onClick={() => generate()} disabled={busy}>{busy ? 'טוען…' : '📄 הצג לבדיקה'}</Button>
           </div>
         </div>
       </SectionCard>
@@ -224,8 +260,15 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
             <span className="text-xs text-slate-500"><b className="text-slate-800">{report.studentCount} צ׳קים להדפסה</b> · {ils(report.total)} · {landscape ? 'A4 לרוחב' : 'A4 לאורך'}</span>
           </div>
 
+          {older && (
+            <div className="no-print flex flex-wrap items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-2 text-sm">
+              <span>💡 יש עוד <b>{older.students}</b> תלמידים עם זכאויות פתוחות מלפני {dmy(from)} (<b>{ils(older.total)}</b>) שלא נכנסו לדוח הזה.</span>
+              <button type="button" className="font-semibold underline" onClick={() => { setFrom(''); generate(''); }}>כלול גם אותן</button>
+            </div>
+          )}
+
           {fullReport && pool && fullReport.studentCount > 0 && (
-            <ReviewPanel full={fullReport} deferred={deferred} setDeferred={setDeferred}
+            <ReviewPanel full={fullReport} deferred={deferred} setDeferred={setDeferred} prevRun={prevRun}
               canDelete={perms.canWrite}
               onDeleteEntries={async (ids) => {
                 const n = await sch.deleteEntries(ids);
@@ -251,8 +294,9 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
 // a range). Checked = goes into this run (check to print). Deferred = left out of this run
 // only — the entitlement stays an open debt and comes back in the next report. Delete =
 // removes the (unpaid) entitlements themselves.
-function ReviewPanel({ full, deferred, setDeferred, canDelete, onDeleteEntries }: {
+function ReviewPanel({ full, deferred, setDeferred, prevRun, canDelete, onDeleteEntries }: {
   full: ScholarshipReport;
+  prevRun: Map<string, string>;
   deferred: Set<string>;
   setDeferred: React.Dispatch<React.SetStateAction<Set<string>>>;
   canDelete: boolean;
@@ -301,6 +345,9 @@ function ReviewPanel({ full, deferred, setDeferred, canDelete, onDeleteEntries }
     setBusy(false);
   };
 
+  // already in an earlier, still unpaid run and not deferred here → a second check would be printed
+  const dup = rows.filter(({ row }) => prevRun.has(row.student.id) && !deferred.has(row.student.id)).map(({ row }) => row.student.id);
+
   const act = 'text-xs px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 disabled:opacity-50';
   const chip = (on: boolean) => `px-2.5 py-0.5 rounded-full text-xs border ${on ? 'bg-orange-600 text-white border-orange-600' : 'bg-white border-slate-300 text-slate-700'}`;
   const numIn = 'w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm';
@@ -308,6 +355,12 @@ function ReviewPanel({ full, deferred, setDeferred, canDelete, onDeleteEntries }
   return (
     <SectionCard className="no-print" title={`סיכום לפני הפקה · ${full.studentCount - deferred.size} בהפקה${deferred.size ? ` · ${deferred.size} נדחו (${ils(deferredTotal)})` : ''}`}
       actions={<button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => setOpen(!open)}>{open ? 'הסתר' : 'הצג'}</button>}>
+      {dup.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 bg-red-50 border border-red-200 text-red-900 rounded-xl px-3 py-2 text-sm">
+          <span>⚠️ <b>{dup.length}</b> תלמידים כבר נמצאים בהפקה קודמת שעוד לא סומנה כשולמה — הדפסה שוב תוציא להם צ׳ק כפול.</span>
+          <button type="button" className="font-semibold underline" onClick={() => setMany(dup, true)}>דחה אותם מההפקה הזו</button>
+        </div>
+      )}
       {open && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2 text-sm bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
@@ -344,6 +397,7 @@ function ReviewPanel({ full, deferred, setDeferred, canDelete, onDeleteEntries }
                     <input type="checkbox" title="בהפקה / להעברה לתשלום" checked={!out} onChange={() => setMany([row.student.id], !out)} />
                     <span className="w-48 truncate"><b>{row.student.last_name}</b> {row.student.first_name}</span>
                     <span className="w-20 text-xs text-slate-500 truncate">{group}</span>
+                    {prevRun.has(row.student.id) && <span className="px-1.5 rounded text-[11px] bg-red-100 text-red-800 max-w-[220px] truncate" title={`כבר בהפקה: ${prevRun.get(row.student.id)}`}>📄 כבר בהפקה: {prevRun.get(row.student.id)}</span>}
                     <span className="text-xs text-slate-500 flex-1 min-w-[140px] truncate">
                       {full.columns.filter((c) => row.cells[c.id]).map((c) => `${c.name} ${ils(row.cells[c.id].amount)}`).join(' · ')}
                     </span>

@@ -268,6 +268,58 @@ async function fetchEntriesByIds(ids: string[]): Promise<ScholarshipEntry[]> {
   return out;
 }
 
+// ---------------- workflow status + analysis (read only) ----------------
+
+export interface OpenEntryLite { id: string; student_id: string; type_id: string; batch_id: string; amount: number; entry_date: string }
+
+/** Every entitlement that is still an open debt (no payment) — the basis of "what is waiting". */
+async function fetchOpenEntries(): Promise<OpenEntryLite[]> {
+  const rows = await fetchAll<OpenEntryLite>('scholarship_entries', 'id, student_id, type_id, batch_id, amount, entry_date', (q) => q.is('payment_id', null));
+  return rows.map((r) => ({ ...r, amount: Number(r.amount) || 0 }));
+}
+
+/** 'transfer' = closed by a check that was cancelled and re-issued as a one-time item (the money is counted there). */
+export type AnalysisState = 'paid' | 'open' | 'transfer';
+export interface AnalysisEntry extends OpenEntryLite { state: AnalysisState; paid_at: string | null }
+
+/**
+ * Entitlements for the analysis reports (no run is saved). basis 'entry' = by the charge date,
+ * 'paid' = by the payment date (paid entitlements only).
+ */
+async function fetchAnalysisEntries(f: { basis: 'entry' | 'paid'; from?: string | null; to?: string | null }): Promise<AnalysisEntry[]> {
+  type Pay = { id: string; paid_at: string; status: string | null };
+  const cols = 'id, student_id, type_id, batch_id, amount, entry_date, payment_id';
+  const pays = await fetchAll<Pay>('scholarship_payments', 'id, paid_at, status', (q) => {
+    if (f.basis === 'paid') {
+      q = q.or('status.is.null,status.eq.paid');
+      if (f.from) q = q.gte('paid_at', f.from);
+      if (f.to) q = q.lte('paid_at', f.to);
+    }
+    return q;
+  });
+  const payById = new Map(pays.map((p) => [p.id, p]));
+  let rows: (OpenEntryLite & { payment_id: string | null })[] = [];
+  if (f.basis === 'paid') {
+    const parts = chunks(pays.map((p) => p.id));
+    for (let i = 0; i < parts.length; i += 6) {
+      const got = await Promise.all(parts.slice(i, i + 6).map((ids) => fetchAll<any>('scholarship_entries', cols, (q) => q.in('payment_id', ids))));
+      rows.push(...got.flat());
+    }
+  } else {
+    rows = await fetchAll<any>('scholarship_entries', cols, (q) => {
+      if (f.from) q = q.gte('entry_date', f.from);
+      if (f.to) q = q.lte('entry_date', f.to);
+      return q;
+    });
+  }
+  return rows.map((r) => {
+    const p = r.payment_id ? payById.get(r.payment_id) : null;
+    const state: AnalysisState = !r.payment_id ? 'open' : p?.status === 'transfer' ? 'transfer' : 'paid';
+    return { id: r.id, student_id: r.student_id, type_id: r.type_id, batch_id: r.batch_id, amount: Number(r.amount) || 0,
+      entry_date: r.entry_date, state, paid_at: state === 'paid' ? (p?.paid_at || null) : null };
+  });
+}
+
 // ---------------- runs (הפקות) ----------------
 
 async function createRun(title: string, filters: ScholarshipRunFilters, entryIds: string[]): Promise<ScholarshipRun> {
@@ -524,6 +576,7 @@ export function useScholarships() {
     listBatches, getBatch, createBatch, updateBatch, deleteBatch, nextYemotStart, batchStats,
     getBatchEntries, saveBatchAmounts, addEntry, updateEntry, deleteEntry, fetchEntries, fetchEntriesByIds,
     createRun, listRuns, getRun, updateRun, runPaymentCount, deleteRun, deleteEntries,
+    fetchOpenEntries, fetchAnalysisEntries,
     markPaid, cancelPayment, cancelCheck, fetchPayments,
     getOneTimeType, addOneTime, listOneTime, deleteOneTime,
     getBalances, openBalance, getStudentLedger,

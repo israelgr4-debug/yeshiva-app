@@ -6,6 +6,7 @@ import { useScholarships } from '@/hooks/useScholarships';
 import { ScholarshipPayment, ScholarshipRun } from '@/lib/types';
 import { buildScholarshipReport, ScholarshipReport, ReportRow } from '@/lib/scholarship-report';
 import { CancelCheckDialog } from './CancelCheckDialog';
+import { ScholarshipReportView } from './ReportTab';
 import { ScholarshipTabProps, SectionCard, EmptyState, ils, dmy, todayIso, fetchStudentsLite, StudentLite } from './shared';
 
 // "סימון תשלום": open a saved report run, tick the cells that were paid, save with a date.
@@ -26,10 +27,24 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
   const [focus, setFocus] = useState<{ r: number; c: number } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // per run: how many checks are still to be marked (from the open entitlements)
+  const [openIds, setOpenIds] = useState<Map<string, string>>(new Map());   // open entry id → student id
+  const loadOpen = useCallback(async () => {
+    try { setOpenIds(new Map((await sch.fetchOpenEntries()).map((e) => [e.id, e.student_id]))); } catch { /* labels only */ }
+  }, [sch]);
+  const leftOf = useCallback((r: ScholarshipRun) => {
+    const studs = new Set<string>();
+    for (const id of r.entry_ids || []) { const sid = openIds.get(id); if (sid) studs.add(sid); }
+    return studs.size;
+  }, [openIds]);
+
   useEffect(() => {
-    sch.listRuns(100).then((r) => {
+    Promise.all([sch.listRuns(100), sch.fetchOpenEntries()]).then(([r, open]) => {
+      const m = new Map(open.map((e) => [e.id, e.student_id]));
       setRuns(r);
-      if (!params.run && r[0]) setRunId(r[0].id);
+      setOpenIds(m);
+      // default: the newest run that still has checks to mark
+      if (!params.run && r[0]) setRunId((r.find((x) => (x.entry_ids || []).some((id) => m.has(id))) || r[0]).id);
     }).catch((e) => alert('שגיאה: ' + e.message));
   }, [sch, params.run]);
 
@@ -118,7 +133,7 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
       const r = await sch.markPaid({ entryIds, paidAt, notes, runId });
       alert(`✓ נשמר: ${r.payments} תשלומים · ${r.entries} זכאויות · ${ils(r.total)}`);
       setNotes('');
-      await loadRun(runId);
+      await Promise.all([loadRun(runId), loadOpen()]);
     } catch (e: any) { alert('שגיאה בשמירה: ' + e.message); }
     setSaving(false);
   };
@@ -127,7 +142,7 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
 
   const cancelPayment = async (p: ScholarshipPayment, name: string) => {
     if (!confirm(`למחוק את רישום התשלום של ${name} מ-${dmy(p.paid_at)} (${ils(p.amount)})?\nרק כשהתשלום סומן בטעות. לצ׳ק שאבד / נקרע / לא עבר — "צ׳ק בוטל".`)) return;
-    try { await sch.cancelPayment(p.id); await loadRun(runId); } catch (e: any) { alert(e.message); }
+    try { await sch.cancelPayment(p.id); await Promise.all([loadRun(runId), loadOpen()]); } catch (e: any) { alert(e.message); }
   };
 
   // a run produced twice by mistake → delete the extra one. Only the saved report goes away;
@@ -156,12 +171,29 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
 
   const input = 'px-2 py-1.5 border border-slate-300 rounded-lg text-sm';
   let rIndex = -1;
+  const run = runs.find((r) => r.id === runId);
+  // progress of the open run, by checks (students)
+  const prog = report ? (() => {
+    let left = 0, leftSum = 0;
+    for (const row of flatRows) {
+      const open = Object.values(row.cells).flatMap((c) => c.entries).filter((e) => !e.payment_id);
+      if (open.length) { left++; leftSum += open.reduce((a, e) => a + Number(e.amount), 0); }
+    }
+    return { all: flatRows.length, left, leftSum };
+  })() : null;
 
   return (
-    <div className="space-y-4">
+    <>
+    {/* "הדפס שוב": the saved run exactly as it was produced */}
+    {report && run && report.studentCount > 0 && (
+      <div className="hidden print:block">
+        <ScholarshipReportView report={report} title={run.title} rangeLabel="" landscape={cols.length > 3} />
+      </div>
+    )}
+    <div className="space-y-4 no-print">
       {cancelling && (
         <CancelCheckDialog payment={cancelling.payment} studentName={cancelling.name} onClose={() => setCancelling(null)}
-          onDone={(msg) => { setCancelling(null); alert(msg); loadRun(runId); }} />
+          onDone={(msg) => { setCancelling(null); alert(msg); loadRun(runId); loadOpen(); }} />
       )}
       <SectionCard title="סימון תשלום לפי הפקה">
         <div className="flex flex-wrap items-end gap-3">
@@ -169,10 +201,11 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
             <select className={input} value={runId} onChange={(e) => setRunId(e.target.value)}>
               {runs.length === 0 && <option value="">אין הפקות — הפק דוח בלשונית &quot;דוח והדפסה&quot;</option>}
               {runs.map((r) => (
-                <option key={r.id} value={r.id}>{r.title} · {new Date(r.created_at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })} · {r.entry_ids?.length || 0} זכאויות</option>
+                <option key={r.id} value={r.id}>{leftOf(r) ? `🟠 נותרו ${leftOf(r)}` : '✓ שולם'} · {r.title} · {new Date(r.created_at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}</option>
               ))}
             </select>
           </label>
+          {runId && report && report.studentCount > 0 && <Button variant="secondary" onClick={() => window.print()} title="מדפיס את דוח ההפקה כפי שנשמר">🖨️ הדפס שוב</Button>}
           {runId && <Button variant="secondary" onClick={deleteRun}>🗑️ מחק הפקה</Button>}
           <label className="text-xs text-slate-600 flex flex-col">תאריך תשלום
             <input type="date" className={input} value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
@@ -190,7 +223,9 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
         <SectionCard><div className="py-10 text-center text-slate-400">טוען…</div></SectionCard>
       ) : report && report.studentCount > 0 ? (
         <SectionCard
-          title={`${report.studentCount} תלמידים · ${ils(report.total)}`}
+          title={prog && prog.left === 0
+            ? `✓ כל ${prog.all} הצ׳קים סומנו כשולמו · ${ils(report.total)}`
+            : `נותרו לסימון ${prog?.left} מתוך ${prog?.all} צ׳קים · ${ils(prog?.leftSum || 0)}`}
           actions={<>
             <Button size="sm" variant="secondary" disabled={!focusedRow} onClick={() => focusedRow && setKeys(rowKeys(focusedRow))}>סמן שורה</Button>
             <Button size="sm" variant="secondary" disabled={!focus} onClick={() => focus && cols[focus.c] && setKeys(colKeys(cols[focus.c].id))}>סמן עמודה</Button>
@@ -289,5 +324,6 @@ export function MarkPaymentTab({ perms, params, nav }: ScholarshipTabProps) {
         <SectionCard><EmptyState icon="📭" text="אין זכאויות בהפקה הזו" /></SectionCard>
       ) : null}
     </div>
+    </>
   );
 }
