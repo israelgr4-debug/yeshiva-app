@@ -108,7 +108,7 @@ function OpenForm({ canWrite, onOpened }: { canWrite: boolean; onOpened: (a: Att
               דקות
             </label>
             {!robotReady && <p className="text-xs text-amber-800">⚠️ עדיין לא נבחרה תבנית קמפיין לרובוט (לשונית הגדרות) — בלי זה הוא לא יחייג.</p>}
-            <p className="text-xs text-slate-500">החיוג עולה יחידות בימות. לא מחייג למי שסומן &quot;לא יכול&quot;, ולמי שסומן &quot;בדרך&quot; ב-10 הדקות האחרונות. פועל כל עוד מסך של הביקורת פתוח.</p>
+            <p className="text-xs text-slate-500">החיוג עולה יחידות בימות. לא מחייג למי שסומן &quot;לא יכול&quot;, ולמי שאמר שהוא בדרך — עד שעבר הזמן שמסר. פועל כל עוד מסך של הביקורת פתוח.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

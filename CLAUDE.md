@@ -354,7 +354,8 @@ The Sidebar hides `/settings` from non-admins.
    no direct connection to the ministry site — warn when the file is older than 30 days:
    readiness banner + dashboard row) matched to students by any ID (`idKeys`).
    Tabs: מוכנות (what to fix: not in system / not active / no phone / duplicate phone / no
-   room / no ID scan) · ביקורת (open form → live control room) · היסטוריה · הגדרות (ימות).
+   room / no ID scan) · ביקורת (open form → live control room) · היסטוריה · הגדרות (ימות) ·
+   מדריך (`GuideTab`, printable — keep in sync with the flow and the phone keys).
    Opening FREEZES the list into `attendance_audit_students` (snapshot of name/shiur/room/
    phone + a running code, 3 digits from 101, 4 when >899). Only one audit can be open
    (partial unique index). Kinds: real / practice / repeat (same rows as the parent, target
@@ -364,13 +365,21 @@ The Sidebar hides `/settings` from non-admins.
    (`components/attendance/live.tsx`: BigBoard, CallersList, PatrolList, MarkPanel, printed
    sheets). Public team page: `/g/audit/<token>` (one link + 4-digit code for the whole team).
    **Kosher-phone marking**: ימות API extension (`ext.ini`: type=api, api_link) →
-   `/api/attendance/yemot/<secret>` (secret = HMAC of YEMOT_API_TOKEN, no new env var). Each
-   step asks for a NEW value name (c1, c2, …) so the latest entry is the highest c<n>.
-   code# = present, *code# = undo, 0# = last five, 8–9 digits = ת"ז. The extension is
+   `/api/attendance/yemot/<secret>` (secret = HMAC of YEMOT_API_TOKEN, no new env var). The
+   conversation is `lib/attendance-dialog.ts` (pure, data access injected — test it with a
+   fake `DialogDeps`). Each question uses a NEW value name `<kind><n>` with a running n, so
+   the latest answer is the highest n and its kind says what it answered (m marking, a menu,
+   b minutes, r reason) — no call state on the server. Marking: code# = present, *code# =
+   undo, 0# = last five, 8–9 digits = ת"ז. The SAME extension serves a missing student who
+   calls back from his own phone (exactly one missing row has that phone): 1 = בדרך + minutes,
+   2 = לא יכול → 1 מחוץ לעיר / 2 אחר, 9 = go to marking. A student can never mark himself
+   present. "מחוץ לעיר" = call_status 'cant' with call_note starting `OUT_OF_TOWN`
+   (`isOutOfTown`) — filter in the callers screen, counter on the board, sheet, history.
+   The extension is
    written from the settings tab (`/api/attendance/setup`, refuses to overwrite a foreign
    extension without force, backs it up). **Robot**: `runRobot` → ימות `RunCampaign` with
    the template id in setting `attendance_robot_template` and `phones=` the missing ones
-   (not "לא יכול", not "בדרך" < 10 min); manual button or auto every N minutes, driven by
+   (not "לא יכול", not "בדרך" until `comingUntil`; prev_missing first); manual button or auto every N minutes, driven by
    the open screens' `tick` and claimed atomically on `robot_last_run_at`.
    NOT YET VERIFIED LIVE (needs a practice audit): the ימות read= syntax / TTS, creating a
    new extension folder via UploadTextFile, RunCampaign with phones.

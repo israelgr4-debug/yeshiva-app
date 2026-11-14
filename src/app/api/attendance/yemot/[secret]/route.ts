@@ -1,18 +1,13 @@
 import { NextRequest } from 'next/server';
-import { adminDb, getOpenAudit, lastMarked, markByInput, sayName, tts, yemotCallbackSecret } from '@/lib/attendance-server';
+import { normPhone, tts } from '@/lib/attendance';
+import { attendanceDialog } from '@/lib/attendance-dialog';
+import { adminDb, getAuditStudents, getOpenAudit, lastMarked, markByInput, setCallStatus, yemotCallbackSecret } from '@/lib/attendance-server';
 
-// ימות "API extension" callback (ext.ini: type=api, api_link=<this url>) — marking attendance
-// from a kosher phone. ימות calls this URL when the marker enters the extension and again
-// after every entry; we answer in ימות's command syntax:
-//   read=<message>=<value name>,<use existing>,<max digits>,<min digits>,<seconds>,<playback>,<block *>,<block 0>
-// Every step asks for a NEW value name (c1, c2, …), so the latest entry is always the
-// highest-numbered parameter, whatever ימות does with earlier values.
-//
-// The marker keys the code from the printed sheet (or a full ת"ז) and #.
-//   *code#  cancels a marking        0#  reads the last five marked
+// ימות "API extension" callback (ext.ini: type=api, api_link=<this url>). ימות calls it when a
+// caller enters the extension and again after every entry; the conversation itself (marking
+// for the markers, the personal menu for a missing student) is lib/attendance-dialog.ts.
 
 const text = (body: string) => new Response(body, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
-const ask = (n: number, ...say: string[]) => text(`read=${say.join('.')}=c${n},no,10,1,30,No,no,no`);
 
 async function handle(secret: string, params: URLSearchParams) {
   const expected = yemotCallbackSecret();
@@ -22,36 +17,19 @@ async function handle(secret: string, params: URLSearchParams) {
   const db = adminDb();
   const audit = await getOpenAudit(db);
   if (!audit) return text(`id_list_message=${tts('אין ביקורת פתוחה כרגע')}`);
+  const phone = normPhone(params.get('ApiPhone'));
 
-  // latest entry = the highest c<n>
-  let step = 0, value = '';
-  params.forEach((v, k) => {
-    const m = k.match(/^c(\d+)$/);
-    if (m && Number(m[1]) >= step) { step = Number(m[1]); value = v; }
-  });
-  const next = step + 1;
-  if (!step) return ask(next, tts('ביקורת נוכחות'), tts('הקישו קוד תלמיד וסולמית'));
-
-  const input = value.trim();
-  const phone = params.get('ApiPhone') || null;
-
-  if (input === '0') {
-    const last = await lastMarked(db, audit.id, 5);
-    if (!last.length) return ask(next, tts('עדיין לא סומן אף אחד'));
-    return ask(next, tts('האחרונים שסומנו'), ...last.map((s) => tts(sayName(s))));
-  }
-
-  try {
-    const r = await markByInput(db, audit, input, 'phone', phone);
-    if (!r.ok) return ask(next, tts('לא נמצא'), `d-${input.replace(/\D/g, '')}`, tts('הקישו שוב'));
-    const name = sayName(r.student);
-    if (r.kind === 'present') return ask(next, tts(name), tts('נוכח'));
-    if (r.kind === 'already') return ask(next, tts(name), tts('כבר סומן'));
-    if (r.kind === 'undone') return ask(next, tts('בוטל'), tts(name));
-    return ask(next, tts(name), tts('לא היה מסומן'));
-  } catch {
-    return ask(next, tts('תקלה בשמירה נסו שוב'));
-  }
+  return text(await attendanceDialog(params, {
+    // the caller is "a missing student" only when exactly one missing person has this phone
+    caller: async () => {
+      if (!phone) return null;
+      const mine = (await getAuditStudents(db, audit.id)).filter((r) => !r.present && normPhone(r.phone) === phone);
+      return mine.length === 1 ? mine[0] : null;
+    },
+    mark: (input) => markByInput(db, audit, input, 'phone', phone || null),
+    last: () => lastMarked(db, audit.id, 5),
+    setCall: (row, status, note) => setCallStatus(db, audit.id, row.id, status, note, phone || null, 'self'),
+  }));
 }
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ secret: string }> }) {

@@ -255,5 +255,26 @@ export function auditStats(list: { present: boolean }[], targetPct: number): Aud
   };
 }
 
+// ---------------- "can't come" reasons / "on my way" ----------------
+
+/** call_note of a "לא יכול" whose reason is being out of town (set by the caller screen or by the student on the phone). */
+export const OUT_OF_TOWN = 'מחוץ לעיר';
+export const isOutOfTown = (s: { call_status: CallStatus; call_note: string | null }) =>
+  s.call_status === 'cant' && (s.call_note || '').startsWith(OUT_OF_TOWN);
+
+/** Until when a "בדרך" holds off the robot: the minutes he gave + 5, at least 10. */
+export function comingUntil(s: { call_status: CallStatus; call_note: string | null; call_at: string | null }): number {
+  if (s.call_status !== 'coming' || !s.call_at) return 0;
+  const m = (s.call_note || '').match(/(\d+)\s*דק/);
+  return new Date(s.call_at).getTime() + Math.max(10, (m ? Number(m[1]) : 0) + 5) * 60000;
+}
+
+export type MarkResult =
+  | { ok: true; kind: 'present' | 'already' | 'undone' | 'not_marked'; student: AuditStudent }
+  | { ok: false; kind: 'not_found' };
+
+/** ימות reads `t-` text; these characters separate commands, so they must not appear inside it. */
+export const tts = (s: string) => 't-' + s.replace(/[.\-=&,"'()\n\r]/g, ' ').replace(/\s+/g, ' ').trim();
+
 export const fullName = (s: { last_name: string | null; first_name: string | null }) => `${s.last_name || ''} ${s.first_name || ''}`.trim();
 export const hm = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' }) : '');

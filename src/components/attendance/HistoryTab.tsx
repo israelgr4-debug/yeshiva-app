@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { useAttendance } from '@/hooks/useAttendance';
-import { AttendanceAudit, AuditStudent, CALL_LABEL, KIND_LABEL, auditStats, compareAudit, fullName, hm, sectionOf } from '@/lib/attendance';
+import { AttendanceAudit, AuditStudent, CALL_LABEL, KIND_LABEL, auditStats, compareAudit, fullName, hm, isOutOfTown, sectionOf } from '@/lib/attendance';
 import { SectionCard, EmptyState, dmy } from '@/components/scholarships/shared';
 
 // "היסטוריה": every audit with its result; open one to see who was present / missing and
@@ -15,7 +15,7 @@ export function HistoryTab({ canAdmin }: { canAdmin: boolean }) {
   const [counts, setCounts] = useState<Record<string, { total: number; present: number }>>({});
   const [sel, setSel] = useState<AttendanceAudit | null>(null);
   const [rows, setRows] = useState<AuditStudent[] | null>(null);
-  const [show, setShow] = useState<'missing' | 'present' | 'all'>('missing');
+  const [show, setShow] = useState<'missing' | 'present' | 'all' | 'out'>('missing');
 
   const load = useCallback(async () => {
     try {
@@ -36,7 +36,7 @@ export function HistoryTab({ canAdmin }: { canAdmin: boolean }) {
     try { await att.deleteAudit(a.id); setSel(null); await load(); } catch (e: any) { alert(e.message); }
   };
 
-  const shown = useMemo(() => (rows || []).filter((r) => show === 'all' || (show === 'present') === r.present), [rows, show]);
+  const shown = useMemo(() => (rows || []).filter((r) => (show === 'out' ? !r.present && isOutOfTown(r) : show === 'all' || (show === 'present') === r.present)), [rows, show]);
   const stats = rows && sel ? auditStats(rows, sel.target_pct) : null;
 
   const exportXlsx = async () => {
@@ -64,6 +64,7 @@ export function HistoryTab({ canAdmin }: { canAdmin: boolean }) {
           <Button size="sm" variant="secondary" onClick={() => setSel(null)}>→ לכל הביקורות</Button>
           <button type="button" className={chip(show === 'missing')} onClick={() => setShow('missing')}>חסרים{stats ? ` (${stats.missing})` : ''}</button>
           <button type="button" className={chip(show === 'present')} onClick={() => setShow('present')}>נוכחים{stats ? ` (${stats.present})` : ''}</button>
+          <button type="button" className={chip(show === 'out')} onClick={() => setShow('out')}>🧳 מחוץ לעיר{rows ? ` (${rows.filter((r) => !r.present && isOutOfTown(r)).length})` : ''}</button>
           <button type="button" className={chip(show === 'all')} onClick={() => setShow('all')}>הכל</button>
           <div className="flex-1" />
           <Button size="sm" variant="secondary" onClick={() => window.print()} disabled={!rows}>🖨️ הדפס</Button>

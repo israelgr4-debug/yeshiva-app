@@ -6,7 +6,7 @@
 import { createHmac } from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
-import { AttendanceAudit, AuditStudent, CallStatus, fullName, isValidPhone, normPhone } from './attendance';
+import { AttendanceAudit, AuditStudent, CallStatus, MarkResult, comingUntil, isValidPhone, normPhone } from './attendance';
 
 export const YEMOT_API = 'https://www.call2all.co.il/ym/api/';
 export const ROBOT_TEMPLATE_SETTING = 'attendance_robot_template';
@@ -56,10 +56,6 @@ async function logEvent(db: SupabaseClient, auditId: string, studentRowId: strin
   await db.from('attendance_audit_events').insert({ audit_id: auditId, audit_student_id: studentRowId, action, via, actor, details: details ?? null });
 }
 
-export type MarkResult =
-  | { ok: true; kind: 'present' | 'already' | 'undone' | 'not_marked'; student: AuditStudent }
-  | { ok: false; kind: 'not_found' };
-
 /** Mark one row present / undo. Only flips rows that are really in the other state (no double log). */
 export async function setPresent(db: SupabaseClient, row: AuditStudent, present: boolean, via: string, actor: string | null): Promise<MarkResult> {
   const patch = present
@@ -94,12 +90,12 @@ export async function markByInput(db: SupabaseClient, audit: AttendanceAudit, ra
   return setPresent(db, row, !undo, via, actor);
 }
 
-export async function setCallStatus(db: SupabaseClient, auditId: string, rowId: string, status: CallStatus, note: string | null, actor: string | null) {
+export async function setCallStatus(db: SupabaseClient, auditId: string, rowId: string, status: CallStatus, note: string | null, actor: string | null, via = 'team') {
   const { error } = await db.from('attendance_audit_students')
     .update({ call_status: status, call_note: note, call_by: actor, call_at: new Date().toISOString() })
     .eq('id', rowId).eq('audit_id', auditId);
   if (error) throw error;
-  await logEvent(db, auditId, rowId, 'call', 'team', actor, { status, note });
+  await logEvent(db, auditId, rowId, 'call', via, actor, { status, note });
 }
 
 export async function lastMarked(db: SupabaseClient, auditId: string, n = 5): Promise<AuditStudent[]> {
@@ -114,7 +110,8 @@ export interface RobotResult { ok: boolean; skipped?: string; dialed?: number; e
 
 /**
  * Dial everyone who is still missing with the ימות campaign template chosen in the settings.
- * Not dialed: no valid phone, "לא יכול", and "בדרך" from the last 10 minutes.
+ * Not dialed: no valid phone, "לא יכול", and "בדרך" until the time he gave has passed.
+ * Whoever was missing in the previous audit is dialed first.
  * `auto` runs are throttled by robot_interval_min (claimed atomically, so two screens
  * ticking at once start one campaign).
  */
@@ -140,8 +137,10 @@ export async function runRobot(db: SupabaseClient, audit: AttendanceAudit, mode:
   if (!claimed?.length) return { ok: true, skipped: 'ריצה אחרת כבר התחילה' };
 
   const rows = await getAuditStudents(db, audit.id);
-  const phones = Array.from(new Set(rows.filter((r) => !r.present && isValidPhone(r.phone) && r.call_status !== 'cant'
-    && !(r.call_status === 'coming' && r.call_at && now - new Date(r.call_at).getTime() < 10 * 60000)).map((r) => normPhone(r.phone))));
+  const phones = Array.from(new Set(rows
+    .filter((r) => !r.present && isValidPhone(r.phone) && r.call_status !== 'cant' && now >= comingUntil(r))
+    .sort((a, b) => Number(b.prev_missing) - Number(a.prev_missing))
+    .map((r) => normPhone(r.phone))));
   if (!phones.length) return { ok: true, skipped: 'אין למי לחייג', dialed: 0 };
 
   try {
@@ -157,9 +156,3 @@ export async function runRobot(db: SupabaseClient, audit: AttendanceAudit, mode:
     return { ok: false, error: e.message };
   }
 }
-
-// ---------------- ימות text-to-speech helpers ----------------
-
-/** ימות reads `t-` text; these characters separate commands, so they must not appear inside it. */
-export const tts = (s: string) => 't-' + s.replace(/[.\-=&,"'()\n\r]/g, ' ').replace(/\s+/g, ' ').trim();
-export const sayName = (s: AuditStudent) => fullName(s) || 'תלמיד';

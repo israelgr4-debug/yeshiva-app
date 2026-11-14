@@ -73,7 +73,7 @@ export default function TeamAuditPage() {
       <div className="no-print flex flex-wrap items-center gap-2">
         {VIEWS.map((v) => <button key={v.id} type="button" className={pill(view === v.id)} onClick={() => setView(v.id)}>{v.label}</button>)}
       </div>
-      {live.state && view !== 'board' && <PrintButtons state={live.state} kinds={view === 'callers' ? ['callers', 'missing'] : view === 'patrol' ? ['patrol'] : ['codes']} />}
+      {live.state && view !== 'board' && <PrintButtons state={live.state} kinds={view === 'callers' ? ['callers', 'missing', 'out'] : view === 'patrol' ? ['patrol'] : ['codes']} />}
       <div className="no-print">
         {live.error && !wrongCode && <div className="mb-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-2 text-sm">⚠️ {live.error}</div>}
         {!live.state ? <div className="py-20 text-center text-slate-400">טוען…</div>

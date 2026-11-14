@@ -8,17 +8,19 @@ import { ReadinessTab } from '@/components/attendance/ReadinessTab';
 import { AuditTab } from '@/components/attendance/AuditTab';
 import { HistoryTab } from '@/components/attendance/HistoryTab';
 import { SettingsTab } from '@/components/attendance/SettingsTab';
+import { GuideTab } from '@/components/attendance/GuideTab';
 
 // ביקורת נוכחות — surprise attendance audits of the Ministry of Religion.
 //   מוכנות (ongoing) → ביקורת (open / live / close) → היסטוריה · הגדרות (ימות)
 // Everyone logged in can watch; opening, marking and closing need write permission.
 
-type Tab = 'ready' | 'audit' | 'history' | 'settings';
+type Tab = 'ready' | 'audit' | 'history' | 'settings' | 'guide';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'ready', label: 'מוכנות', icon: '🧭' },
   { id: 'audit', label: 'ביקורת', icon: '🛡️' },
   { id: 'history', label: 'היסטוריה', icon: '🗂️' },
   { id: 'settings', label: 'הגדרות', icon: '⚙️' },
+  { id: 'guide', label: 'מדריך', icon: '❓' },
 ];
 
 export default function AttendancePage() {
@@ -65,6 +67,7 @@ export default function AttendancePage() {
         {tab === 'audit' && <AuditTab canWrite={permissions.canWrite} userEmail={user?.email || 'משתמש'} onClosed={() => { setHasOpen(false); go('history'); }} />}
         {tab === 'history' && <HistoryTab canAdmin={permissions.canDelete} />}
         {tab === 'settings' && <SettingsTab canAdmin={permissions.canDelete} />}
+        {tab === 'guide' && <GuideTab />}
       </div>
     </>
   );

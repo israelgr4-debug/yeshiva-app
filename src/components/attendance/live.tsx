@@ -6,8 +6,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  TeamAudit, TeamStudent, CallStatus, AuditGroup, CALL_LABEL, GROUP_LABEL, KIND_LABEL,
-  auditStats, compareAudit, fullName, hm, sectionOf,
+  TeamAudit, TeamStudent, CallStatus, AuditGroup, CALL_LABEL, GROUP_LABEL, KIND_LABEL, OUT_OF_TOWN,
+  auditStats, compareAudit, fullName, hm, isOutOfTown, sectionOf,
 } from '@/lib/attendance';
 
 export interface LiveState { audit: TeamAudit; students: TeamStudent[]; now: string }
@@ -95,6 +95,13 @@ export function BigBoard({ state, updatedAt }: { state: LiveState; updatedAt: nu
     .sort((a, b) => (b.present_at || '').localeCompare(a.present_at || '')).slice(0, 8), [students]);
   const stale = updatedAt && Date.now() - updatedAt > 15000;
   const target = Number(audit.target_pct);
+  const miss = students.filter((s) => !s.present);
+  const known = {
+    coming: miss.filter((s) => s.call_status === 'coming').length,
+    noAnswer: miss.filter((s) => s.call_status === 'no_answer').length,
+    outOfTown: miss.filter(isOutOfTown).length,
+    cant: miss.filter((s) => s.call_status === 'cant' && !isOutOfTown(s)).length,
+  };
 
   return (
     <div className="space-y-4">
@@ -111,6 +118,15 @@ export function BigBoard({ state, updatedAt }: { state: LiveState; updatedAt: nu
           <div className={`absolute inset-y-0 start-0 rounded-full ${st.reached ? 'bg-emerald-500' : 'bg-orange-500'}`} style={{ width: `${Math.min(100, st.pct)}%` }} />
           <div className="absolute inset-y-0 w-0.5 bg-slate-800" style={{ insetInlineStart: `${target}%` }} title={`יעד ${target}%`} />
         </div>
+        {st.missing > 0 && (
+          <div className="mt-4 flex flex-wrap justify-center gap-2 text-sm">
+            <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">בדרך <b>{known.coming}</b></span>
+            <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800">לא עונים <b>{known.noAnswer}</b></span>
+            <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-800">מחוץ לעיר <b>{known.outOfTown}</b></span>
+            <span className="px-3 py-1 rounded-full bg-red-100 text-red-800">לא יכולים <b>{known.cant}</b></span>
+            <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700">עוד לא ידוע <b>{st.missing - known.coming - known.noAnswer - known.outOfTown - known.cant}</b></span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -173,22 +189,35 @@ function matches(s: TeamStudent, q: string) {
 
 /** "טלפנים": everyone still missing, with a phone and what the last call gave. */
 export function CallersList({ state, act, canAct }: { state: LiveState; act: LiveAct; canAct: boolean }) {
-  const [grp, setGrp] = useState<'kollel' | 'yeshiva' | 'all'>('kollel');
+  const [grp, setGrp] = useState<'kollel' | 'yeshiva' | 'all' | 'out'>('kollel');
   const [q, setQ] = useState('');
   const [hideHandled, setHideHandled] = useState(false);
   const missing = useMemo(() => state.students.filter((s) => !s.present), [state.students]);
   const list = useMemo(() => missing
-    .filter((s) => (grp === 'all' ? true : grp === 'kollel' ? s.grp !== 'yeshiva' : s.grp === 'yeshiva') && matches(s, q)
-      && (!hideHandled || s.call_status === 'none' || s.call_status === 'no_answer'))
+    .filter((s) => (grp === 'out' ? isOutOfTown(s) : grp === 'all' ? true : grp === 'kollel' ? s.grp !== 'yeshiva' : s.grp === 'yeshiva') && matches(s, q)
+      && (grp === 'out' || !hideHandled || s.call_status === 'none' || s.call_status === 'no_answer'))
     .sort((a, b) => Number(b.prev_missing) - Number(a.prev_missing)
       || Number(a.call_status !== 'none') - Number(b.call_status !== 'none') || compareAudit(a, b)), [missing, grp, q, hideHandled]);
   const count = (g: 'kollel' | 'yeshiva') => missing.filter((s) => (g === 'kollel' ? s.grp !== 'yeshiva' : s.grp === 'yeshiva')).length;
   const chip = (on: boolean) => `px-3 py-1 rounded-full text-sm border ${on ? 'bg-orange-600 text-white border-orange-600' : 'bg-white border-slate-300 text-slate-700'}`;
-  const setCall = (s: TeamStudent, status: CallStatus) => {
-    const next = s.call_status === status ? 'none' : status;
-    let note: string | null = null;
-    if (next === 'cant') { note = prompt(`למה ${fullName(s)} לא יכול להגיע?`, s.call_note || '') ?? null; if (note === null) return; }
-    act('call', s.id, { status: next, note });
+  const outCount = missing.filter(isOutOfTown).length;
+  // the four answers a call can give; "מחוץ לעיר" is a "לא יכול" with a fixed reason
+  type Answer = 'coming' | 'no_answer' | 'out' | 'cant';
+  const ANSWERS: { id: Answer; label: string; tone: string }[] = [
+    { id: 'coming', label: CALL_LABEL.coming, tone: CALL_TONE.coming }, { id: 'no_answer', label: CALL_LABEL.no_answer, tone: CALL_TONE.no_answer },
+    { id: 'out', label: OUT_OF_TOWN, tone: 'bg-purple-100 text-purple-800 border-purple-300' }, { id: 'cant', label: CALL_LABEL.cant, tone: CALL_TONE.cant },
+  ];
+  const answerOf = (s: TeamStudent): Answer | null => (s.call_status === 'none' ? null : s.call_status === 'cant' ? (isOutOfTown(s) ? 'out' : 'cant') : s.call_status);
+  const setCall = (s: TeamStudent, a: Answer) => {
+    if (answerOf(s) === a) { act('call', s.id, { status: 'none', note: null }); return; }
+    if (a === 'out') { act('call', s.id, { status: 'cant', note: OUT_OF_TOWN }); return; }
+    if (a === 'cant') {
+      const why = prompt(`למה ${fullName(s)} לא יכול להגיע?`, '');
+      if (why === null) return;
+      act('call', s.id, { status: 'cant', note: why.trim() ? `אחר: ${why.trim()}` : 'אחר' });
+      return;
+    }
+    act('call', s.id, { status: a, note: null });
   };
 
   return (
@@ -197,6 +226,7 @@ export function CallersList({ state, act, canAct }: { state: LiveState; act: Liv
         <button type="button" className={chip(grp === 'kollel')} onClick={() => setGrp('kollel')}>אברכים ({count('kollel')})</button>
         <button type="button" className={chip(grp === 'yeshiva')} onClick={() => setGrp('yeshiva')}>בחורים ({count('yeshiva')})</button>
         <button type="button" className={chip(grp === 'all')} onClick={() => setGrp('all')}>כל החסרים ({missing.length})</button>
+        <button type="button" className={chip(grp === 'out')} onClick={() => setGrp('out')}>🧳 מחוץ לעיר ({outCount})</button>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="חיפוש שם / טלפון…" className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm flex-1 min-w-[160px]" />
         <label className="flex items-center gap-1.5 text-sm text-slate-600"><input type="checkbox" checked={hideHandled} onChange={(e) => setHideHandled(e.target.checked)} /> רק מי שעוד צריך להתקשר</label>
       </div>
@@ -212,9 +242,9 @@ export function CallersList({ state, act, canAct }: { state: LiveState; act: Liv
                 ? <a href={`tel:${s.phone}`} dir="ltr" className="w-28 tabular-nums font-semibold text-blue-700 hover:underline">{s.phone}</a>
                 : <span className="w-28 text-xs text-slate-400">אין נייד</span>}
               <div className="flex gap-1">
-                {(['coming', 'no_answer', 'cant'] as CallStatus[]).map((c) => (
-                  <button key={c} type="button" disabled={!canAct} onClick={() => setCall(s, c)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border disabled:opacity-60 ${s.call_status === c ? CALL_TONE[c] : CALL_TONE.none}`}>{CALL_LABEL[c]}</button>
+                {ANSWERS.map((a) => (
+                  <button key={a.id} type="button" disabled={!canAct} onClick={() => setCall(s, a.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border disabled:opacity-60 ${answerOf(s) === a.id ? a.tone : CALL_TONE.none}`}>{a.label}</button>
                 ))}
               </div>
               <div className="flex-1 min-w-[80px] text-xs text-slate-500 truncate">
@@ -302,8 +332,8 @@ export function MarkPanel({ state, act, canAct }: { state: LiveState; act: LiveA
 
 // ---------------------------------------------------------------- printed sheets
 
-export type SheetKind = 'codes' | 'callers' | 'patrol' | 'missing';
-export const SHEET_LABEL: Record<SheetKind, string> = { codes: 'דף קודים למסמנים', callers: 'חסרים לטלפנים (אברכים)', patrol: 'חסרים לסיירים (לפי חדר)', missing: 'כל החסרים' };
+export type SheetKind = 'codes' | 'callers' | 'patrol' | 'missing' | 'out';
+export const SHEET_LABEL: Record<SheetKind, string> = { codes: 'דף קודים למסמנים', callers: 'חסרים לטלפנים (אברכים)', patrol: 'חסרים לסיירים (לפי חדר)', missing: 'כל החסרים', out: 'מחוץ לעיר' };
 
 /** Rendered only for print (the caller wraps it in `hidden print:block`). */
 export function AuditSheet({ state, kind }: { state: LiveState; kind: SheetKind }) {
@@ -326,7 +356,7 @@ export function AuditSheet({ state, kind }: { state: LiveState; kind: SheetKind 
       <div className="att-sheet print-area" dir="rtl">
         <style dangerouslySetInnerHTML={{ __html: css }} />
         {head('דף קודים', `${students.length} זכאים`)}
-        <p className="text-sm mb-2">מתקשרים לקו, מקישים <b>קוד + #</b> · ביטול: <b>* קוד #</b> · חמשת האחרונים: <b>0 #</b> · אפשר להקיש גם ת״ז מלאה</p>
+        <p className="text-sm mb-2">מתקשרים לקו, מקישים <b>קוד + #</b> · ביטול: <b>* קוד #</b> · חמשת האחרונים: <b>0 #</b> · אפשר להקיש גם ת״ז מלאה · אם נשמע תפריט אישי (&quot;שלום…&quot;) מקישים <b>9</b></p>
         <div style={{ columnCount: 3, columnGap: '6mm' }}>
           {Array.from(secs.entries()).map(([name, list]) => (
             <div key={name} className="sec mb-2">
@@ -367,11 +397,11 @@ export function AuditSheet({ state, kind }: { state: LiveState; kind: SheetKind 
     );
   }
 
-  const list = students.filter((s) => !s.present && (kind === 'missing' || s.grp !== 'yeshiva')).sort(compareAudit);
+  const list = students.filter((s) => !s.present && (kind === 'out' ? isOutOfTown(s) : kind === 'missing' || s.grp !== 'yeshiva')).sort(compareAudit);
   return (
     <div className="att-sheet print-area" dir="rtl">
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      {head(kind === 'callers' ? 'חסרים לטלפנים' : 'כל החסרים', `מעודכן ${now} · ${list.length} חסרים`)}
+      {head(kind === 'callers' ? 'חסרים לטלפנים' : kind === 'out' ? 'מחוץ לעיר' : 'כל החסרים', `מעודכן ${now} · ${list.length} ${kind === 'out' ? 'תלמידים' : 'חסרים'}`)}
       <table className="w-full border-collapse">
         <thead>
           <tr className="bg-slate-200">
@@ -398,7 +428,7 @@ export function AuditSheet({ state, kind }: { state: LiveState; kind: SheetKind 
 }
 
 /** Buttons + the print-only sheet. */
-export function PrintButtons({ state, kinds = ['codes', 'callers', 'patrol', 'missing'] }: { state: LiveState; kinds?: SheetKind[] }) {
+export function PrintButtons({ state, kinds = ['codes', 'callers', 'patrol', 'missing', 'out'] }: { state: LiveState; kinds?: SheetKind[] }) {
   const [kind, setKind] = useState<SheetKind | null>(null);
   useEffect(() => {
     if (!kind) return;
