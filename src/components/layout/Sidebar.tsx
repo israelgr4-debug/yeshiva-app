@@ -14,6 +14,7 @@ const menuItems = [
   { href: '/lists', label: 'דוחות', sub: 'דוחות מותאמים', icon: '📊', tint: 'from-fuchsia-500 to-pink-600' },
   { href: '/finances', label: 'כספים', sub: 'מס"ב, צ\'קים וגביה', icon: '₪', tint: 'from-emerald-500 to-teal-600' },
   { href: '/scholarships', label: 'מלגות', sub: 'זכאויות ותשלומים', icon: '🎁', tint: 'from-orange-500 to-red-600' },
+  { href: '/attendance', label: 'ביקורת נוכחות', sub: 'ביקורות הדתות', icon: '🛡️', tint: 'from-indigo-500 to-blue-600' },
   { href: '/dormitory', label: 'פנימיה', sub: 'חדרים ושיבוץ', icon: '🏢', tint: 'from-rose-500 to-pink-600' },
   { href: '/actions', label: 'פעולות', sub: 'כלי ניהול', icon: '⚡', tint: 'from-yellow-500 to-amber-600' },
   { href: '/tasks', label: 'משימות', sub: 'מעקב פעולות', icon: '✅', tint: 'from-lime-500 to-emerald-600' },

@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
+import { datAgeDays, DAT_MAX_AGE_DAYS } from '@/lib/attendance';
 
 /** Hard-coded total number of beds in the dorms */
 const TOTAL_BEDS = 697;
@@ -85,7 +86,8 @@ export default function Dashboard() {
     chinuch: number;
     hasDat: boolean;
     hasChinuch: boolean;
-  }>({ dat: 0, chinuch: 0, hasDat: false, hasChinuch: false });
+    datAgeDays: number | null;
+  }>({ dat: 0, chinuch: 0, hasDat: false, hasChinuch: false, datAgeDays: null });
   const [loading, setLoading] = useState(true);
 
   const loadAll = useCallback(async () => {
@@ -189,6 +191,7 @@ export default function Dashboard() {
         chinuch: chIssues,
         hasDat: !!datData,
         hasChinuch: !!chData,
+        datAgeDays: datAgeDays(datData),
       });
     } catch (e) {
       console.error(e);
@@ -398,6 +401,14 @@ export default function Dashboard() {
                     חריגות במשרדים
                   </p>
                   <div className="space-y-2">
+                    {ministryIssues.datAgeDays !== null && ministryIssues.datAgeDays > DAT_MAX_AGE_DAYS && (
+                      <AttentionRow
+                        label="קובץ הדתות ישן · ימים מאז ההעלאה"
+                        value={ministryIssues.datAgeDays}
+                        tone="amber"
+                        href="/attendance"
+                      />
+                    )}
                     {ministryIssues.hasDat && (
                       <AttentionRow
                         label="משרד הדתות · לא זכאים"
