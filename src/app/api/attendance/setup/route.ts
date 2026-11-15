@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AttendanceAudit, isValidPhone, normPhone } from '@/lib/attendance';
-import { adminDb, authUser, runRobot, yemotCallbackSecret, ROBOT_TEMPLATE_SETTING, YEMOT_API, YEMOT_EXT_SETTING } from '@/lib/attendance-server';
+import {
+  adminDb, authUser, defaultRobotText, robotConfig, robotDial, robotProblem, runRobot, yemotCallbackSecret,
+  ROBOT_MODES, ROBOT_MODE_SETTING, ROBOT_TEMPLATE_SETTING, ROBOT_TEXT_SETTING, YEMOT_API, YEMOT_EXT_SETTING,
+} from '@/lib/attendance-server';
 
 // ביקורת נוכחות ↔ ימות המשיח setup (logged-in users only; the token never reaches the browser).
 // GET  → is the marking extension set up, the system's top-level extensions, campaign templates
@@ -8,7 +11,8 @@ import { adminDb, authUser, runRobot, yemotCallbackSecret, ROBOT_TEMPLATE_SETTIN
 //        { action: 'confirm_extension', ext }          the admin wrote it by hand in ימות — check and remember
 //        { action: 'set_template', templateId }        campaign template the robot runs
 //        { action: 'robot', auditId }                  dial everyone still missing now
-//        { action: 'robot_test', phone }               dial ONE number with the chosen template (try it before an audit)
+//        { action: 'set_robot', mode, text? }          how the robot calls: tts / template / bridge (+ the text it reads)
+//        { action: 'robot_test', phone }               dial ONE number the way the robot would (try it before an audit)
 
 export const maxDuration = 60;
 
@@ -57,9 +61,9 @@ export async function GET(req: NextRequest) {
   const secret = yemotCallbackSecret();
   if (!secret) return NextResponse.json({ ok: true, tokenMissing: true });
   try {
-    const [ext, templateId, tree, tpl] = await Promise.all([
+    const [ext, templateId, tree, tpl, robot] = await Promise.all([
       setting(YEMOT_EXT_SETTING), setting(ROBOT_TEMPLATE_SETTING),
-      yemot('GetIvrTree', { path: 'ivr2:/' }), yemot('GetTemplates', {}),
+      yemot('GetIvrTree', { path: 'ivr2:/' }), yemot('GetTemplates', {}), robotConfig(adminDb()),
     ]);
     const ini = ext ? await readIni(ext) : null;
     return NextResponse.json({
@@ -70,6 +74,7 @@ export async function GET(req: NextRequest) {
         .sort((a: string, b: string) => Number(a) - Number(b)),
       treeError: tree.responseStatus === 'OK' ? null : (tree.message || tree.responseStatus),
       templateId,
+      robotMode: robot.mode, robotText: robot.text, robotTextDefault: defaultRobotText(ext),
       templates: (tpl.templates || []).map((t: any) => ({ id: String(t.templateId), description: t.description || '', callerId: t.callerId || '', hasMessage: !!t.messageExists })),
       templatesError: tpl.responseStatus === 'OK' ? null : (tpl.message || tpl.responseStatus),
     });
@@ -101,14 +106,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    if (body.action === 'set_robot') {
+      if (!ROBOT_MODES.includes(body.mode)) return NextResponse.json({ ok: false, error: 'מצב לא מוכר' }, { status: 400 });
+      await saveSetting(ROBOT_MODE_SETTING, body.mode);
+      if (typeof body.text === 'string') await saveSetting(ROBOT_TEXT_SETTING, body.text.trim().slice(0, 600));
+      return NextResponse.json({ ok: true });
+    }
+
     if (body.action === 'robot_test') {
       const phone = normPhone(body.phone);
       if (!isValidPhone(phone)) return NextResponse.json({ ok: false, error: 'מספר הטלפון לא תקין' }, { status: 400 });
-      const templateId = await setting(ROBOT_TEMPLATE_SETTING);
-      if (!templateId) return NextResponse.json({ ok: false, error: 'קודם יש לבחור תבנית קמפיין' }, { status: 400 });
-      const w = await yemot('RunCampaign', { templateId, phones: phone }, true);
-      if (w.responseStatus !== 'OK') return NextResponse.json({ ok: false, error: `ימות: ${w.responseStatus || ''} ${w.message || ''}`.trim() }, { status: 502 });
-      return NextResponse.json({ ok: true, campaignId: w.campaignId || null });
+      const cfg = await robotConfig(adminDb());
+      const problem = robotProblem(cfg);
+      if (problem) return NextResponse.json({ ok: false, error: problem }, { status: 400 });
+      const r = await robotDial(cfg, [phone]);
+      if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: 502 });
+      return NextResponse.json({ ok: true, campaignId: r.campaignId || null });
     }
 
     if (body.action === 'confirm_extension') {

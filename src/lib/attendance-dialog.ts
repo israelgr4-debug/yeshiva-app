@@ -2,8 +2,10 @@
 // the caller keyed so far. Pure (data access is injected), so it can be tested without ימות.
 //
 // One extension serves two kinds of callers:
-//   * a MISSING student calling from his own phone (after the robot's message) → personal
-//     menu: 1 = on my way (+ in how many minutes), 2 = can't come (1 out of town / 2 other).
+//   * a MISSING student on his own phone — he called after the robot's message, or the robot
+//     itself put him here (robot mode "bridge": ימות CallExtensionBridging) → personal menu,
+//     which therefore opens with the announcement itself:
+//     1 = on my way (+ in how many minutes), 2 = can't come (1 out of town / 2 other).
 //     9 = go to marking (a marker who is himself still on the missing list).
 //   * anyone else → marking: code# present, *code# undo, 0# last five, full ת"ז.
 // A student can never mark himself present — only "בדרך" / "לא יכול".
@@ -38,7 +40,7 @@ const say = (...parts: string[]) => `id_list_message=${parts.join('.')}`;
 const nameOf = (s: AuditStudent) => fullName(s) || 'תלמיד';
 
 const MARK_PROMPT = [tts('הקישו קוד תלמיד וסולמית')];
-const menu = (n: number, s: AuditStudent) => read(`a${n}`, [tts(`שלום ${nameOf(s)}`), tts('אם אתה בדרך לביקורת הקש 1'), tts('אם אינך יכול להגיע הקש 2')], 1, 1, 15, '129');
+const menu = (n: number, s: AuditStudent) => read(`a${n}`, [tts(`שלום ${nameOf(s)}`), tts('יש ביקורת נוכחות בישיבה נא להגיע מיד'), tts('אם אתה בדרך הקש 1'), tts('אם אינך יכול להגיע הקש 2')], 1, 1, 15, '129');
 const askMinutes = (n: number) => read(`b${n}`, [tts('בעוד כמה דקות תגיע'), tts('הקש מספר דקות וסולמית')], 3, 1, 15);
 const askReason = (n: number) => read(`r${n}`, [tts('אם אתה מחוץ לעיר הקש 1'), tts('מסיבה אחרת הקש 2')], 1, 1, 15, '12');
 

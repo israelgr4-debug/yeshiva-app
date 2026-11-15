@@ -43,7 +43,11 @@ function OpenForm({ canWrite, onOpened }: { canWrite: boolean; onOpened: (a: Att
   useEffect(() => {
     att.loadEligible().then(setData).catch((e) => alert(e.message));
     att.listAudits().then((l) => { const c = l.filter((a) => a.status === 'closed'); setClosedAudits(c); setParentId(c[0]?.id || ''); }).catch(() => {});
-    supabase.from('system_settings').select('value').eq('key', 'attendance_robot_template').maybeSingle().then(({ data: d }) => setRobotReady(!!d?.value));
+    // only the "recording" mode needs something chosen first; text / menu calls work as they are
+    supabase.from('system_settings').select('key, value').in('key', ['attendance_robot_template', 'attendance_robot_mode']).then(({ data: d }) => {
+      const get = (k: string) => (d || []).find((r) => r.key === k)?.value;
+      setRobotReady(get('attendance_robot_mode') !== 'template' || !!get('attendance_robot_template'));
+    });
   }, [att]);
 
   const pick = (k: AuditKind) => {
@@ -107,7 +111,7 @@ function OpenForm({ canWrite, onOpened }: { canWrite: boolean; onOpened: (a: Att
               <input className={`${input} w-14 py-0.5`} dir="ltr" inputMode="numeric" value={interval} onChange={(e) => setIntervalMin(e.target.value.replace(/\D/g, ''))} />
               דקות
             </label>
-            {!robotReady && <p className="text-xs text-amber-800">⚠️ עדיין לא נבחרה תבנית קמפיין לרובוט (לשונית הגדרות) — בלי זה הוא לא יחייג.</p>}
+            {!robotReady && <p className="text-xs text-amber-800">⚠️ הרובוט מוגדר להשמיע הקלטה, אבל עדיין לא נבחרה תבנית קמפיין (לשונית הגדרות) — בלי זה הוא לא יחייג.</p>}
             <p className="text-xs text-slate-500">החיוג עולה יחידות בימות. לא מחייג למי שסומן &quot;לא יכול&quot;, ולמי שאמר שהוא בדרך — עד שעבר הזמן שמסר. פועל כל עוד מסך של הביקורת פתוח.</p>
           </div>
 

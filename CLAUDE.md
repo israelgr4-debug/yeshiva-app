@@ -388,8 +388,21 @@ The Sidebar hides `/settings` from non-admins.
    UpdateExtension (which creates the folder); a plain UploadTextFile to a new folder
    answered OK and wrote nothing readable. If ימות confirms neither, the settings tab shows
    the ext.ini lines to paste by hand + a check button (`confirm_extension`).
-   NOT YET VERIFIED LIVE (needs a practice audit): the ימות read= syntax / TTS, RunCampaign
-   with phones (settings tab has a one-number test dial, `robot_test`).
+   **Robot modes** (setting `attendance_robot_mode`, chosen in the settings tab; `robotConfig`
+   / `robotDial` in attendance-server): `tts` = ימות `SendTTS` reads the text in
+   `attendance_robot_text` (default when nothing was chosen and no template is set) ·
+   `template` = `RunCampaign` with the template's recording · `bridge` =
+   `CallExtensionBridging` with `ivrPath=ivr2:/<ext>`: whoever answers lands in the marking
+   extension and gets the personal menu in the same call (so the menu opens with the
+   announcement). SendTTS / bridging take ≤500 numbers per request (chunked).
+   The ימות syntax now comes from the OFFICIAL docs (API module topic 56, management API
+   topic 55) — readable through the "Yemot MCP" connector's `read_doc` / `search_knowledge`
+   tools (no login needed; `modules/api-56.md`, `modules/api-55.md`). Check there before
+   writing any ימות parameter; do not write them from memory.
+   NOT YET VERIFIED LIVE (needs a practice audit): hearing the dialog / TTS at all, each
+   robot mode (settings tab has a one-number test dial, `robot_test`), and — undocumented —
+   whether a bridged call gives the extension the answering person's number as `ApiPhone`
+   (if not, bridge mode cannot identify the student).
    **קבוצות ואחראים** (mig 062, tab "קבוצות", `SquadsTab`): the eligible list divided into
    standing groups — `attendance_squads` (name UNIQUE, `leaders` JSONB = up to 2 of
    `{student_id|null, name, phone}`) + `attendance_squad_members` (student_id PK → a student

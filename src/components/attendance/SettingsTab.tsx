@@ -9,9 +9,17 @@ import { SectionCard, EmptyState } from '@/components/scholarships/shared';
 //   1. the extension the markers call from a kosher phone (ext.ini type=api → our server)
 //   2. the campaign template the robot runs to dial everyone who is still missing
 
+type RobotMode = 'tts' | 'template' | 'bridge';
+const MODES: { id: RobotMode; icon: string; title: string; text: string }[] = [
+  { id: 'tts', icon: '🔊', title: 'הקראת טקסט', text: 'ימות מקריאה את הטקסט שכתוב כאן. אין מה להקליט ואין מה להגדיר באתר ימות.' },
+  { id: 'template', icon: '🎙️', title: 'הקלטה שלך', text: 'מושמעת הקלטה שהקלטת פעם אחת בתבנית קמפיין באתר ימות. קול מוכר.' },
+  { id: 'bridge', icon: '⌨️', title: 'שיחה עם תפריט', text: 'מי שעונה שומע "שלום [שם], יש ביקורת…" ומקיש באותה שיחה: 1 בדרך, 2 לא יכול. בלי להתקשר חזרה.' },
+];
+
 interface Setup {
   tokenMissing?: boolean;
   extension: string; extensionOk: boolean; rootFolders: string[]; treeError: string | null;
+  robotMode: RobotMode; robotText: string; robotTextDefault: string;
   templateId: string; templates: { id: string; description: string; callerId: string; hasMessage: boolean }[]; templatesError: string | null;
 }
 
@@ -25,6 +33,7 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
   const [manual, setManual] = useState<{ ext: string; contents: string; error: string } | null>(null);
   const [testPhone, setTestPhone] = useState('');
   const [testMsg, setTestMsg] = useState<string | null>(null);
+  const [text, setText] = useState('');
 
   const load = useCallback(async () => {
     setError(null);
@@ -33,6 +42,7 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
       const j = await r.json();
       if (!j.ok) { setError(j.error || 'שגיאה'); return; }
       setS(j);
+      if (!j.tokenMissing) setText(j.robotText || '');
       if (!j.tokenMissing) {
         const used = new Set<string>(j.rootFolders || []);
         setExt(j.extension || (['2', '3', '4', '5', '6', '7', '9'].find((n) => !used.has(n)) || ''));
@@ -76,6 +86,13 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
   const setTemplate = async (id: string) => {
     setBusy(true);
     const { j } = await post({ action: 'set_template', templateId: id });
+    if (!j.ok) alert(j.error || 'השמירה נכשלה'); else await load();
+    setBusy(false);
+  };
+
+  const setRobot = async (mode: RobotMode, withText = false) => {
+    setBusy(true);
+    const { j } = await post({ action: 'set_robot', mode, ...(withText ? { text } : {}) });
     if (!j.ok) alert(j.error || 'השמירה נכשלה'); else await load();
     setBusy(false);
   };
@@ -149,24 +166,68 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
       <SectionCard title="🤖 רובוט — חיוג לחסרים" accent="from-blue-500 to-indigo-600">
         <div className="space-y-3 text-sm">
           <p className="text-slate-600">
-            הרובוט מפעיל קמפיין חיוג בימות לכל מי שעוד לא סומן (חוץ ממי שסומן &quot;לא יכול&quot;). ההודעה שמושמעת היא ההקלטה של התבנית שנבחרת כאן —
-            מקליטים אותה פעם אחת בימות. כל חיוג עולה יחידות מהחשבון בימות.
-            {s.extension && <> נוסח מוצע להקלטה: <b>&quot;יש ביקורת בישיבה, נא להגיע מיד. מי שבדרך או שאינו יכול להגיע — יחייג לקו הישיבה, שלוחה {s.extension}, ויעדכן.&quot;</b></>}
+            הרובוט מחייג דרך ימות לכל מי שעוד לא סומן (חוץ ממי שסומן &quot;לא יכול&quot;, וממי שאמר שהוא בדרך — עד שעבר הזמן שמסר). כל חיוג עולה יחידות מהחשבון בימות.
+            בוחרים כאן <b>איך</b> הוא פונה:
           </p>
-          {s.templatesError ? <div className="text-red-700">לא ניתן לקרוא תבניות מימות: {s.templatesError}</div> : s.templates.length === 0 ? (
-            <div className="text-amber-800">אין תבניות קמפיין בחשבון ימות. יוצרים תבנית בניהול הקמפיינים בימות, מקליטים הודעה, וחוזרים לכאן.</div>
-          ) : (
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="text-xs text-slate-600 flex flex-col">תבנית קמפיין
-                <select className={`${input} min-w-[260px]`} value={s.templateId} disabled={!canAdmin || busy} onChange={(e) => setTemplate(e.target.value)}>
-                  <option value="">— לא נבחרה —</option>
-                  {s.templates.map((t) => <option key={t.id} value={t.id}>{t.id} · {t.description || 'ללא תיאור'}{t.hasMessage ? '' : ' (אין הקלטה)'}</option>)}
-                </select>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            {MODES.map((m) => {
+              const on = s.robotMode === m.id;
+              return (
+                <button key={m.id} type="button" disabled={!canAdmin || busy} onClick={() => { if (!on) setRobot(m.id); }}
+                  className={`text-start rounded-xl border px-3 py-2.5 transition-all disabled:opacity-70 ${on ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-200' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                  <div className="font-semibold text-slate-800">{m.icon} {m.title}{on ? ' ✓' : ''}</div>
+                  <div className="text-xs text-slate-600 mt-0.5">{m.text}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {s.robotMode === 'tts' && (
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-600 flex flex-col">הטקסט שיוקרא (פעמיים)
+                <textarea className={`${input} min-h-[72px]`} value={text} disabled={!canAdmin} onChange={(e) => setText(e.target.value)} maxLength={600} />
               </label>
-              {s.templateId ? <span className="text-emerald-700">✓ נבחרה תבנית {s.templateId}</span> : <span className="text-amber-800">בלי תבנית הרובוט לא יחייג</span>}
+              {canAdmin && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" onClick={() => setRobot('tts', true)} disabled={busy || text.trim() === s.robotText.trim()}>שמור טקסט</Button>
+                  <button type="button" className="text-xs text-slate-500 hover:underline" onClick={() => setText(s.robotTextDefault)}>חזור לנוסח המוצע</button>
+                  {text.trim() !== s.robotText.trim() && <span className="text-xs text-amber-800">יש שינוי שלא נשמר</span>}
+                </div>
+              )}
             </div>
           )}
-          {canAdmin && s.templateId && (
+
+          {s.robotMode === 'template' && (
+            <div className="space-y-2">
+              <p className="text-slate-600">
+                יוצרים תבנית קמפיין באתר ימות ומקליטים לה הודעה פעם אחת.
+                {s.extension && <> נוסח מוצע: <b>&quot;{s.robotTextDefault}&quot;</b></>}
+              </p>
+              {s.templatesError ? <div className="text-red-700">לא ניתן לקרוא תבניות מימות: {s.templatesError}</div> : s.templates.length === 0 ? (
+                <div className="text-amber-800">אין תבניות קמפיין בחשבון ימות. יוצרים תבנית בניהול הקמפיינים בימות, מקליטים הודעה, וחוזרים לכאן.</div>
+              ) : (
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="text-xs text-slate-600 flex flex-col">תבנית קמפיין
+                    <select className={`${input} min-w-[260px]`} value={s.templateId} disabled={!canAdmin || busy} onChange={(e) => setTemplate(e.target.value)}>
+                      <option value="">— לא נבחרה —</option>
+                      {s.templates.map((t) => <option key={t.id} value={t.id}>{t.id} · {t.description || 'ללא תיאור'}{t.hasMessage ? '' : ' (אין הקלטה)'}</option>)}
+                    </select>
+                  </label>
+                  {s.templateId ? <span className="text-emerald-700">✓ נבחרה תבנית {s.templateId}</span> : <span className="text-amber-800">בלי תבנית הרובוט לא יחייג</span>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {s.robotMode === 'bridge' && (
+            <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 text-slate-700 space-y-1">
+              {!s.extensionOk && <div className="text-red-700 font-medium">קודם צריך להגדיר את שלוחת הסימון (למעלה) — השיחות נכנסות אליה.</div>}
+              <div><b>עוד לא נבדק אצלכם.</b> כדי שהתפריט האישי יושמע, ימות צריכה להעביר לשלוחה את המספר של מי שענה. אם בחיוג הניסיון נשמע &quot;שלום [שם]&quot; — זה עובד. אם נשמע &quot;הקישו קוד תלמיד&quot; — לא, ואז עדיף אחד משני המצבים האחרים.</div>
+              <div className="text-xs">לבדיקה: פותחים ביקורת תרגול, ומחייגים חיוג ניסיון למספר של מישהו שברשימה ועוד לא סומן.</div>
+            </div>
+          )}
+
+          {canAdmin && (s.robotMode !== 'template' || !!s.templateId) && (
             <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 space-y-1.5">
               <div className="font-medium text-slate-700">חיוג ניסיון — למספר אחד בלבד</div>
               <div className="flex flex-wrap items-center gap-2">
@@ -174,7 +235,7 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
                 <Button size="sm" variant="secondary" onClick={testDial} disabled={busy || testPhone.replace(/\D/g, '').length < 9}>{busy ? 'מחייג…' : '📞 חייג אליי'}</Button>
                 {testMsg && <span className={testMsg.startsWith('✓') ? 'text-emerald-700' : 'text-amber-800'}>{testMsg}</span>}
               </div>
-              <p className="text-xs text-slate-500">כך שומעים את ההקלטה ובודקים שהרובוט עובד, בלי לחייג לכל הרשימה. הכפתור &quot;חייג עכשיו לחסרים&quot; בביקורת (גם בתרגול) מחייג לכל מי שחסר.</p>
+              <p className="text-xs text-slate-500">כך שומעים בדיוק מה שהרובוט משמיע במצב שנבחר, בלי לחייג לכל הרשימה. הכפתור &quot;חייג עכשיו לחסרים&quot; בביקורת (גם בתרגול) מחייג לכל מי שחסר.</p>
             </div>
           )}
         </div>

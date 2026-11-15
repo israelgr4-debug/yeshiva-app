@@ -11,6 +11,62 @@ import { AttendanceAudit, AuditStudent, CallStatus, MarkResult, comingUntil, isV
 export const YEMOT_API = 'https://www.call2all.co.il/ym/api/';
 export const ROBOT_TEMPLATE_SETTING = 'attendance_robot_template';
 export const YEMOT_EXT_SETTING = 'attendance_yemot_extension';
+export const ROBOT_MODE_SETTING = 'attendance_robot_mode';
+export const ROBOT_TEXT_SETTING = 'attendance_robot_text';
+
+/**
+ * How the robot reaches the missing (ימות management API, doc f2.freeivr.co.il/topic/55):
+ *   tts      — `SendTTS`: ימות reads a text. Nothing to record, no template.
+ *   template — `RunCampaign` with a campaign template: plays the recording made in ימות.
+ *   bridge   — `CallExtensionBridging`: whoever answers lands in the marking extension and
+ *              gets the personal menu (1 on my way / 2 can't come) in the same call.
+ */
+export type RobotMode = 'tts' | 'template' | 'bridge';
+export const ROBOT_MODES: RobotMode[] = ['tts', 'template', 'bridge'];
+export interface RobotConfig { mode: RobotMode; templateId: string; text: string; ext: string }
+
+export const defaultRobotText = (ext: string) =>
+  `יש ביקורת נוכחות בישיבה, נא להגיע מיד. מי שבדרך או שאינו יכול להגיע, יחייג לקו הישיבה${ext ? `, שלוחה ${ext},` : ''} ויעדכן.`;
+
+export async function robotConfig(db: SupabaseClient): Promise<RobotConfig> {
+  const { data } = await db.from('system_settings').select('key, value').in('key', [ROBOT_MODE_SETTING, ROBOT_TEXT_SETTING, ROBOT_TEMPLATE_SETTING, YEMOT_EXT_SETTING]);
+  const get = (k: string) => { const v = (data || []).find((r: any) => r.key === k)?.value; return v ? String(v) : ''; };
+  const templateId = get(ROBOT_TEMPLATE_SETTING);
+  const ext = get(YEMOT_EXT_SETTING);
+  const stored = get(ROBOT_MODE_SETTING) as RobotMode;
+  // nothing chosen yet: the template if one was picked (how it worked before), else text to speech
+  const mode: RobotMode = ROBOT_MODES.includes(stored) ? stored : templateId ? 'template' : 'tts';
+  return { mode, templateId, ext, text: get(ROBOT_TEXT_SETTING).trim() || defaultRobotText(ext) };
+}
+
+/** Why the robot cannot dial with this configuration (null = it can). */
+export function robotProblem(cfg: RobotConfig): string | null {
+  if (!process.env.YEMOT_API_TOKEN) return 'YEMOT_API_TOKEN לא מוגדר ב-Vercel';
+  if (cfg.mode === 'template' && !cfg.templateId) return 'לא נבחרה תבנית קמפיין לרובוט (ביקורת נוכחות → הגדרות)';
+  if (cfg.mode === 'bridge' && !cfg.ext) return 'לא הוגדרה שלוחת סימון (ביקורת נוכחות → הגדרות)';
+  return null;
+}
+
+/** Start the calls. SendTTS / CallExtensionBridging take up to 500 numbers per request. */
+export async function robotDial(cfg: RobotConfig, phones: string[]): Promise<{ ok: boolean; error?: string; campaignId?: string }> {
+  const token = process.env.YEMOT_API_TOKEN!;
+  const post = async (cmd: string, params: Record<string, string>) => {
+    const r = await fetch(`${YEMOT_API}${cmd}`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token, ...params }).toString(), cache: 'no-store' });
+    const j: any = await r.json().catch(() => ({}));
+    return { ok: j.responseStatus === 'OK', id: String(j.campaignId || j.CampaignId || ''), error: `ימות: ${j.responseStatus || r.status} ${j.message || ''}`.trim() };
+  };
+  const size = cfg.mode === 'template' ? phones.length : 500;
+  let campaignId = '';
+  for (let i = 0; i < phones.length; i += size) {
+    const list = phones.slice(i, i + size).join(':');
+    const r = cfg.mode === 'tts' ? await post('SendTTS', { ttsMessage: cfg.text, phones: list, repeatFile: '2' })
+      : cfg.mode === 'bridge' ? await post('CallExtensionBridging', { phones: list, ivrPath: `ivr2:/${cfg.ext}`, callsTimeOut: '30' })
+      : await post('RunCampaign', { templateId: cfg.templateId, phones: list });
+    if (!r.ok) return { ok: false, error: r.error };
+    campaignId = campaignId || r.id;
+  }
+  return { ok: true, campaignId };
+}
 
 export const adminDb = (): SupabaseClient =>
   createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
@@ -116,12 +172,10 @@ export interface RobotResult { ok: boolean; skipped?: string; dialed?: number; e
  * ticking at once start one campaign).
  */
 export async function runRobot(db: SupabaseClient, audit: AttendanceAudit, mode: 'manual' | 'auto', actor: string | null): Promise<RobotResult> {
-  const token = process.env.YEMOT_API_TOKEN;
-  if (!token) return { ok: false, error: 'YEMOT_API_TOKEN לא מוגדר ב-Vercel' };
   if (audit.status !== 'open') return { ok: false, skipped: 'הביקורת סגורה' };
-  const { data: st } = await db.from('system_settings').select('value').eq('key', ROBOT_TEMPLATE_SETTING).maybeSingle();
-  const templateId = st?.value ? String(st.value) : '';
-  if (!templateId) return { ok: false, error: 'לא נבחרה תבנית קמפיין לרובוט (ביקורת נוכחות → הגדרות)' };
+  const cfg = await robotConfig(db);
+  const problem = robotProblem(cfg);
+  if (problem) return { ok: false, error: problem };
 
   const now = Date.now();
   if (mode === 'auto') {
@@ -144,13 +198,10 @@ export async function runRobot(db: SupabaseClient, audit: AttendanceAudit, mode:
   if (!phones.length) return { ok: true, skipped: 'אין למי לחייג', dialed: 0 };
 
   try {
-    const body = new URLSearchParams({ token, templateId, phones: phones.join(':') });
-    const r = await fetch(`${YEMOT_API}RunCampaign`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString(), cache: 'no-store' });
-    const j: any = await r.json().catch(() => ({}));
-    const ok = j.responseStatus === 'OK';
-    await logEvent(db, audit.id, null, 'robot', 'robot', actor || mode, { mode, phones: phones.length, ok, campaignId: j.campaignId || null, message: j.message || null, status: j.responseStatus || r.status });
-    if (!ok) return { ok: false, error: `ימות: ${j.responseStatus || r.status} ${j.message || ''}`.trim() };
-    return { ok: true, dialed: phones.length, campaignId: j.campaignId };
+    const r = await robotDial(cfg, phones);
+    await logEvent(db, audit.id, null, 'robot', 'robot', actor || mode, { mode, how: cfg.mode, phones: phones.length, ok: r.ok, campaignId: r.campaignId || null, message: r.error || null });
+    if (!r.ok) return { ok: false, error: r.error };
+    return { ok: true, dialed: phones.length, campaignId: r.campaignId };
   } catch (e: any) {
     await logEvent(db, audit.id, null, 'robot', 'robot', actor || mode, { mode, phones: phones.length, ok: false, message: e.message });
     return { ok: false, error: e.message };
