@@ -22,6 +22,8 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
   const [busy, setBusy] = useState(false);
   const [ext, setExt] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  const [testPhone, setTestPhone] = useState('');
+  const [testMsg, setTestMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -61,6 +63,17 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
     setBusy(true);
     const { j } = await post({ action: 'set_template', templateId: id });
     if (!j.ok) alert(j.error || 'השמירה נכשלה'); else await load();
+    setBusy(false);
+  };
+
+  // one call to one number — to hear the recording and see that the robot works, before an audit
+  const testDial = async () => {
+    if (!confirm(`לחייג עכשיו חיוג ניסיון למספר ${testPhone}?\nהחיוג עולה יחידה בימות.`)) return;
+    setBusy(true); setTestMsg(null);
+    try {
+      const { j } = await post({ action: 'robot_test', phone: testPhone });
+      setTestMsg(j.ok ? '✓ הבקשה התקבלה בימות. הטלפון אמור לצלצל תוך דקה.' : `⚠️ ${j.error || 'נכשל'}`);
+    } catch (e: any) { setTestMsg('⚠️ ' + e.message); }
     setBusy(false);
   };
 
@@ -121,6 +134,17 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
                 </select>
               </label>
               {s.templateId ? <span className="text-emerald-700">✓ נבחרה תבנית {s.templateId}</span> : <span className="text-amber-800">בלי תבנית הרובוט לא יחייג</span>}
+            </div>
+          )}
+          {canAdmin && s.templateId && (
+            <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 space-y-1.5">
+              <div className="font-medium text-slate-700">חיוג ניסיון — למספר אחד בלבד</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input className={`${input} w-40`} dir="ltr" inputMode="tel" placeholder="050-0000000" value={testPhone} onChange={(e) => setTestPhone(e.target.value.replace(/[^\d-]/g, ''))} />
+                <Button size="sm" variant="secondary" onClick={testDial} disabled={busy || testPhone.replace(/\D/g, '').length < 9}>{busy ? 'מחייג…' : '📞 חייג אליי'}</Button>
+                {testMsg && <span className={testMsg.startsWith('✓') ? 'text-emerald-700' : 'text-amber-800'}>{testMsg}</span>}
+              </div>
+              <p className="text-xs text-slate-500">כך שומעים את ההקלטה ובודקים שהרובוט עובד, בלי לחייג לכל הרשימה. הכפתור &quot;חייג עכשיו לחסרים&quot; בביקורת (גם בתרגול) מחייג לכל מי שחסר.</p>
             </div>
           )}
         </div>

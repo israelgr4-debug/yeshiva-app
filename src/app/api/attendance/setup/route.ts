@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AttendanceAudit } from '@/lib/attendance';
+import { AttendanceAudit, isValidPhone, normPhone } from '@/lib/attendance';
 import { adminDb, authUser, runRobot, yemotCallbackSecret, ROBOT_TEMPLATE_SETTING, YEMOT_API, YEMOT_EXT_SETTING } from '@/lib/attendance-server';
 
 // ביקורת נוכחות ↔ ימות המשיח setup (logged-in users only; the token never reaches the browser).
@@ -7,6 +7,7 @@ import { adminDb, authUser, runRobot, yemotCallbackSecret, ROBOT_TEMPLATE_SETTIN
 // POST → { action: 'create_extension', ext, force? }   write ext.ini of the marking extension
 //        { action: 'set_template', templateId }        campaign template the robot runs
 //        { action: 'robot', auditId }                  dial everyone still missing now
+//        { action: 'robot_test', phone }               dial ONE number with the chosen template (try it before an audit)
 
 export const maxDuration = 60;
 
@@ -85,6 +86,16 @@ export async function POST(req: NextRequest) {
     if (body.action === 'set_template') {
       await saveSetting(ROBOT_TEMPLATE_SETTING, String(body.templateId || ''));
       return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === 'robot_test') {
+      const phone = normPhone(body.phone);
+      if (!isValidPhone(phone)) return NextResponse.json({ ok: false, error: 'מספר הטלפון לא תקין' }, { status: 400 });
+      const templateId = await setting(ROBOT_TEMPLATE_SETTING);
+      if (!templateId) return NextResponse.json({ ok: false, error: 'קודם יש לבחור תבנית קמפיין' }, { status: 400 });
+      const w = await yemot('RunCampaign', { templateId, phones: phone }, true);
+      if (w.responseStatus !== 'OK') return NextResponse.json({ ok: false, error: `ימות: ${w.responseStatus || ''} ${w.message || ''}`.trim() }, { status: 502 });
+      return NextResponse.json({ ok: true, campaignId: w.campaignId || null });
     }
 
     if (body.action === 'create_extension') {
