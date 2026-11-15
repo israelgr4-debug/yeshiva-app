@@ -42,3 +42,6 @@ Thumbs.db
 
 .vercel
 .env*.local
+
+# generated files with personal data (SQL for the manager to run) — never commit
+/local-data/
