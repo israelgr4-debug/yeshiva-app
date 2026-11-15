@@ -354,7 +354,8 @@ The Sidebar hides `/settings` from non-admins.
    no direct connection to the ministry site — warn when the file is older than 30 days:
    readiness banner + dashboard row) matched to students by any ID (`idKeys`).
    Tabs: מוכנות (what to fix: not in system / not active / no phone / duplicate phone / no
-   room / no ID scan) · קבוצות (groups + leaders, below) · ביקורת (open form → live control
+   room / no ID scan; the four number cards open the list behind the number — search, print,
+   Excel) · קבוצות (groups + leaders, below) · ביקורת (open form → live control
    room) · היסטוריה · הגדרות (ימות) ·
    מדריך (`GuideTab`, printable — keep in sync with the flow and the phone keys).
    Opening FREEZES the list into `attendance_audit_students` (snapshot of name/shiur/room/
