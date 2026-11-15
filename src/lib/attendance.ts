@@ -32,7 +32,17 @@ export interface AttendanceAudit {
   closed_by: string | null;
   closed_at: string | null;
   notes: string | null;
+  /** the groups as they were when the audit opened (mig 062) */
+  squads?: SquadInfo[] | null;
 }
+
+/** One of the (up to two) people responsible for a group — its callers and patrol in an audit. */
+export interface SquadLeader { student_id: string | null; name: string; phone: string | null }
+/** A standing group of eligible students (mig 062). */
+export interface Squad { id: string; name: string; sort_order: number; leaders: SquadLeader[]; notes: string | null }
+/** What an audit keeps of a group. */
+export interface SquadInfo { name: string; leaders: { name: string; phone: string | null }[] }
+export const SQUAD_LEADERS = 2;
 
 export interface AuditStudent {
   id: string;
@@ -55,6 +65,8 @@ export interface AuditStudent {
   call_by: string | null;
   call_at: string | null;
   prev_missing: boolean;
+  /** name of the group he was in when the audit opened (mig 062) */
+  squad?: string | null;
 }
 
 /** What the team link gets — no ID numbers. */
@@ -71,6 +83,7 @@ export interface TeamAudit {
   robot_interval_min: number;
   robot_last_run_at: string | null;
   robot_runs: number;
+  squads: SquadInfo[];
 }
 
 export const KIND_LABEL: Record<AuditKind, string> = { real: 'ביקורת', practice: 'תרגול', repeat: 'ביקורת חוזרת' };
@@ -175,7 +188,7 @@ export function compareAudit(a: Sortable, b: Sortable): number {
 export const sectionOf = (s: { grp: AuditGroup; shiur: string | null }) =>
   (s.grp === 'yeshiva' ? (s.shiur || 'ללא שיעור') : GROUP_LABEL[s.grp]);
 
-export type NewAuditStudent = Pick<AuditStudent, 'student_id' | 'code' | 'id_number' | 'last_name' | 'first_name' | 'grp' | 'shiur' | 'room' | 'phone' | 'prev_missing'>;
+export type NewAuditStudent = Pick<AuditStudent, 'student_id' | 'code' | 'id_number' | 'last_name' | 'first_name' | 'grp' | 'shiur' | 'room' | 'phone' | 'prev_missing'> & { squad?: string | null };
 
 /**
  * The frozen list of an audit: sorted like the printed sheet, with a running code
@@ -199,6 +212,100 @@ export function buildAuditRows(eligible: EligibleRow[], prevMissing: Set<string>
     rows: base.map((r, i) => ({ ...r, code: String(start + i), prev_missing: idKeys(r.id_number).some((k) => prevMissing.has(k)) })),
   };
 }
+
+// ---------------- groups ("קבוצות") ----------------
+
+/** An eligible student as the groups screen sees him. */
+export interface SquadPerson { id: string; grp: AuditGroup; shiur: string | null; room: string | null; phone: string | null; last_name: string | null; first_name: string | null }
+
+export function squadPeople(eligible: EligibleRow[]): SquadPerson[] {
+  return eligible.filter((e) => e.student).map((e) => ({
+    id: e.student!.id, grp: e.grp,
+    shiur: e.grp === 'yeshiva' ? (e.student!.shiur || null) : null,
+    room: e.grp === 'yeshiva' && e.student!.room_number ? String(e.student!.room_number) : null,
+    phone: e.student!.phone ? normPhone(e.student!.phone) || null : null,
+    last_name: (e.student!.last_name || '').trim() || null,
+    first_name: (e.student!.first_name || '').trim() || null,
+  })).sort(compareAudit);
+}
+
+/** n people into groups of at most `size`, as even as possible. */
+function evenChunks<T>(list: T[], size: number): T[][] {
+  if (!list.length) return [];
+  const k = Math.ceil(list.length / Math.max(1, size));
+  const out: T[][] = [];
+  let at = 0;
+  for (let i = 0; i < k; i++) {
+    const n = Math.floor(list.length / k) + (i < list.length % k ? 1 : 0);
+    out.push(list.slice(at, at + n));
+    at += n;
+  }
+  return out;
+}
+
+export type AutoSquadMode = 'shiur' | 'room' | 'list';
+export const AUTO_SQUAD_LABEL: Record<AutoSquadMode, string> = { shiur: 'לפי שיעור', room: 'לפי חדרים בפנימייה', list: 'לפי סדר הרשימה' };
+
+/**
+ * A suggested division into groups of at most `size`:
+ *  shiur — every shiur is a group (a big one is split evenly), אברכים the same;
+ *  room  — neighbouring dorm rooms together, a room is never split; the ones without a
+ *          room and the אברכים get their own groups;
+ *  list  — the list as it is sorted, cut evenly.
+ */
+export function autoSquads(people: SquadPerson[], mode: AutoSquadMode, size: number): { name: string; ids: string[] }[] {
+  const max = Math.max(2, Math.floor(size) || 15);
+  const sorted = [...people].sort(compareAudit);
+  const named = (name: string, list: SquadPerson[]) => {
+    const parts = evenChunks(list, max);
+    return parts.map((c, i) => ({ name: parts.length > 1 ? `${name} ${i + 1}` : name, ids: c.map((x) => x.id) }));
+  };
+  if (mode === 'list') return evenChunks(sorted, max).map((c, i) => ({ name: `קבוצה ${i + 1}`, ids: c.map((x) => x.id) }));
+
+  const bySection = (list: SquadPerson[]) => {
+    const m = new Map<string, SquadPerson[]>();
+    for (const x of list) { const k = sectionOf(x); if (!m.has(k)) m.set(k, []); m.get(k)!.push(x); }
+    return Array.from(m.entries()).flatMap(([k, l]) => named(k, l));
+  };
+  if (mode === 'shiur') return bySection(sorted);
+
+  // rooms
+  const withRoom = sorted.filter((x) => x.grp === 'yeshiva' && x.room);
+  const rooms = new Map<string, SquadPerson[]>();
+  for (const x of withRoom) { if (!rooms.has(x.room!)) rooms.set(x.room!, []); rooms.get(x.room!)!.push(x); }
+  const order = Array.from(rooms.keys()).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+  const out: { name: string; ids: string[] }[] = [];
+  let cur: SquadPerson[] = [];
+  let first = '';
+  let last = '';
+  const flush = () => {
+    if (cur.length) out.push({ name: first === last ? `חדר ${first}` : `חדרים ${first}–${last}`, ids: cur.map((x) => x.id) });
+    cur = [];
+  };
+  for (const r of order) {
+    const l = rooms.get(r)!;
+    if (cur.length && cur.length + l.length > max) flush();
+    if (!cur.length) first = r;
+    last = r;
+    cur.push(...l);
+  }
+  flush();
+  const noRoom = sorted.filter((x) => x.grp === 'yeshiva' && !x.room);
+  out.push(...named('בלי חדר', noRoom));
+  out.push(...bySection(sorted.filter((x) => x.grp !== 'yeshiva')));
+  return out;
+}
+
+/** A name that is not taken yet ("שיעור א" → "שיעור א (2)"). */
+export function freeSquadName(name: string, taken: Iterable<string>): string {
+  const used = new Set(Array.from(taken, (x) => x.trim()));
+  const base = name.trim() || 'קבוצה';
+  if (!used.has(base)) return base;
+  for (let i = 2; ; i++) if (!used.has(`${base} (${i})`)) return `${base} (${i})`;
+}
+
+export const leadersLine = (leaders: { name: string; phone: string | null }[]) =>
+  leaders.map((l) => `${l.name}${l.phone ? ' ' + l.phone : ''}`).join(' · ');
 
 // ---------------- readiness ("מוכנות") ----------------
 

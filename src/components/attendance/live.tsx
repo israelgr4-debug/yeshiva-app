@@ -6,8 +6,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  TeamAudit, TeamStudent, CallStatus, AuditGroup, CALL_LABEL, GROUP_LABEL, KIND_LABEL, OUT_OF_TOWN,
-  auditStats, compareAudit, fullName, hm, isOutOfTown, sectionOf,
+  TeamAudit, TeamStudent, CallStatus, AuditGroup, SquadInfo, CALL_LABEL, GROUP_LABEL, KIND_LABEL, OUT_OF_TOWN,
+  auditStats, compareAudit, fullName, hm, isOutOfTown, leadersLine, sectionOf,
 } from '@/lib/attendance';
 
 export interface LiveState { audit: TeamAudit; students: TeamStudent[]; now: string }
@@ -76,6 +76,43 @@ export function useAuditLive(token: string | null, code: string | null, actor: s
   return { state, error, closed, updatedAt, act, reload: load };
 }
 
+// ---------------------------------------------------------------- groups (mig 062)
+
+/** Value of the group picker for the people who are in no group. */
+export const NO_SQUAD = '__none__';
+const squadsOf = (state: LiveState): SquadInfo[] => state.audit.squads || [];
+const inSquad = (s: TeamStudent, squad: string) => (squad === NO_SQUAD ? !s.squad : s.squad === squad);
+
+/** The same state with only one group's people ('' = everyone). */
+export function filterSquad(state: LiveState, squad: string): LiveState {
+  return squad ? { ...state, students: state.students.filter((s) => inSquad(s, squad)) } : state;
+}
+
+/** "הקבוצה שלי": narrows the callers / patrol lists (and their sheets) to one group. Hidden when the audit has no groups. */
+export function SquadPicker({ state, value, onChange }: { state: LiveState; value: string; onChange: (v: string) => void }) {
+  const squads = squadsOf(state);
+  // the remembered group is gone (renamed / the audit was updated) → back to everyone
+  const gone = !!value && value !== NO_SQUAD && !squads.some((q) => q.name === value);
+  useEffect(() => { if (gone) onChange(''); }, [gone]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!squads.length) return null;
+  const cnt = (q: string) => { const l = state.students.filter((s) => inSquad(s, q)); return { total: l.length, missing: l.filter((s) => !s.present).length }; };
+  const none = cnt(NO_SQUAD);
+  const cur = squads.find((q) => q.name === value);
+  return (
+    <div className="no-print flex flex-wrap items-center gap-2 text-sm bg-white border border-slate-200 rounded-xl px-3 py-2">
+      <span className="font-semibold text-slate-700">👥 קבוצה:</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm font-medium">
+        <option value="">כל הקבוצות</option>
+        {squads.map((q) => { const c = cnt(q.name); return <option key={q.name} value={q.name}>{q.name} — חסרים {c.missing} מתוך {c.total}</option>; })}
+        {none.total > 0 && <option value={NO_SQUAD}>בלי קבוצה — חסרים {none.missing} מתוך {none.total}</option>}
+      </select>
+      {cur && <span className="text-slate-600">אחראים: {cur.leaders.length ? cur.leaders.map((l, i) => (
+        <span key={i}>{i ? ' · ' : ''}<b>{l.name}</b>{l.phone ? <> <a href={`tel:${l.phone}`} dir="ltr" className="text-blue-700 hover:underline tabular-nums">{l.phone}</a></> : ''}</span>
+      )) : 'לא סומנו'}</span>}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- central board
 
 export function BigBoard({ state, updatedAt }: { state: LiveState; updatedAt: number }) {
@@ -93,6 +130,13 @@ export function BigBoard({ state, updatedAt }: { state: LiveState; updatedAt: nu
   }, [students]);
   const recent = useMemo(() => students.filter((s) => s.present && s.present_at)
     .sort((a, b) => (b.present_at || '').localeCompare(a.present_at || '')).slice(0, 8), [students]);
+  const squadRows = useMemo(() => {
+    const rows = (audit.squads || []).map((q) => ({ name: q.name, leaders: q.leaders.map((l) => l.name).join(' · '), total: 0, present: 0 }));
+    const at = new Map(rows.map((r) => [r.name, r]));
+    const none = { name: 'בלי קבוצה', leaders: '', total: 0, present: 0 };
+    for (const s of students) { const r = (s.squad && at.get(s.squad)) || none; r.total++; if (s.present) r.present++; }
+    return rows.length ? [...rows.filter((r) => r.total), ...(none.total ? [none] : [])] : [];
+  }, [audit.squads, students]);
   const stale = updatedAt && Date.now() - updatedAt > 15000;
   const target = Number(audit.target_pct);
   const miss = students.filter((s) => !s.present);
@@ -167,6 +211,30 @@ export function BigBoard({ state, updatedAt }: { state: LiveState; updatedAt: nu
           )}
         </div>
       </div>
+
+      {squadRows.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200/70 p-4">
+          <h3 className="font-bold text-slate-800 mb-2" style={{ fontFamily: "'Frank Ruhl Libre', serif" }}>חסרים לפי קבוצה</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-2">
+            {squadRows.map((r) => {
+              const miss = r.total - r.present;
+              return (
+                <div key={r.name} className="text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 min-w-0 truncate font-medium">{r.name}</span>
+                    <span className={`tabular-nums ${miss ? 'text-red-600 font-semibold' : 'text-emerald-700'}`}>{miss ? `חסרים ${miss}` : '✓ כולם'}</span>
+                    <span className="w-12 text-end text-xs text-slate-400 tabular-nums">{r.present}/{r.total}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mt-0.5">
+                    <div className={`h-full rounded-full ${miss ? 'bg-orange-500' : 'bg-emerald-500'}`} style={{ width: `${r.total ? (r.present / r.total) * 100 : 0}%` }} />
+                  </div>
+                  {r.leaders && <div className="text-xs text-slate-500 truncate">אחראים: {r.leaders}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -188,8 +256,8 @@ function matches(s: TeamStudent, q: string) {
 }
 
 /** "טלפנים": everyone still missing, with a phone and what the last call gave. */
-export function CallersList({ state, act, canAct }: { state: LiveState; act: LiveAct; canAct: boolean }) {
-  const [grp, setGrp] = useState<'kollel' | 'yeshiva' | 'all' | 'out'>('kollel');
+export function CallersList({ state, act, canAct, wholeList = false }: { state: LiveState; act: LiveAct; canAct: boolean; /** the list is one group — start on "all the missing" */ wholeList?: boolean }) {
+  const [grp, setGrp] = useState<'kollel' | 'yeshiva' | 'all' | 'out'>(wholeList ? 'all' : 'kollel');
   const [q, setQ] = useState('');
   const [hideHandled, setHideHandled] = useState(false);
   const missing = useMemo(() => state.students.filter((s) => !s.present), [state.students]);
@@ -236,7 +304,7 @@ export function CallersList({ state, act, canAct }: { state: LiveState; act: Liv
             <div key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
               <div className="w-52 min-w-0">
                 <div className="font-semibold truncate">{fullName(s)} {s.prev_missing && <span className="px-1.5 rounded text-[11px] bg-red-100 text-red-800">חסר בקודמת</span>}</div>
-                <div className="text-xs text-slate-500">{sectionOf(s)}{s.room ? ` · חדר ${s.room}` : ''}</div>
+                <div className="text-xs text-slate-500">{sectionOf(s)}{s.room ? ` · חדר ${s.room}` : ''}{s.squad && !wholeList ? ` · ${s.squad}` : ''}</div>
               </div>
               {s.phone
                 ? <a href={`tel:${s.phone}`} dir="ltr" className="w-28 tabular-nums font-semibold text-blue-700 hover:underline">{s.phone}</a>
@@ -332,8 +400,8 @@ export function MarkPanel({ state, act, canAct }: { state: LiveState; act: LiveA
 
 // ---------------------------------------------------------------- printed sheets
 
-export type SheetKind = 'codes' | 'callers' | 'patrol' | 'missing' | 'out';
-export const SHEET_LABEL: Record<SheetKind, string> = { codes: 'דף קודים למסמנים', callers: 'חסרים לטלפנים (אברכים)', patrol: 'חסרים לסיירים (לפי חדר)', missing: 'כל החסרים', out: 'מחוץ לעיר' };
+export type SheetKind = 'codes' | 'callers' | 'patrol' | 'missing' | 'out' | 'squads';
+export const SHEET_LABEL: Record<SheetKind, string> = { codes: 'דף קודים למסמנים', callers: 'חסרים לטלפנים (אברכים)', patrol: 'חסרים לסיירים (לפי חדר)', missing: 'כל החסרים', out: 'מחוץ לעיר', squads: 'חסרים לפי קבוצה (דף לכל אחראים)' };
 
 /** Rendered only for print (the caller wraps it in `hidden print:block`). */
 export function AuditSheet({ state, kind }: { state: LiveState; kind: SheetKind }) {
@@ -397,6 +465,50 @@ export function AuditSheet({ state, kind }: { state: LiveState; kind: SheetKind 
     );
   }
 
+  if (kind === 'squads') {
+    // a page per group, for its two responsible people: who is still missing right now
+    const names = [...(audit.squads || []).map((q) => q.name), ''];
+    const pages = names.map((name) => ({
+      name: name || 'בלי קבוצה', leaders: (audit.squads || []).find((q) => q.name === name)?.leaders || [],
+      total: students.filter((s) => (s.squad || '') === name).length,
+      list: students.filter((s) => !s.present && (s.squad || '') === name).sort(compareAudit),
+    })).filter((p) => p.total > 0);
+    return (
+      <div className="att-sheet print-area" dir="rtl">
+        <style dangerouslySetInnerHTML={{ __html: css + ' @media print { .att-sheet .pg { break-after: page; } .att-sheet .pg:last-child { break-after: auto; } }' }} />
+        {pages.map((p) => (
+          <div key={p.name} className="pg">
+            {head(`חסרים · ${p.name}`, `מעודכן ${now} · חסרים ${p.list.length} מתוך ${p.total}`)}
+            {p.leaders.length > 0 && <p className="text-sm mb-2"><b>אחראים:</b> {leadersLine(p.leaders)}</p>}
+            {p.list.length === 0 ? <p className="text-base font-bold">✓ כל הקבוצה נוכחת</p> : (
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-200">
+                    <th className={`${td} w-6`}>#</th><th className={`${td} text-start`}>שם</th><th className={`${td} text-start`}>שיעור</th><th className={`${td} w-10`}>חדר</th>
+                    <th className={`${td} text-start`}>נייד</th><th className={`${td} text-start`}>מצב</th><th className={`${td} w-1/4 text-start`}>הערה</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.list.map((s, i) => (
+                    <tr key={s.id}>
+                      <td className={`${td} text-center`}>{i + 1}</td>
+                      <td className={`${td} font-semibold`}>{fullName(s)}{s.prev_missing ? ' *' : ''}</td>
+                      <td className={td}>{sectionOf(s)}</td>
+                      <td className={`${td} text-center tabular-nums`}>{s.room || ''}</td>
+                      <td className={`${td} tabular-nums`} dir="ltr">{s.phone || ''}</td>
+                      <td className={td}>{CALL_LABEL[s.call_status]}</td>
+                      <td className={td}>{s.call_note || ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   const list = students.filter((s) => !s.present && (kind === 'out' ? isOutOfTown(s) : kind === 'missing' || s.grp !== 'yeshiva')).sort(compareAudit);
   return (
     <div className="att-sheet print-area" dir="rtl">
@@ -427,9 +539,10 @@ export function AuditSheet({ state, kind }: { state: LiveState; kind: SheetKind 
   );
 }
 
-/** Buttons + the print-only sheet. */
-export function PrintButtons({ state, kinds = ['codes', 'callers', 'patrol', 'missing', 'out'] }: { state: LiveState; kinds?: SheetKind[] }) {
+/** Buttons + the print-only sheet. `full` = the unfiltered state, for the codes sheet (a marker needs everyone). */
+export function PrintButtons({ state, full, kinds: wanted = ['codes', 'callers', 'patrol', 'missing', 'out', 'squads'] }: { state: LiveState; full?: LiveState; kinds?: SheetKind[] }) {
   const [kind, setKind] = useState<SheetKind | null>(null);
+  const kinds = wanted.filter((k) => k !== 'squads' || squadsOf(state).length > 0);
   useEffect(() => {
     if (!kind) return;
     const t = setTimeout(() => window.print(), 80);
@@ -445,7 +558,7 @@ export function PrintButtons({ state, kinds = ['codes', 'callers', 'patrol', 'mi
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-50">🖨️ {SHEET_LABEL[k]}</button>
         ))}
       </div>
-      {kind && <div className="hidden print:block"><AuditSheet state={state} kind={kind} /></div>}
+      {kind && <div className="hidden print:block"><AuditSheet state={kind === 'codes' ? (full || state) : state} kind={kind} /></div>}
     </>
   );
 }

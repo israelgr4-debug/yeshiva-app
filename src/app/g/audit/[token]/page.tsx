@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useAuditLive, BigBoard, CallersList, PatrolList, MarkPanel, PrintButtons } from '@/components/attendance/live';
+import { useAuditLive, BigBoard, CallersList, PatrolList, MarkPanel, PrintButtons, SquadPicker, filterSquad } from '@/components/attendance/live';
 
 // PUBLIC team link of an open ביקורת נוכחות — no login. The link's token + the short code
 // from the manager open it; it stops working when the audit is closed. Shows the central
@@ -19,14 +19,23 @@ export default function TeamAuditPage() {
   const [name, setName] = useState('');
   const [codeInput, setCodeInput] = useState('');
   const [view, setView] = useState<View>('board');
+  const [squad, setSquad] = useState('');
   const key = `audit-team-${token}`;
 
   useEffect(() => {
     try {
       const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
       if (saved?.code) { setCode(saved.code); setName(saved.name || ''); }
+      setSquad(sessionStorage.getItem(key + '-squad') || '');
     } catch { /* first visit */ }
   }, [key]);
+
+  // a responsible person picks his group once; the lists then open on its people
+  const pickSquad = (v: string) => {
+    setSquad(v);
+    try { sessionStorage.setItem(key + '-squad', v); } catch { /* ignore */ }
+    if (v && view === 'board') setView('callers');
+  };
 
   const live = useAuditLive(token || null, code, name || 'צוות');
   const wrongCode = live.error === 'קוד שגוי';
@@ -68,18 +77,20 @@ export default function TeamAuditPage() {
   }
 
   const pill = (on: boolean) => `px-4 py-2 rounded-full text-sm font-medium border ${on ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white border-transparent' : 'bg-white border-slate-200 text-slate-600'}`;
+  const scoped = live.state ? filterSquad(live.state, squad) : null;
   return (
     <div className="min-h-screen bg-slate-50 p-3 md:p-6 space-y-3" dir="rtl">
       <div className="no-print flex flex-wrap items-center gap-2">
         {VIEWS.map((v) => <button key={v.id} type="button" className={pill(view === v.id)} onClick={() => setView(v.id)}>{v.label}</button>)}
       </div>
-      {live.state && view !== 'board' && <PrintButtons state={live.state} kinds={view === 'callers' ? ['callers', 'missing', 'out'] : view === 'patrol' ? ['patrol'] : ['codes']} />}
+      {live.state && <SquadPicker state={live.state} value={squad} onChange={pickSquad} />}
+      {scoped && view !== 'board' && <PrintButtons state={scoped} full={live.state || undefined} kinds={view === 'callers' ? (squad ? ['missing', 'out'] : ['callers', 'missing', 'out', 'squads']) : view === 'patrol' ? ['patrol'] : ['codes']} />}
       <div className="no-print">
         {live.error && !wrongCode && <div className="mb-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-2 text-sm">⚠️ {live.error}</div>}
         {!live.state ? <div className="py-20 text-center text-slate-400">טוען…</div>
           : view === 'board' ? <BigBoard state={live.state} updatedAt={live.updatedAt} />
-          : view === 'callers' ? <CallersList state={live.state} act={live.act} canAct />
-          : view === 'patrol' ? <PatrolList state={live.state} act={live.act} canAct />
+          : view === 'callers' ? <CallersList key={squad} state={scoped!} act={live.act} canAct wholeList={!!squad} />
+          : view === 'patrol' ? <PatrolList state={scoped!} act={live.act} canAct />
           : <MarkPanel state={live.state} act={live.act} canAct />}
       </div>
     </div>

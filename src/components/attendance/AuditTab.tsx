@@ -7,7 +7,7 @@ import { useAttendance } from '@/hooks/useAttendance';
 import { AttendanceAudit, AuditKind, DatStored, EligibleRow, KIND_LABEL, auditStats } from '@/lib/attendance';
 import { SectionCard, EmptyState, dmy, todayIso } from '@/components/scholarships/shared';
 import { DatBanner } from './ReadinessTab';
-import { useAuditLive, BigBoard, CallersList, PatrolList, MarkPanel, PrintButtons } from './live';
+import { useAuditLive, BigBoard, CallersList, PatrolList, MarkPanel, PrintButtons, SquadPicker, filterSquad } from './live';
 
 // "ביקורת": no audit open → the opening form (one click when the auditors arrive);
 // an audit is open → the live control room: team link, sheets, robot, the four screens, close.
@@ -136,6 +136,7 @@ function ControlRoom({ audit, canWrite, userEmail, onChanged, onClosed }: {
   const att = useAttendance();
   const live = useAuditLive(audit.access_token, audit.access_code, userEmail);
   const [view, setView] = useState<View>('board');
+  const [squad, setSquad] = useState('');
   const [robotMsg, setRobotMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const link = typeof window !== 'undefined' ? `${window.location.origin}/g/audit/${audit.access_token}` : '';
@@ -172,6 +173,8 @@ function ControlRoom({ audit, canWrite, userEmail, onChanged, onClosed }: {
   };
 
   const pill = (on: boolean) => `px-4 py-2 rounded-full text-sm font-medium border ${on ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white border-transparent' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`;
+  // one group's people for the callers / patrol lists and their sheets; the board and marking stay whole
+  const scoped = live.state ? filterSquad(live.state, squad) : null;
 
   return (
     <div className="space-y-4">
@@ -203,7 +206,8 @@ function ControlRoom({ audit, canWrite, userEmail, onChanged, onClosed }: {
       </div>
 
       {/* outside every no-print box: the sheet it renders must be printable */}
-      {live.state && <PrintButtons state={live.state} />}
+      {live.state && <SquadPicker state={live.state} value={squad} onChange={setSquad} />}
+      {scoped && <PrintButtons state={scoped} full={live.state || undefined} />}
 
       <div className="no-print flex gap-2 overflow-x-auto whitespace-nowrap">
         {VIEWS.map((v) => <button key={v.id} type="button" className={pill(view === v.id)} onClick={() => setView(v.id)}>{v.label}</button>)}
@@ -213,8 +217,8 @@ function ControlRoom({ audit, canWrite, userEmail, onChanged, onClosed }: {
         {live.error && <div className="mb-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-2 text-sm">⚠️ {live.error}</div>}
         {!live.state ? <SectionCard><div className="py-10 text-center text-slate-400">טוען…</div></SectionCard>
           : view === 'board' ? <BigBoard state={live.state} updatedAt={live.updatedAt} />
-          : view === 'callers' ? <CallersList state={live.state} act={live.act} canAct={canWrite} />
-          : view === 'patrol' ? <PatrolList state={live.state} act={live.act} canAct={canWrite} />
+          : view === 'callers' ? <CallersList key={squad} state={scoped!} act={live.act} canAct={canWrite} wholeList={!!squad} />
+          : view === 'patrol' ? <PatrolList state={scoped!} act={live.act} canAct={canWrite} />
           : <MarkPanel state={live.state} act={live.act} canAct={canWrite} />}
       </div>
     </div>

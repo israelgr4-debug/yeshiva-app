@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { useAttendance } from '@/hooks/useAttendance';
-import { AttendanceAudit, AuditStudent, CALL_LABEL, KIND_LABEL, auditStats, compareAudit, fullName, hm, isOutOfTown, sectionOf } from '@/lib/attendance';
+import { AttendanceAudit, AuditStudent, CALL_LABEL, KIND_LABEL, auditStats, compareAudit, fullName, hm, isOutOfTown, leadersLine, sectionOf } from '@/lib/attendance';
 import { SectionCard, EmptyState, dmy } from '@/components/scholarships/shared';
 
 // "היסטוריה": every audit with its result; open one to see who was present / missing and
@@ -16,6 +16,7 @@ export function HistoryTab({ canAdmin }: { canAdmin: boolean }) {
   const [sel, setSel] = useState<AttendanceAudit | null>(null);
   const [rows, setRows] = useState<AuditStudent[] | null>(null);
   const [show, setShow] = useState<'missing' | 'present' | 'all' | 'out'>('missing');
+  const [squad, setSquad] = useState('');   // '' = every group, '-' = in no group
 
   const load = useCallback(async () => {
     try {
@@ -27,7 +28,7 @@ export function HistoryTab({ canAdmin }: { canAdmin: boolean }) {
   useEffect(() => { load(); }, [load]);
 
   const openAudit = async (a: AttendanceAudit) => {
-    setSel(a); setRows(null);
+    setSel(a); setRows(null); setSquad('');
     try { setRows((await att.auditStudents(a.id)).sort(compareAudit)); } catch (e: any) { alert(e.message); }
   };
 
@@ -36,20 +37,37 @@ export function HistoryTab({ canAdmin }: { canAdmin: boolean }) {
     try { await att.deleteAudit(a.id); setSel(null); await load(); } catch (e: any) { alert(e.message); }
   };
 
-  const shown = useMemo(() => (rows || []).filter((r) => (show === 'out' ? !r.present && isOutOfTown(r) : show === 'all' || (show === 'present') === r.present)), [rows, show]);
+  const inSquad = useCallback((r: AuditStudent) => !squad || (squad === '-' ? !r.squad : r.squad === squad), [squad]);
+  const shown = useMemo(() => (rows || []).filter((r) => inSquad(r) && (show === 'out' ? !r.present && isOutOfTown(r) : show === 'all' || (show === 'present') === r.present)), [rows, show, inSquad]);
   const stats = rows && sel ? auditStats(rows, sel.target_pct) : null;
+  // groups of this audit, with how each one did
+  const squadRows = useMemo(() => {
+    if (!rows || !rows.some((r) => r.squad)) return [];
+    const names = Array.from(new Set([...(sel?.squads || []).map((q) => q.name), ...rows.map((r) => r.squad || '')]));
+    return names.map((name) => {
+      const l = rows.filter((r) => (r.squad || '') === name);
+      return { key: name || '-', name: name || 'בלי קבוצה', leaders: leadersLine((sel?.squads || []).find((q) => q.name === name)?.leaders || []), total: l.length, present: l.filter((r) => r.present).length };
+    }).filter((x) => x.total > 0);
+  }, [rows, sel]);
+  const hasSquads = squadRows.length > 0;
 
   const exportXlsx = async () => {
     if (!rows || !sel) return;
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     (wb as any).Workbook = { Views: [{ RTL: true }] };
-    const head = ['קוד', 'שם משפחה', 'שם פרטי', 'ת"ז', 'שיעור', 'חדר', 'נייד', 'נוכח', 'שעה', 'סומן דרך', 'מצב שיחה', 'הערה'];
+    const head = ['קוד', 'שם משפחה', 'שם פרטי', 'ת"ז', 'שיעור', 'חדר', 'נייד', 'נוכח', 'שעה', 'סומן דרך', 'מצב שיחה', 'הערה', 'קבוצה'];
     const data = rows.map((r) => [r.code, r.last_name || '', r.first_name || '', r.id_number || '', sectionOf(r), r.room || '', r.phone || '',
-      r.present ? 'נוכח' : 'חסר', hm(r.present_at), r.marked_via === 'phone' ? 'טלפון' : r.marked_via ? 'מסך' : '', CALL_LABEL[r.call_status], r.call_note || '']);
+      r.present ? 'נוכח' : 'חסר', hm(r.present_at), r.marked_via === 'phone' ? 'טלפון' : r.marked_via ? 'מסך' : '', CALL_LABEL[r.call_status], r.call_note || '', r.squad || '']);
     const ws = XLSX.utils.aoa_to_sheet([[`${sel.title} · ${dmy(sel.opened_at)} · ${stats?.present}/${stats?.total} (${stats?.pct}%)`], [], head, ...data]);
     ws['!cols'] = head.map((_, i) => ({ wch: i === 1 || i === 2 ? 16 : 11 }));
     XLSX.utils.book_append_sheet(wb, ws, 'ביקורת');
+    if (hasSquads) {
+      const ws2 = XLSX.utils.aoa_to_sheet([['קבוצה', 'אחראים', 'סה"כ', 'נוכחים', 'חסרים', '%'],
+        ...squadRows.map((q) => [q.name, q.leaders, q.total, q.present, q.total - q.present, q.total ? Math.floor((q.present / q.total) * 1000) / 10 : 0])]);
+      ws2['!cols'] = [18, 40, 8, 8, 8, 8].map((wch) => ({ wch }));
+      XLSX.utils.book_append_sheet(wb, ws2, 'לפי קבוצה');
+    }
     XLSX.writeFile(wb, `${sel.title}.xlsx`.replace(/[\\/:*?"<>|]/g, '-'));
   };
 
@@ -66,6 +84,12 @@ export function HistoryTab({ canAdmin }: { canAdmin: boolean }) {
           <button type="button" className={chip(show === 'present')} onClick={() => setShow('present')}>נוכחים{stats ? ` (${stats.present})` : ''}</button>
           <button type="button" className={chip(show === 'out')} onClick={() => setShow('out')}>🧳 מחוץ לעיר{rows ? ` (${rows.filter((r) => !r.present && isOutOfTown(r)).length})` : ''}</button>
           <button type="button" className={chip(show === 'all')} onClick={() => setShow('all')}>הכל</button>
+          {hasSquads && (
+            <select value={squad} onChange={(e) => setSquad(e.target.value)} className="px-2 py-1 border border-slate-300 rounded-lg text-sm">
+              <option value="">כל הקבוצות</option>
+              {squadRows.map((q) => <option key={q.key} value={q.key}>{q.name} — חסרו {q.total - q.present} מתוך {q.total}</option>)}
+            </select>
+          )}
           <div className="flex-1" />
           <Button size="sm" variant="secondary" onClick={() => window.print()} disabled={!rows}>🖨️ הדפס</Button>
           <Button size="sm" variant="secondary" onClick={exportXlsx} disabled={!rows}>📥 אקסל</Button>
@@ -77,12 +101,14 @@ export function HistoryTab({ canAdmin }: { canAdmin: boolean }) {
             {KIND_LABEL[sel.kind]} · {dmy(sel.opened_at)} · {hm(sel.opened_at)}{sel.closed_at ? `–${hm(sel.closed_at)}` : ' · עדיין פתוחה'}
             {stats && <> · <b>{stats.present} מתוך {stats.total} ({stats.pct}%)</b> · יעד {Number(sel.target_pct)}% — {stats.reached ? 'עברנו' : `חסרו ${stats.needed}`}</>}
           </p>
+          {squad && (() => { const q = squadRows.find((x) => x.key === squad); return q ? <p className="text-center text-sm mb-3"><b>{q.name}</b> · נכחו {q.present} מתוך {q.total}{q.leaders ? ` · אחראים: ${q.leaders}` : ''}</p> : null; })()}
           {!rows ? <div className="py-8 text-center text-slate-400">טוען…</div> : shown.length === 0 ? <EmptyState icon="📭" text="אין שורות" /> : (
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-slate-100 text-xs">
                   <th className={`${td} text-start`}>שם</th><th className={`${td} text-start`}>שיעור</th><th className={`${td} text-start`}>חדר</th>
                   <th className={`${td} text-start`}>נייד</th><th className={`${td} text-start`}>מצב</th><th className={`${td} text-start`}>הערה</th>
+                  {hasSquads && !squad && <th className={`${td} text-start`}>קבוצה</th>}
                 </tr>
               </thead>
               <tbody>
@@ -94,6 +120,7 @@ export function HistoryTab({ canAdmin }: { canAdmin: boolean }) {
                     <td className={`${td} tabular-nums`} dir="ltr">{r.phone || ''}</td>
                     <td className={td}>{r.present ? <span className="text-emerald-700">נוכח {hm(r.present_at)}{r.marked_via === 'phone' ? ' 📞' : ''}</span> : <span className="text-red-700">חסר{r.call_status !== 'none' ? ` · ${CALL_LABEL[r.call_status]}` : ''}</span>}</td>
                     <td className={td}>{r.call_note || ''}</td>
+                    {hasSquads && !squad && <td className={td}>{r.squad || ''}</td>}
                   </tr>
                 ))}
               </tbody>

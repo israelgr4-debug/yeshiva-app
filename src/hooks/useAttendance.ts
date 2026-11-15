@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { fetchAll } from '@/lib/supabase-paginate';
 import {
   AttendanceAudit, AuditKind, AuditStudent, DatStored, DAT_SETTING, EligibleRow, NewAuditStudent,
-  STUDENT_AUDIT_COLS, StudentForAudit, buildAuditRows, buildEligible,
+  STUDENT_AUDIT_COLS, Squad, SquadInfo, SquadLeader, StudentForAudit, buildAuditRows, buildEligible, freeSquadName,
 } from '@/lib/attendance';
 
 async function currentEmail(): Promise<string | null> {
@@ -92,12 +92,18 @@ async function openAudit(input: OpenAuditInput): Promise<AttendanceAudit> {
   }
   if (!rows.length) throw new Error('רשימת הזכאים ריקה — יש להעלות קובץ דתות בפעולות → השוואה למשרדים');
 
+  // the division into groups is frozen with the list (nothing is sent before mig 062 / without groups)
+  const snap = await squadSnapshot().catch(() => null);
+  const withSquads = !!snap && snap.info.length > 0;
+  if (withSquads) rows = rows.map((r) => ({ ...r, squad: (r.student_id && snap!.byStudent.get(r.student_id)) || null }));
+
   const { data: audit, error } = await supabase.from('attendance_audits').insert({
     title: input.title.trim(), kind: input.kind, status: 'open', target_pct: input.targetPct,
     parent_audit_id: input.parentId || null, access_token: randomHex(20), access_code: randomCode(), code_length: codeLength,
     dat_file_name: datFile, dat_uploaded_at: datAt,
     robot_auto: input.robotAuto, robot_interval_min: input.robotIntervalMin,
     opened_by: await currentEmail(),
+    ...(withSquads ? { squads: snap!.info } : {}),
   }).select().single();
   if (error || !audit) {
     if (/attendance_audits_one_open/.test(error?.message || '')) throw new Error('כבר יש ביקורת פתוחה — יש לסגור אותה קודם');
@@ -142,6 +148,104 @@ async function auditCounts(ids: string[]): Promise<Record<string, { total: numbe
   return out;
 }
 
+// ---------------------------------------------------------------- groups (mig 062)
+
+export interface SquadsData {
+  /** false until migration 062 was run */
+  ready: boolean;
+  squads: Squad[];
+  /** student id → squad id */
+  memberOf: Record<string, string>;
+}
+
+const noTable = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache/i.test(e.message || ''));
+
+async function loadSquads(): Promise<SquadsData> {
+  const { data, error } = await supabase.from('attendance_squads').select('*').order('sort_order').order('name');
+  if (error) {
+    if (noTable(error)) return { ready: false, squads: [], memberOf: {} };
+    throw new Error(error.message);
+  }
+  const members = await fetchAll<{ student_id: string; squad_id: string }>('attendance_squad_members', 'student_id, squad_id');
+  const memberOf: Record<string, string> = {};
+  for (const m of members) memberOf[m.student_id] = m.squad_id;
+  const squads = (data || []).map((r: any) => ({ ...r, leaders: Array.isArray(r.leaders) ? r.leaders : [] })) as Squad[];
+  return { ready: true, squads, memberOf };
+}
+
+async function createSquad(name: string, sortOrder: number): Promise<Squad> {
+  const { data, error } = await supabase.from('attendance_squads').insert({ name: name.trim(), sort_order: sortOrder }).select().single();
+  if (error || !data) throw new Error(/duplicate|unique/i.test(error?.message || '') ? 'כבר יש קבוצה בשם הזה' : error?.message || 'יצירת הקבוצה נכשלה');
+  return { ...(data as any), leaders: [] } as Squad;
+}
+
+async function updateSquad(id: string, patch: { name?: string; leaders?: SquadLeader[]; sort_order?: number }): Promise<void> {
+  const { error } = await supabase.from('attendance_squads').update(patch).eq('id', id);
+  if (error) throw new Error(/duplicate|unique/i.test(error.message) ? 'כבר יש קבוצה בשם הזה' : error.message);
+}
+
+/** The members go with it (cascade) — they become unassigned. */
+async function deleteSquad(id: string): Promise<void> {
+  const { error } = await supabase.from('attendance_squads').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** Move students into a group (they leave the one they were in), or out of every group (null). */
+async function assignSquad(studentIds: string[], squadId: string | null): Promise<void> {
+  for (let i = 0; i < studentIds.length; i += 200) {
+    const part = studentIds.slice(i, i + 200);
+    const { error } = squadId
+      ? await supabase.from('attendance_squad_members').upsert(part.map((student_id) => ({ student_id, squad_id: squadId })), { onConflict: 'student_id' })
+      : await supabase.from('attendance_squad_members').delete().in('student_id', part);
+    if (error) throw new Error(error.message);
+  }
+}
+
+/** Create the groups of an automatic division. `replace` deletes every existing group first. */
+async function applyAutoSquads(groups: { name: string; ids: string[] }[], replace: boolean): Promise<void> {
+  const cur = await loadSquads();
+  if (replace && cur.squads.length) {
+    const { error } = await supabase.from('attendance_squads').delete().in('id', cur.squads.map((q) => q.id));
+    if (error) throw new Error(error.message);
+  }
+  const taken = replace ? [] : cur.squads.map((q) => q.name);
+  let order = replace ? 0 : cur.squads.reduce((a, q) => Math.max(a, q.sort_order), 0);
+  for (const g of groups) {
+    if (!g.ids.length) continue;
+    const name = freeSquadName(g.name, taken);
+    taken.push(name);
+    const sq = await createSquad(name, ++order);
+    await assignSquad(g.ids, sq.id);
+  }
+}
+
+/** The division as an audit keeps it: group names + leaders, and each student's group name. */
+async function squadSnapshot(): Promise<{ info: SquadInfo[]; byStudent: Map<string, string> }> {
+  const { squads, memberOf } = await loadSquads();
+  const name = new Map(squads.map((q) => [q.id, q.name]));
+  const byStudent = new Map<string, string>();
+  for (const [st, sq] of Object.entries(memberOf)) { const n = name.get(sq); if (n) byStudent.set(st, n); }
+  return { info: squads.map((q) => ({ name: q.name, leaders: q.leaders.map((l) => ({ name: l.name, phone: l.phone || null })) })), byStudent };
+}
+
+/** Bring an OPEN audit up to date with the division as it is now. */
+async function syncAuditSquads(auditId: string): Promise<void> {
+  const snap = await squadSnapshot();
+  const { error } = await supabase.from('attendance_audits').update({ squads: snap.info }).eq('id', auditId);
+  if (error) throw new Error(error.message);
+  const { error: e1 } = await supabase.from('attendance_audit_students').update({ squad: null }).eq('audit_id', auditId);
+  if (e1) throw new Error(e1.message);
+  const bySquad = new Map<string, string[]>();
+  snap.byStudent.forEach((sq, st) => { if (!bySquad.has(sq)) bySquad.set(sq, []); bySquad.get(sq)!.push(st); });
+  for (const [sq, ids] of Array.from(bySquad.entries())) {
+    for (let i = 0; i < ids.length; i += 100) {
+      const { error: e2 } = await supabase.from('attendance_audit_students').update({ squad: sq }).eq('audit_id', auditId).in('student_id', ids.slice(i, i + 100));
+      if (e2) throw new Error(e2.message);
+    }
+  }
+}
+
 /** Bearer header for the /api/attendance/setup route. */
 async function authHeaders(): Promise<Record<string, string>> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -151,6 +255,7 @@ async function authHeaders(): Promise<Record<string, string>> {
 export function useAttendance() {
   return useMemo(() => ({
     loadEligible, listAudits, getOpenAudit, auditStudents, openAudit, closeAudit, updateAudit, deleteAudit, auditCounts, authHeaders,
+    loadSquads, createSquad, updateSquad, deleteSquad, assignSquad, applyAutoSquads, syncAuditSquads,
   }), []);
 }
 

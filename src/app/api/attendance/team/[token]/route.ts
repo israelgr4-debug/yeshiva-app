@@ -26,11 +26,13 @@ const teamAudit = (a: AttendanceAudit): TeamAudit => ({
   title: a.title, kind: a.kind, status: a.status, target_pct: Number(a.target_pct), code_length: a.code_length,
   opened_at: a.opened_at, robot_auto: a.robot_auto, robot_interval_min: a.robot_interval_min,
   robot_last_run_at: a.robot_last_run_at, robot_runs: a.robot_runs,
+  squads: Array.isArray(a.squads) ? a.squads : [],
 });
 const teamStudent = (s: AuditStudent): TeamStudent => ({
   id: s.id, code: s.code, last_name: s.last_name, first_name: s.first_name, grp: s.grp, shiur: s.shiur, room: s.room, phone: s.phone,
   present: s.present, present_at: s.present_at, marked_via: s.marked_via,
   call_status: s.call_status, call_note: s.call_note, call_at: s.call_at, prev_missing: s.prev_missing,
+  squad: s.squad || null,
 });
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {

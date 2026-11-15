@@ -347,14 +347,15 @@ The Sidebar hides `/settings` from non-admins.
    `CertWordImages`, letterhead behind text from 20mm down). Regular students: print = stamp
    only, Word = no pictures (they print on the pre-printed letterhead).
 
-24. **ביקורת נוכחות** (`/attendance`, mig 061, built 2026-11-14) — surprise attendance audits
+24. **ביקורת נוכחות** (`/attendance`, mig 061 + 062, built 2026-11-14) — surprise attendance audits
    of the Ministry of Religion. Yeshiva + kollel are counted TOGETHER; the inactive כולל של
    ר' יצחק פינקל is excluded (`lib/attendance.ts` `buildEligible`). Eligible list = DAT rows
    with entitlement 'זכאי' (setting `ministry_dat_data`, uploaded in פעולות → השוואה למשרדים;
    no direct connection to the ministry site — warn when the file is older than 30 days:
    readiness banner + dashboard row) matched to students by any ID (`idKeys`).
    Tabs: מוכנות (what to fix: not in system / not active / no phone / duplicate phone / no
-   room / no ID scan) · ביקורת (open form → live control room) · היסטוריה · הגדרות (ימות) ·
+   room / no ID scan) · קבוצות (groups + leaders, below) · ביקורת (open form → live control
+   room) · היסטוריה · הגדרות (ימות) ·
    מדריך (`GuideTab`, printable — keep in sync with the flow and the phone keys).
    Opening FREEZES the list into `attendance_audit_students` (snapshot of name/shiur/room/
    phone + a running code, 3 digits from 101, 4 when >899). Only one audit can be open
@@ -383,6 +384,23 @@ The Sidebar hides `/settings` from non-admins.
    the open screens' `tick` and claimed atomically on `robot_last_run_at`.
    NOT YET VERIFIED LIVE (needs a practice audit): the ימות read= syntax / TTS, creating a
    new extension folder via UploadTextFile, RunCampaign with phones.
+   **קבוצות ואחראים** (mig 062, tab "קבוצות", `SquadsTab`): the eligible list divided into
+   standing groups — `attendance_squads` (name UNIQUE, `leaders` JSONB = up to 2 of
+   `{student_id|null, name, phone}`) + `attendance_squad_members` (student_id PK → a student
+   is in ONE group). The two leaders are the callers + patrol of their group. In code the
+   word is "squad" — `grp` / `AuditGroup` already mean yeshiva/kollel, and "team" is the
+   public link. Dividing: tick people → "add to this group", or `autoSquads` (by shiur / by
+   neighbouring dorm rooms without splitting a room / by list order, max size). Leaders: ☆ on
+   a member, or an outside person (name + phone). Reports: a sheet per group for its
+   leaders, a groups summary, Excel. Opening an audit FREEZES the division like the rest of
+   the list: `attendance_audit_students.squad` (the group's NAME) + `attendance_audits.squads`
+   (`[{name, leaders}]`); nothing is sent when there are no groups, so the module works
+   before mig 062. `syncAuditSquads` re-applies the current division to an OPEN audit
+   (button in the tab). Live: `SquadPicker` + `filterSquad` narrow the callers / patrol lists
+   and their sheets to one group (the board and marking stay whole; the public page remembers
+   the choice in sessionStorage), the board has "חסרים לפי קבוצה", sheet kind `squads` = a
+   page per group with who is missing now; history has a group filter + column + an Excel
+   sheet per group. Eligible people who are not in the system cannot be assigned.
 
 ## Design system rules
 

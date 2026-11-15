@@ -5,18 +5,20 @@ import { Header } from '@/components/layout/Header';
 import { useAuth } from '@/hooks/useAuth';
 import { useAttendance } from '@/hooks/useAttendance';
 import { ReadinessTab } from '@/components/attendance/ReadinessTab';
+import { SquadsTab } from '@/components/attendance/SquadsTab';
 import { AuditTab } from '@/components/attendance/AuditTab';
 import { HistoryTab } from '@/components/attendance/HistoryTab';
 import { SettingsTab } from '@/components/attendance/SettingsTab';
 import { GuideTab } from '@/components/attendance/GuideTab';
 
 // ביקורת נוכחות — surprise attendance audits of the Ministry of Religion.
-//   מוכנות (ongoing) → ביקורת (open / live / close) → היסטוריה · הגדרות (ימות)
+//   מוכנות (ongoing) · קבוצות (who is responsible for whom) → ביקורת (open / live / close) → היסטוריה · הגדרות (ימות)
 // Everyone logged in can watch; opening, marking and closing need write permission.
 
-type Tab = 'ready' | 'audit' | 'history' | 'settings' | 'guide';
+type Tab = 'ready' | 'squads' | 'audit' | 'history' | 'settings' | 'guide';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'ready', label: 'מוכנות', icon: '🧭' },
+  { id: 'squads', label: 'קבוצות', icon: '👥' },
   { id: 'audit', label: 'ביקורת', icon: '🛡️' },
   { id: 'history', label: 'היסטוריה', icon: '🗂️' },
   { id: 'settings', label: 'הגדרות', icon: '⚙️' },
@@ -64,6 +66,7 @@ export default function AttendancePage() {
         </div>
 
         {tab === 'ready' && <ReadinessTab />}
+        {tab === 'squads' && <SquadsTab canWrite={permissions.canWrite} />}
         {tab === 'audit' && <AuditTab canWrite={permissions.canWrite} userEmail={user?.email || 'משתמש'} onClosed={() => { setHasOpen(false); go('history'); }} />}
         {tab === 'history' && <HistoryTab canAdmin={permissions.canDelete} />}
         {tab === 'settings' && <SettingsTab canAdmin={permissions.canDelete} />}
