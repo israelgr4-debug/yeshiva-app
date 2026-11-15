@@ -4,10 +4,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { useAttendance, SquadsData } from '@/hooks/useAttendance';
 import {
-  AttendanceAudit, AUTO_SQUAD_LABEL, AutoSquadMode, SQUAD_LEADERS, Squad, SquadLeader, SquadPerson,
-  autoSquads, freeSquadName, fullName, isValidPhone, normPhone, sectionOf, squadPeople,
+  AttendanceAudit, AUTO_SQUAD_LABEL, AutoSquadMode, DatStored, SQUAD_LEADERS, Squad, SquadLeader, SquadPerson,
+  autoSquads, freeSquadName, fullName, isEligible, isValidPhone, normPhone, sectionOf, squadPeople,
 } from '@/lib/attendance';
 import { SectionCard, EmptyState } from '@/components/scholarships/shared';
+import { DatBanner } from './ReadinessTab';
 
 // "קבוצות": the eligible list divided into standing groups, each with two responsible people
 // (its callers and patrol during an audit). Tick people → send them to a group, or let the
@@ -15,13 +16,18 @@ import { SectionCard, EmptyState } from '@/components/scholarships/shared';
 // An audit freezes the division when it opens (see useAttendance.openAudit).
 
 type Show = 'free' | 'all' | string;   // string = squad id
-type PrintWhat = { kind: 'all' } | { kind: 'one'; id: string } | { kind: 'summary' } | null;
+type PrintWhat = { kind: 'all' } | { kind: 'one'; id: string } | { kind: 'summary' } | { kind: 'list' } | null;
+/** Eligible in the ministry file but not a student in the system — on the list, cannot be put in a group. */
+interface UnknownPerson { key: string; name: string }
+const EMPTY: SquadsData = { ready: true, squads: [], memberOf: {} };
 
 export function SquadsTab({ canWrite }: { canWrite: boolean }) {
   const att = useAttendance();
   const [people, setPeople] = useState<SquadPerson[] | null>(null);
-  const [unknown, setUnknown] = useState(0);
+  const [unknown, setUnknown] = useState<UnknownPerson[]>([]);
+  const [dat, setDat] = useState<DatStored | null>(null);
   const [data, setData] = useState<SquadsData | null>(null);
+  const [squadsError, setSquadsError] = useState<string | null>(null);
   const [openAudit, setOpenAudit] = useState<AttendanceAudit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,11 +39,16 @@ export function SquadsTab({ canWrite }: { canWrite: boolean }) {
   const [print, setPrint] = useState<PrintWhat>(null);
 
   const reload = useCallback(async () => {
-    try { setData(await att.loadSquads()); } catch (e: any) { setError(e.message); }
+    // a problem with the groups must never hide the list itself
+    try { setData(await att.loadSquads()); setSquadsError(null); } catch (e: any) { setSquadsError(e.message); setData((d) => d || EMPTY); }
   }, [att]);
 
   useEffect(() => {
-    att.loadEligible().then((d) => { setPeople(squadPeople(d.rows)); setUnknown(d.rows.filter((r) => !r.student).length); }).catch((e) => setError(e.message));
+    att.loadEligible().then((d) => {
+      setDat(d.dat);
+      setPeople(squadPeople(d.rows));
+      setUnknown(d.rows.filter((r) => !r.student).map((r, i) => ({ key: `u${i}`, name: `${r.dat.lastName || ''} ${r.dat.firstName || ''}`.trim() || 'ללא שם' })));
+    }).catch((e) => setError(e.message));
     att.getOpenAudit().then(setOpenAudit).catch(() => {});
     reload();
   }, [att, reload]);
@@ -78,9 +89,24 @@ export function SquadsTab({ canWrite }: { canWrite: boolean }) {
 
   if (error) return <SectionCard><EmptyState icon="⚠️" text={error} /></SectionCard>;
   if (!people || !data) return <SectionCard><div className="py-10 text-center text-slate-400">טוען…</div></SectionCard>;
-  if (!data.ready) {
-    return <SectionCard><EmptyState icon="🛠️" text="צריך להריץ את מיגרציה 062" hint="supabase/migrations/062_attendance_squads.sql — ב-Supabase SQL Editor, ואז לרענן את הדף" /></SectionCard>;
+  // nobody to show → say why, instead of an empty screen
+  if (people.length === 0 && unknown.length === 0) {
+    const all = dat?.rows || [];
+    const statuses = Array.from(new Set(all.map((r) => (r.entitlement || '').trim() || '(ריק)')));
+    return (
+      <div className="space-y-4">
+        <DatBanner dat={dat} />
+        <SectionCard>
+          <EmptyState icon="📄" text="אין רשימת זכאים להצגה"
+            hint={!dat ? 'הרשימה נבנית מקובץ הדתות — יש להעלות אותו בפעולות ← השוואה למשרדים'
+              : `בקובץ ${all.length} שורות, מתוכן ${all.filter(isEligible).length} בסטטוס "זכאי"${statuses.length ? ` (הסטטוסים בקובץ: ${statuses.slice(0, 6).join(', ')})` : ''}`} />
+        </SectionCard>
+      </div>
+    );
   }
+  // groups cannot be edited before migration 062 / while they fail to load — the list is still shown
+  const groupsOff = !data.ready || !!squadsError;
+  canWrite = canWrite && !groupsOff;
 
   const selIds = Array.from(sel).filter((id) => byId.has(id));
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -129,15 +155,16 @@ export function SquadsTab({ canWrite }: { canWrite: boolean }) {
       rows.push([s.name, p.last_name || '', p.first_name || '', sectionOf(p), p.room || '', p.phone || '', s.leaders.some((l) => l.student_id === p.id) ? 'אחראי' : '']);
     }
     for (const p of free) rows.push(['לא משובץ', p.last_name || '', p.first_name || '', sectionOf(p), p.room || '', p.phone || '', '']);
+    for (const u of unknown) rows.push(['לא במערכת', u.name, '', '', '', '', '']);
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [18, 16, 14, 12, 7, 13, 8].map((wch) => ({ wch }));
-    XLSX.utils.book_append_sheet(wb, ws, 'חלוקה');
+    XLSX.utils.book_append_sheet(wb, ws, 'רשימת הזכאים');
     const sum: (string | number)[][] = [['קבוצה', 'תלמידים', 'אחראי 1', 'נייד', 'אחראי 2', 'נייד']];
     for (const s of squads) sum.push([s.name, membersOf.get(s.id)?.length || 0, s.leaders[0]?.name || '', s.leaders[0]?.phone || '', s.leaders[1]?.name || '', s.leaders[1]?.phone || '']);
     const ws2 = XLSX.utils.aoa_to_sheet(sum);
     ws2['!cols'] = [18, 9, 18, 13, 18, 13].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, ws2, 'קבוצות ואחראים');
-    XLSX.writeFile(wb, 'קבוצות ביקורת נוכחות.xlsx');
+    XLSX.writeFile(wb, 'רשימת הזכאים לביקורת.xlsx');
   };
 
   const noLeaders = squads.filter((s) => (membersOf.get(s.id)?.length || 0) > 0 && s.leaders.length < SQUAD_LEADERS).length;
@@ -148,7 +175,7 @@ export function SquadsTab({ canWrite }: { canWrite: boolean }) {
     <>
       <div className="no-print space-y-4">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {([['זכאים לחלוקה', people.length, ''], ['משובצים בקבוצות', people.length - free.length, ''],
+          {([['צריכים להיות בביקורת', people.length + unknown.length, ''], ['משובצים בקבוצות', people.length - free.length, ''],
             ['עוד לא משובצים', free.length, free.length ? 'text-red-600' : 'text-emerald-700'],
             ['קבוצות בלי 2 אחראים', noLeaders, noLeaders ? 'text-amber-700' : 'text-emerald-700']] as [string, number, string][]).map(([l, v, c]) => (
             <div key={l} className="bg-white rounded-2xl border border-slate-200/70 elevation-1 px-4 py-3">
@@ -164,7 +191,13 @@ export function SquadsTab({ canWrite }: { canWrite: boolean }) {
             {canWrite && <Button size="sm" variant="secondary" onClick={syncOpen} disabled={busy}>עדכן אותה לפי החלוקה הנוכחית</Button>}
           </div>
         )}
-        {unknown > 0 && <p className="text-xs text-slate-500">{unknown} זכאים שלא נמצאו במערכת (לשונית מוכנות) לא מופיעים כאן — אי אפשר לשבץ אותם עד שיתוקנו.</p>}
+        {!data.ready && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-2.5 text-sm">
+            🛠️ כדי לחלק לקבוצות צריך להריץ את מיגרציה 062 (<span dir="ltr">supabase/migrations/062_attendance_squads.sql</span>) ולרענן את הדף. הרשימה עצמה מוצגת גם בלי זה.
+          </div>
+        )}
+        {squadsError && <div className="bg-red-50 border border-red-200 text-red-900 rounded-xl px-4 py-2.5 text-sm">⚠️ הקבוצות לא נטענו: <span dir="ltr">{squadsError}</span>. הרשימה מוצגת, אבל אי אפשר לחלק עד שזה יתוקן.</div>}
+        {unknown.length > 0 && <p className="text-xs text-slate-500">{unknown.length} זכאים שלא נמצאו במערכת (לשונית מוכנות) מופיעים בסוף הרשימה &quot;כולם&quot; — אי אפשר לשבץ אותם עד שיתוקנו.</p>}
         {stale.length > 0 && (
           <p className="text-xs text-slate-500">
             {stale.length} משובצים כבר אינם ברשימת הזכאים.{' '}
@@ -176,9 +209,10 @@ export function SquadsTab({ canWrite }: { canWrite: boolean }) {
           {canWrite && <Button size="sm" onClick={() => setAutoOpen((v) => !v)}>⚡ חלוקה אוטומטית</Button>}
           {canWrite && <Button size="sm" variant="secondary" onClick={() => newSquad(false)} disabled={busy}>＋ קבוצה חדשה</Button>}
           <div className="flex-1" />
+          <Button size="sm" variant="secondary" onClick={() => setPrint({ kind: 'list' })}>🖨️ רשימת הזכאים</Button>
           <Button size="sm" variant="secondary" onClick={() => setPrint({ kind: 'all' })} disabled={!squads.length}>🖨️ דפים לאחראים</Button>
           <Button size="sm" variant="secondary" onClick={() => setPrint({ kind: 'summary' })} disabled={!squads.length}>🖨️ סיכום קבוצות</Button>
-          <Button size="sm" variant="secondary" onClick={exportXlsx} disabled={!squads.length}>📥 אקסל</Button>
+          <Button size="sm" variant="secondary" onClick={exportXlsx}>📥 אקסל</Button>
         </div>
 
         {autoOpen && canWrite && (
@@ -192,7 +226,7 @@ export function SquadsTab({ canWrite }: { canWrite: boolean }) {
           <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/70 elevation-1 p-3 space-y-2 lg:sticky lg:top-2">
             <div className="flex flex-wrap items-center gap-1.5">
               <button type="button" className={chip(show === 'free')} onClick={() => setShow('free')}>לא משובצים ({free.length})</button>
-              <button type="button" className={chip(show === 'all')} onClick={() => setShow('all')}>כולם ({people.length})</button>
+              <button type="button" className={chip(show === 'all')} onClick={() => setShow('all')}>כולם ({people.length + unknown.length})</button>
               <select className={`${input} py-1`} value={show !== 'free' && show !== 'all' ? show : ''} onChange={(e) => setShow(e.target.value || 'free')}>
                 <option value="">קבוצה…</option>
                 {squads.map((s) => <option key={s.id} value={s.id}>{s.name} ({membersOf.get(s.id)?.length || 0})</option>)}
@@ -231,13 +265,19 @@ export function SquadsTab({ canWrite }: { canWrite: boolean }) {
                   {memberOf[p.id] && show !== memberOf[p.id] && <span className="px-1.5 rounded text-[11px] bg-slate-100 text-slate-600 whitespace-nowrap">{squadName.get(memberOf[p.id])}</span>}
                 </label>
               ))}
+              {show === 'all' && !section && unknown.filter((u) => !q.trim() || u.name.includes(q.trim())).map((u) => (
+                <div key={u.key} className="flex items-center gap-2 px-1 py-1.5 text-sm text-slate-500">
+                  <span className="flex-1 min-w-0 truncate">{u.name}</span>
+                  <span className="px-1.5 rounded text-[11px] bg-red-100 text-red-700 whitespace-nowrap">לא במערכת</span>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* ---- groups ---- */}
           <div className="lg:col-span-3 space-y-3">
             {squads.length === 0 ? (
-              <SectionCard><EmptyState icon="👥" text="עדיין אין קבוצות" hint='אפשר להתחיל מ"חלוקה אוטומטית" ולתקן ביד, או לסמן תלמידים ברשימה וליצור מהם קבוצה' /></SectionCard>
+              <SectionCard><EmptyState icon="👥" text="עדיין אין קבוצות" hint={groupsOff ? 'הרשימה המלאה מוצגת בצד. חלוקה לקבוצות תתאפשר אחרי שהבעיה שלמעלה תיפתר' : 'אפשר להתחיל מ"חלוקה אוטומטית" ולתקן ביד, או לסמן תלמידים ברשימה וליצור מהם קבוצה'} /></SectionCard>
             ) : (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                 {squads.map((s) => (
@@ -256,7 +296,9 @@ export function SquadsTab({ canWrite }: { canWrite: boolean }) {
       {/* outside the no-print box: printed only */}
       {print && (
         <div className="hidden print:block">
-          <SquadSheets squads={print.kind === 'one' ? squads.filter((s) => s.id === print.id) : squads} membersOf={membersOf} summary={print.kind === 'summary'} freeCount={free.length} />
+          {print.kind === 'list'
+            ? <EligibleSheet people={people} unknown={unknown} squadOf={(id) => squadName.get(memberOf[id]) || ''} hasSquads={squads.length > 0} />
+            : <SquadSheets squads={print.kind === 'one' ? squads.filter((s) => s.id === print.id) : squads} membersOf={membersOf} summary={print.kind === 'summary'} freeCount={free.length} />}
         </div>
       )}
     </>
@@ -379,6 +421,49 @@ function AutoPanel({ people, free, hasSquads, busy, onApply, onClose }: {
 }
 
 // ---------------------------------------------------------------- printed sheets
+
+/** Everyone who has to be at an audit, in the order of the codes sheet. */
+function EligibleSheet({ people, unknown, squadOf, hasSquads }: { people: SquadPerson[]; unknown: UnknownPerson[]; squadOf: (id: string) => string; hasSquads: boolean }) {
+  const css = `@page { size: A4 portrait; margin: 10mm; }
+    @media print { .sq-sheet { font-size: 11px; color: #000; } .sq-sheet tr { break-inside: avoid; } }`;
+  const td = 'border border-slate-500 px-1.5 py-0.5';
+  return (
+    <div className="sq-sheet print-area" dir="rtl">
+      <style dangerouslySetInnerHTML={{ __html: css }} />
+      <div className="flex items-baseline justify-between border-b-2 border-black pb-1 mb-2">
+        <h2 className="text-lg font-bold">ביקורת נוכחות — רשימת הזכאים</h2>
+        <span className="text-sm">{new Date().toLocaleDateString('he-IL')} · {people.length + unknown.length} זכאים</span>
+      </div>
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="bg-slate-200">
+            <th className={`${td} w-8`}>#</th><th className={`${td} text-start`}>שם</th><th className={`${td} text-start`}>שיעור</th><th className={`${td} w-10`}>חדר</th>
+            <th className={`${td} text-start`}>נייד</th>{hasSquads && <th className={`${td} text-start`}>קבוצה</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {people.map((p, i) => (
+            <tr key={p.id}>
+              <td className={`${td} text-center`}>{i + 1}</td>
+              <td className={`${td} font-semibold`}>{fullName(p)}</td>
+              <td className={td}>{sectionOf(p)}</td>
+              <td className={`${td} text-center tabular-nums`}>{p.room || ''}</td>
+              <td className={`${td} tabular-nums`} dir="ltr">{p.phone || ''}</td>
+              {hasSquads && <td className={td}>{squadOf(p.id)}</td>}
+            </tr>
+          ))}
+          {unknown.map((u, i) => (
+            <tr key={u.key}>
+              <td className={`${td} text-center`}>{people.length + i + 1}</td>
+              <td className={`${td} font-semibold`}>{u.name}</td>
+              <td className={td} colSpan={hasSquads ? 4 : 3}>לא נמצא במערכת</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function SquadSheets({ squads, membersOf, summary, freeCount }: { squads: Squad[]; membersOf: Map<string, SquadPerson[]>; summary: boolean; freeCount: number }) {
   const css = `@page { size: A4 portrait; margin: 10mm; }
