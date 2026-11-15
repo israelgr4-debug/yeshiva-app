@@ -383,8 +383,13 @@ The Sidebar hides `/settings` from non-admins.
    the template id in setting `attendance_robot_template` and `phones=` the missing ones
    (not "לא יכול", not "בדרך" until `comingUntil`; prev_missing first); manual button or auto every N minutes, driven by
    the open screens' `tick` and claimed atomically on `robot_last_run_at`.
-   NOT YET VERIFIED LIVE (needs a practice audit): the ימות read= syntax / TTS, creating a
-   new extension folder via UploadTextFile, RunCampaign with phones.
+   Creating the extension WORKS live (2026-11-15, extension 7) — but only since the route
+   reads back with DownloadFile → GetTextFile and falls back from UploadTextFile to
+   UpdateExtension (which creates the folder); a plain UploadTextFile to a new folder
+   answered OK and wrote nothing readable. If ימות confirms neither, the settings tab shows
+   the ext.ini lines to paste by hand + a check button (`confirm_extension`).
+   NOT YET VERIFIED LIVE (needs a practice audit): the ימות read= syntax / TTS, RunCampaign
+   with phones (settings tab has a one-number test dial, `robot_test`).
    **קבוצות ואחראים** (mig 062, tab "קבוצות", `SquadsTab`): the eligible list divided into
    standing groups — `attendance_squads` (name UNIQUE, `leaders` JSONB = up to 2 of
    `{student_id|null, name, phone}`) + `attendance_squad_members` (student_id PK → a student
