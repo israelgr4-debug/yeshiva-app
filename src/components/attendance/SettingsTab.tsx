@@ -22,6 +22,7 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
   const [busy, setBusy] = useState(false);
   const [ext, setExt] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  const [manual, setManual] = useState<{ ext: string; contents: string; error: string } | null>(null);
   const [testPhone, setTestPhone] = useState('');
   const [testMsg, setTestMsg] = useState<string | null>(null);
 
@@ -53,8 +54,21 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
       const { status, j } = await post({ action: 'create_extension', ext, force });
       if (status === 409 && j.exists) {
         if (confirm(`שלוחה ${ext} כבר קיימת ומוגדרת למשהו אחר:\n\n${j.current}\n\nלדרוס אותה? (ההגדרה הקודמת נשמרת בגיבוי)`)) { setBusy(false); return createExt(true); }
-      } else if (!j.ok) alert(j.error || 'הפעולה נכשלה');
-      else { setMsg(`✓ שלוחה ${ext} הוגדרה. עכשיו כדאי לעשות שיחת ניסיון בביקורת תרגול.`); await load(); }
+      } else if (!j.ok && j.manual) setManual({ ext, contents: j.manual, error: j.error || '' });
+      else if (!j.ok) alert(j.error || 'הפעולה נכשלה');
+      else { setManual(null); setMsg(`✓ שלוחה ${ext} הוגדרה. עכשיו כדאי לעשות שיחת ניסיון בביקורת תרגול.`); await load(); }
+    } catch (e: any) { alert(e.message); }
+    setBusy(false);
+  };
+
+  // after setting the extension by hand in ימות: check it there and remember the number
+  const confirmManual = async () => {
+    if (!manual) return;
+    setBusy(true);
+    try {
+      const { j } = await post({ action: 'confirm_extension', ext: manual.ext });
+      if (!j.ok) alert(j.error || 'הבדיקה נכשלה');
+      else { setManual(null); setMsg(`✓ שלוחה ${manual.ext} מוגדרת.`); await load(); }
     } catch (e: any) { alert(e.message); }
     setBusy(false);
   };
@@ -110,6 +124,22 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
               </label>
               <Button size="sm" onClick={() => createExt()} disabled={busy || !ext}>{busy ? 'כותב…' : s.extensionOk && ext === s.extension ? 'כתוב מחדש' : 'הגדר שלוחת סימון'}</Button>
               {msg && <span className="text-emerald-700">{msg}</span>}
+            </div>
+          )}
+          {manual && (
+            <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 space-y-2">
+              <div className="font-semibold text-amber-900">ימות לא אישרה את הכתיבה האוטומטית של שלוחה {manual.ext} — אפשר להגדיר אותה ביד (2 דקות)</div>
+              <ol className="list-decimal ps-5 text-slate-700 space-y-0.5">
+                <li>באתר הניהול של ימות, בתפריט הראשי, יוצרים שלוחה חדשה מספר <b>{manual.ext}</b> (אם היא עוד לא קיימת).</li>
+                <li>פותחים את קובץ ההגדרות של השלוחה (<span dir="ltr">ext.ini</span> / &quot;הגדרות מתקדמות&quot;), מוחקים מה שיש בו ומדביקים את שלוש השורות האלה:</li>
+              </ol>
+              <pre dir="ltr" className="text-xs bg-white border border-slate-300 rounded-lg p-2 overflow-x-auto select-all">{manual.contents}</pre>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={() => navigator.clipboard.writeText(manual.contents).then(() => alert('הועתק')).catch(() => {})}>📋 העתק את השורות</Button>
+                <Button size="sm" onClick={confirmManual} disabled={busy}>{busy ? 'בודק…' : 'הדבקתי ושמרתי — בדוק'}</Button>
+                <button type="button" className="text-slate-500 hover:underline" onClick={() => setManual(null)}>סגור</button>
+              </div>
+              <p className="text-xs text-slate-500" dir="ltr">{manual.error}</p>
             </div>
           )}
           <p className="text-xs text-slate-500">ההקראה משתמשת בהקראת טקסט (TTS) של ימות. אם בשיחת הניסיון לא נשמע שם התלמיד — צריך להפעיל הקראת טקסט בעברית במערכת בימות.</p>

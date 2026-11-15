@@ -5,6 +5,7 @@ import { adminDb, authUser, runRobot, yemotCallbackSecret, ROBOT_TEMPLATE_SETTIN
 // ביקורת נוכחות ↔ ימות המשיח setup (logged-in users only; the token never reaches the browser).
 // GET  → is the marking extension set up, the system's top-level extensions, campaign templates
 // POST → { action: 'create_extension', ext, force? }   write ext.ini of the marking extension
+//        { action: 'confirm_extension', ext }          the admin wrote it by hand in ימות — check and remember
 //        { action: 'set_template', templateId }        campaign template the robot runs
 //        { action: 'robot', auditId }                  dial everyone still missing now
 //        { action: 'robot_test', phone }               dial ONE number with the chosen template (try it before an audit)
@@ -22,13 +23,25 @@ async function yemot(method: string, params: Record<string, string>, post = fals
   return r.json().catch(() => ({ responseStatus: 'ERROR', message: `HTTP ${r.status}` }));
 }
 
-/** ext.ini text, or null when the extension has no such file. */
-async function readIni(ext: string): Promise<string | null> {
+/**
+ * ext.ini text, or null when the extension has no such file. Two ways to read it, because
+ * ימות answers differently for a file that was just created: DownloadFile (raw file), then
+ * GetTextFile ({ contents }). `why` collects what ימות said, for the error message.
+ */
+async function readIni(ext: string, why?: string[]): Promise<string | null> {
   const token = process.env.YEMOT_API_TOKEN!;
-  const r = await fetch(`${YEMOT_API}DownloadFile?token=${encodeURIComponent(token)}&path=${encodeURIComponent(iniOf(ext))}`, { cache: 'no-store' });
-  const t = Buffer.from(await r.arrayBuffer()).toString('utf8');
-  if (!r.ok || t.trim().startsWith('{"responseStatus"')) return null;
-  return t;
+  try {
+    const r = await fetch(`${YEMOT_API}DownloadFile?token=${encodeURIComponent(token)}&path=${encodeURIComponent(iniOf(ext))}`, { cache: 'no-store' });
+    const t = Buffer.from(await r.arrayBuffer()).toString('utf8');
+    if (r.ok && t.trim() && !t.trim().startsWith('{"responseStatus"')) return t;
+    why?.push(`DownloadFile: ${t.trim().slice(0, 140) || 'HTTP ' + r.status}`);
+  } catch (e: any) { why?.push(`DownloadFile: ${e.message}`); }
+  try {
+    const j = await yemot('GetTextFile', { what: iniOf(ext) });
+    if (j.responseStatus === 'OK' && typeof j.contents === 'string' && j.contents.trim()) return j.contents;
+    why?.push(`GetTextFile: ${j.responseStatus || ''} ${j.message || ''}`.trim());
+  } catch (e: any) { why?.push(`GetTextFile: ${e.message}`); }
+  return null;
 }
 
 async function setting(key: string): Promise<string> {
@@ -98,6 +111,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, campaignId: w.campaignId || null });
     }
 
+    if (body.action === 'confirm_extension') {
+      const ext = String(body.ext || '').trim();
+      if (!/^\d{1,3}$/.test(ext)) return NextResponse.json({ ok: false, error: 'מספר שלוחה לא תקין' }, { status: 400 });
+      const why: string[] = [];
+      const ini = await readIni(ext, why);
+      if (!ini || !ini.includes(secret)) {
+        return NextResponse.json({ ok: false, error: ini ? `בשלוחה ${ext} יש הגדרה אחרת, לא הקישור של סימון הנוכחות` : `לא הצלחתי לקרוא את ההגדרה של שלוחה ${ext} מימות (${why.join(' | ')})` }, { status: 409 });
+      }
+      await saveSetting(YEMOT_EXT_SETTING, ext);
+      return NextResponse.json({ ok: true, extension: ext });
+    }
+
     if (body.action === 'create_extension') {
       const ext = String(body.ext || '').trim();
       if (!/^\d{1,3}$/.test(ext)) return NextResponse.json({ ok: false, error: 'מספר שלוחה לא תקין' }, { status: 400 });
@@ -115,10 +140,25 @@ export async function POST(req: NextRequest) {
         backups.unshift({ at: new Date().toISOString(), by: user.email, path: iniOf(ext), contents: before });
         await db.from('system_settings').upsert({ key: 'yemot_line_backups', value: backups.slice(0, 10), updated_at: new Date().toISOString() }, { onConflict: 'key' });
       }
+      // Two ways to write, each verified by reading back: the ini file itself, and — for an
+      // extension that does not exist yet — UpdateExtension, which creates the folder.
+      const steps: string[] = [];
+      const written = async () => { const t = await readIni(ext, steps); return !!t && t.includes(secret); };
       const w = await yemot('UploadTextFile', { what: iniOf(ext), contents }, true);
-      if (w.responseStatus !== 'OK') throw new Error(`כתיבה לימות נכשלה: ${w.responseStatus} ${w.message || ''}`);
-      const after = await readIni(ext);
-      if (!after || !after.includes(secret)) throw new Error('הקובץ נכתב, אבל בקריאה חוזרת הוא לא נמצא כפי שנכתב');
+      steps.push(`UploadTextFile: ${w.responseStatus || ''} ${w.message || ''}`.trim());
+      let ok = w.responseStatus === 'OK' && await written();
+      if (!ok) {
+        const u = await yemot('UpdateExtension', { path: `ivr2:/${ext}`, type: 'api', api_link: link, api_hangup_send: 'no' }, true);
+        steps.push(`UpdateExtension: ${u.responseStatus || ''} ${u.message || ''}`.trim());
+        ok = u.responseStatus === 'OK' && await written();
+      }
+      if (!ok) {
+        // the admin can still set it by hand in ימות — hand him the exact lines
+        return NextResponse.json({
+          ok: false, manual: contents, ext,
+          error: `ימות לא אישרה את כתיבת השלוחה. (${steps.join(' | ').split(secret).join('…')})`,
+        }, { status: 502 });
+      }
       await saveSetting(YEMOT_EXT_SETTING, ext);
       return NextResponse.json({ ok: true, extension: ext });
     }
