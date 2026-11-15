@@ -167,9 +167,14 @@ async function loadSquads(): Promise<SquadsData> {
     if (noTable(error)) return { ready: false, squads: [], memberOf: {} };
     throw new Error(error.message);
   }
-  const members = await fetchAll<{ student_id: string; squad_id: string }>('attendance_squad_members', 'student_id, squad_id');
+  // not fetchAll: it pages by `id`, and this table's key is student_id
   const memberOf: Record<string, string> = {};
-  for (const m of members) memberOf[m.student_id] = m.squad_id;
+  for (let p = 0; p < 50; p++) {
+    const { data: part, error: e2 } = await supabase.from('attendance_squad_members').select('student_id, squad_id').order('student_id').range(p * 1000, p * 1000 + 999);
+    if (e2) throw new Error(e2.message);
+    for (const m of part || []) memberOf[m.student_id] = m.squad_id;
+    if (!part || part.length < 1000) break;
+  }
   const squads = (data || []).map((r: any) => ({ ...r, leaders: Array.isArray(r.leaders) ? r.leaders : [] })) as Squad[];
   return { ready: true, squads, memberOf };
 }
