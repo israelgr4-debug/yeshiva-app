@@ -324,6 +324,15 @@ The Sidebar hides `/settings` from non-admins.
    before the date range"; date range is optional. `MarkPaymentTab`: run list shows what is
    left, defaults to the newest unfinished run, "הדפס שוב" reprints the saved run.
    `GuideTab` = the printable client guide — keep it in sync when the flow changes.
+   **Minimum check (manager's rule, 2026-11-16)**: no check for less than ₪30 (`lib/scholarship-min.ts`,
+   setting `scholarship_min_check`, editable in the report tab; 0 = off). In `ReportTab.generate`
+   a student whose open sum in the report is below the minimum is auto-deferred (`held`) — nothing
+   is deleted, the entitlement stays open. Accumulation needs no flag: an open, never-issued sum
+   below the minimum from BEFORE the date range can only be "waiting", so it is pulled into the
+   report automatically (`carry` / `carried`, tagged "➕ כולל … שהמתינו") and the student is issued
+   once the total reaches the minimum. Older open sums at or above the minimum are still only
+   reported by the "older" banner, as before. `workflow.ts`: `notInRun` no longer counts the
+   accumulating ones (`accumulating`), so the overview does not nag about them.
 
 23. **Certificates → Word** (`lib/cert-docx.ts` + `lib/cert-to-word.ts`): native RTL
    .docx built with jszip that reproduces the original Word certificates in

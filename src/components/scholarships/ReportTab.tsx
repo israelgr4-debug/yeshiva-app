@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { useScholarships } from '@/hooks/useScholarships';
 import { ScholarshipBatch, ScholarshipEntry, ScholarshipRunFilters, ScholarshipType } from '@/lib/types';
 import { buildScholarshipReport, exportScholarshipReportXlsx, ScholarshipReport, ReportRow } from '@/lib/scholarship-report';
+import { DEFAULT_MIN_CHECK, belowMinimum, loadMinCheck, saveMinCheck } from '@/lib/scholarship-min';
 import {
   ScholarshipTabProps, SectionCard, EmptyState, ils, dmy, todayIso,
   StudentLite, fetchStudentsLite, ShiurPicker, matchesShiurSelection,
@@ -41,6 +42,12 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
   // open entitlements dated before the chosen range (easy to forget: deferred / late ones)
   const [older, setOlder] = useState<{ students: number; total: number } | null>(null);
   const [autoGen, setAutoGen] = useState(false);
+  // no check below this amount: such students wait (auto-deferred) until their open sum reaches it
+  const [minCheck, setMinCheck] = useState(DEFAULT_MIN_CHECK);
+  const [minDraft, setMinDraft] = useState(String(DEFAULT_MIN_CHECK));
+  const [held, setHeld] = useState<Set<string>>(new Set());                 // below the minimum in this report
+  const [carried, setCarried] = useState<Map<string, number>>(new Map());   // student → small open sum from before the range, added to this report
+  useEffect(() => { loadMinCheck().then((n) => { setMinCheck(n); setMinDraft(String(n)); }); }, []);
 
   useEffect(() => {
     (async () => {
@@ -122,6 +129,11 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
       for (const e of kept) if (!e.payment_id && runOf.has(e.id) && !prev.has(e.student_id)) prev.set(e.student_id, runOf.get(e.id)!);
       setPrevRun(prev);
 
+      // small sums that waited (below the minimum check) from before the range join this report:
+      // an open, never-issued sum under the minimum can only be "waiting to accumulate"
+      const carry: ScholarshipEntry[] = [];
+      const carriedBy = new Map<string, number>();
+
       // guard 2: open entitlements from before the range
       if (mode === 'types' && from && onlyUnpaid) {
         const day = new Date(from + 'T00:00:00');
@@ -132,7 +144,15 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
           const oldStuds = await fetchStudentsLite({ ids: Array.from(new Set(old.map((e) => e.student_id))) });
           const ok = new Set(oldStuds.filter((s) => matchesShiurSelection(s, shiurSel)
             && (!instSel.size || (s.institution_name && instSel.has(s.institution_name)))).map((s) => s.id));
-          const rel = old.filter((e) => ok.has(e.student_id));
+          let rel = old.filter((e) => ok.has(e.student_id));
+          if (minCheck > 0) {
+            const waiting = rel.filter((e) => !e.payment_id && !runOf.has(e.id));
+            const small = belowMinimum(waiting, minCheck);
+            for (const e of waiting) if (small.has(e.student_id)) { carry.push(e); carriedBy.set(e.student_id, (carriedBy.get(e.student_id) || 0) + Number(e.amount)); }
+            for (const s of oldStuds) if (small.has(s.id) && !keep.has(s.id)) keep.set(s.id, s);
+            const taken = new Set(carry.map((e) => e.id));
+            rel = rel.filter((e) => !taken.has(e.id));
+          }
           if (rel.length) setOlder({ students: new Set(rel.map((e) => e.student_id)).size, total: rel.reduce((a, e) => a + Number(e.amount), 0) });
         }
       }
@@ -147,8 +167,13 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
         ? [...selTypes].map((id) => typeById.get(id)?.name).filter(Boolean).join(' + ')
         : batches.filter((b) => selBatches.has(b.id)).map((b) => b.title).join(' + ');
 
-      setPool({ entries: kept, students: keep });
-      setDeferred(new Set());
+      const all = carry.length ? [...kept, ...carry] : kept;
+      // the minimum applies to checks that are about to be issued — not when looking at paid ones too
+      const low = onlyUnpaid ? belowMinimum(all.filter((e) => !e.payment_id), minCheck) : new Set<string>();
+      setPool({ entries: all, students: keep });
+      setHeld(low);
+      setCarried(carriedBy);
+      setDeferred(new Set(low));
       setFiltersUsed(filters);
       setRangeLabel(range);
       setTitle(`מלגות ${names}${range ? ` · ${range}` : ''}`);
@@ -243,6 +268,18 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={onlyUnpaid} onChange={(e) => setOnlyUnpaid(e.target.checked)} /> רק לא שולם
             </label>
+            <label className="flex items-center gap-1.5 text-sm" title="תלמיד שסך הזכאויות הפתוחות שלו קטן מהסכום הזה ממתין — הזכאות נשארת פתוחה ומצטרפת להפקה הבאה. 0 = בלי מינימום">
+              לא מפיקים צ׳ק על פחות מ-
+              <input className={`${input} w-16 text-center`} dir="ltr" inputMode="decimal" value={minDraft} disabled={!perms.canWrite}
+                onChange={(e) => setMinDraft(e.target.value.replace(/[^\d.]/g, ''))}
+                onBlur={async () => {
+                  const n = minDraft.trim() === '' ? 0 : Number(minDraft);
+                  if (!Number.isFinite(n) || n < 0) { setMinDraft(String(minCheck)); return; }
+                  if (n === minCheck) return;
+                  try { await saveMinCheck(n); setMinCheck(n); } catch (err: any) { alert('שמירת המינימום נכשלה: ' + err.message); setMinDraft(String(minCheck)); }
+                }} />
+              ₪
+            </label>
             <Button onClick={() => generate()} disabled={busy}>{busy ? 'טוען…' : '📄 הצג לבדיקה'}</Button>
           </div>
         </div>
@@ -267,8 +304,18 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
             </div>
           )}
 
+          {held.size > 0 && pool && (() => {
+            const waiting = [...held].filter((id) => deferred.has(id));
+            const sum = pool.entries.filter((e) => waiting.includes(e.student_id) && !e.payment_id).reduce((a, e) => a + Number(e.amount), 0);
+            return waiting.length > 0 && (
+              <div className="no-print bg-sky-50 border border-sky-200 text-sky-900 rounded-xl px-4 py-2 text-sm">
+                ⏳ <b>{waiting.length}</b> תלמידים עם פחות מ-{ils(minCheck)} (סה״כ <b>{ils(sum)}</b>) <b>ממתינים לצבירה</b> — לא מופק להם צ׳ק בהפקה הזו. הזכאות שלהם נשארת פתוחה, ותצטרף לבד להפקה הבאה; כשהסכום יגיע ל-{ils(minCheck)} ייצא צ׳ק אחד על הכול.
+              </div>
+            );
+          })()}
+
           {fullReport && pool && fullReport.studentCount > 0 && (
-            <ReviewPanel full={fullReport} deferred={deferred} setDeferred={setDeferred} prevRun={prevRun}
+            <ReviewPanel full={fullReport} deferred={deferred} setDeferred={setDeferred} prevRun={prevRun} held={held} carried={carried} minCheck={minCheck}
               canDelete={perms.canWrite}
               onDeleteEntries={async (ids) => {
                 const n = await sch.deleteEntries(ids);
@@ -294,9 +341,14 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
 // a range). Checked = goes into this run (check to print). Deferred = left out of this run
 // only — the entitlement stays an open debt and comes back in the next report. Delete =
 // removes the (unpaid) entitlements themselves.
-function ReviewPanel({ full, deferred, setDeferred, prevRun, canDelete, onDeleteEntries }: {
+function ReviewPanel({ full, deferred, setDeferred, prevRun, held, carried, minCheck, canDelete, onDeleteEntries }: {
   full: ScholarshipReport;
   prevRun: Map<string, string>;
+  /** students below the minimum check — deferred automatically, waiting to accumulate */
+  held: Set<string>;
+  /** student → a small open sum from before the date range that was added to this report */
+  carried: Map<string, number>;
+  minCheck: number;
   deferred: Set<string>;
   setDeferred: React.Dispatch<React.SetStateAction<Set<string>>>;
   canDelete: boolean;
@@ -397,6 +449,8 @@ function ReviewPanel({ full, deferred, setDeferred, prevRun, canDelete, onDelete
                     <input type="checkbox" title="בהפקה / להעברה לתשלום" checked={!out} onChange={() => setMany([row.student.id], !out)} />
                     <span className="w-48 truncate"><b>{row.student.last_name}</b> {row.student.first_name}</span>
                     <span className="w-20 text-xs text-slate-500 truncate">{group}</span>
+                    {held.has(row.student.id) && <span className="px-1.5 rounded text-[11px] bg-sky-100 text-sky-800" title={`פחות מ-${minCheck} ₪ — לא מופק צ׳ק; ממתין לצבירה`}>⏳ מתחת ל-{minCheck} ₪</span>}
+                    {carried.has(row.student.id) && <span className="px-1.5 rounded text-[11px] bg-emerald-100 text-emerald-800" title="סכום קטן שהמתין מהפקות קודמות, וצורף עכשיו">➕ כולל {ils(carried.get(row.student.id) || 0)} שהמתינו</span>}
                     {prevRun.has(row.student.id) && <span className="px-1.5 rounded text-[11px] bg-red-100 text-red-800 max-w-[220px] truncate" title={`כבר בהפקה: ${prevRun.get(row.student.id)}`}>📄 כבר בהפקה: {prevRun.get(row.student.id)}</span>}
                     <span className="text-xs text-slate-500 flex-1 min-w-[140px] truncate">
                       {full.columns.filter((c) => row.cells[c.id]).map((c) => `${c.name} ${ils(row.cells[c.id].amount)}`).join(' · ')}
@@ -411,7 +465,7 @@ function ReviewPanel({ full, deferred, setDeferred, prevRun, canDelete, onDelete
               })}
             </div>
           )}
-          <p className="text-[11px] text-slate-500">מסומן = נכנס להפקה ולדוח המודפס. &quot;דחה&quot; = לא בהפקה הזו בלבד — הזכאות נשארת פתוחה ותופיע בדוח הבא. &quot;מחק&quot; = מוחק את הזכאות עצמה מהחיוב.</p>
+          <p className="text-[11px] text-slate-500">{minCheck > 0 ? `⏳ מי שסך הזכאות שלו קטן מ-${minCheck} ₪ נדחה לבד (לא מפיקים צ׳ק קטן) — אפשר להחזיר אותו ידנית. ` : ''}מסומן = נכנס להפקה ולדוח המודפס. &quot;דחה&quot; = לא בהפקה הזו בלבד — הזכאות נשארת פתוחה ותופיע בדוח הבא. &quot;מחק&quot; = מוחק את הזכאות עצמה מהחיוב.</p>
         </div>
       )}
     </SectionCard>

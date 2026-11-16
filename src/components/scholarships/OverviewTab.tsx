@@ -104,7 +104,10 @@ export function OverviewTab({ nav, perms, status, loading: statusLoading }: Scho
               <div className="text-slate-500">זכאויות פתוחות שעוד לא נכנסו לאף הפקה.</div>
               {status.oneTimeOpen.entries > 0 && <div className="text-xs text-slate-500">כולל {status.oneTimeOpen.entries} חד פעמיים ({ils(status.oneTimeOpen.total)}) — מופקים מלשונית &quot;חד פעמיים&quot;.</div>}
             </>
-          ) : <div className="text-slate-500">כל הזכאויות הפתוחות כבר נמצאות בהפקה.</div>}
+          ) : <div className="text-slate-500">{status.accumulating.entries > 0 ? 'אין זכאויות שמחכות להפקה.' : 'כל הזכאויות הפתוחות כבר נמצאות בהפקה.'}</div>}
+          {status.accumulating.entries > 0 && (
+            <div className="text-xs text-sky-800 mt-1">⏳ עוד {status.accumulating.students} תלמידים עם פחות מ-{ils(status.minCheck)} ({ils(status.accumulating.total)}) ממתינים לצבירה — לא מפיקים להם צ׳ק עד שיגיעו לסכום.</div>
+          )}
         </StepCard>
 
         <StepCard step={3} title="סימון תשלום" tone={awaiting.length > 0 ? 'todo' : 'done'}>
