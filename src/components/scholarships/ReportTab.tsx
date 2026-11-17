@@ -122,17 +122,39 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
       const kept = entries.filter((e) => keep.has(e.student_id));
 
       // guard 1: open entitlements that an earlier run already holds
-      const runs = await sch.listRuns(40);
+      const runs = await sch.listRuns(100);
       const runOf = new Map<string, string>();
       for (const r of runs) for (const id of r.entry_ids || []) if (!runOf.has(id)) runOf.set(id, r.title);
       const prev = new Map<string, string>();
       for (const e of kept) if (!e.payment_id && runOf.has(e.id) && !prev.has(e.student_id)) prev.set(e.student_id, runOf.get(e.id)!);
       setPrevRun(prev);
 
-      // small sums that waited (below the minimum check) from before the range join this report:
-      // an open, never-issued sum under the minimum can only be "waiting to accumulate"
+      // sums that waited (below the minimum check) join this report
       const carry: ScholarshipEntry[] = [];
       const carriedBy = new Map<string, number>();
+      const addCarried = (e: ScholarshipEntry) => carriedBy.set(e.student_id, (carriedBy.get(e.student_id) || 0) + Number(e.amount));
+
+      // (a) what an earlier run left out for being under the minimum (`held_entry_ids`) and no
+      //     run has issued since: joins whatever was chosen here — types, a batch or dates
+      if (onlyUnpaid && minCheck > 0) {
+        const flagged = new Set<string>();
+        for (const r of runs) for (const id of r.filters?.held_entry_ids || []) if (!runOf.has(id)) flagged.add(id);
+        const have = new Set(kept.map((e) => e.id));
+        for (const e of kept) if (flagged.has(e.id) && !e.payment_id) addCarried(e);   // already here: only the tag
+        const ids = [...flagged].filter((id) => !have.has(id));
+        if (ids.length) {
+          const waiting = (await sch.fetchEntriesByIds(ids)).filter((e) => !e.payment_id);
+          const missing = Array.from(new Set(waiting.map((e) => e.student_id).filter((id) => !keep.has(id))));
+          for (const s of missing.length ? await fetchStudentsLite({ ids: missing }) : []) {
+            if (!matchesShiurSelection(s, shiurSel)) continue;
+            if (instSel.size && !(s.institution_name && instSel.has(s.institution_name))) continue;
+            keep.set(s.id, s);
+          }
+          for (const e of waiting) if (keep.has(e.student_id)) { carry.push(e); addCarried(e); }
+        }
+      }
+      // (b) below: an open, never-issued sum under the minimum from before the date range
+      //     can only be "waiting to accumulate" as well
 
       // guard 2: open entitlements from before the range
       if (mode === 'types' && from && onlyUnpaid) {
@@ -144,11 +166,12 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
           const oldStuds = await fetchStudentsLite({ ids: Array.from(new Set(old.map((e) => e.student_id))) });
           const ok = new Set(oldStuds.filter((s) => matchesShiurSelection(s, shiurSel)
             && (!instSel.size || (s.institution_name && instSel.has(s.institution_name)))).map((s) => s.id));
-          let rel = old.filter((e) => ok.has(e.student_id));
+          const already = new Set(carry.map((e) => e.id));
+          let rel = old.filter((e) => ok.has(e.student_id) && !already.has(e.id));
           if (minCheck > 0) {
             const waiting = rel.filter((e) => !e.payment_id && !runOf.has(e.id));
             const small = belowMinimum(waiting, minCheck);
-            for (const e of waiting) if (small.has(e.student_id)) { carry.push(e); carriedBy.set(e.student_id, (carriedBy.get(e.student_id) || 0) + Number(e.amount)); }
+            for (const e of waiting) if (small.has(e.student_id)) { carry.push(e); addCarried(e); }
             for (const s of oldStuds) if (small.has(s.id) && !keep.has(s.id)) keep.set(s.id, s);
             const taken = new Set(carry.map((e) => e.id));
             rel = rel.filter((e) => !taken.has(e.id));
@@ -184,18 +207,22 @@ export function ReportTab({ perms, nav, params }: ScholarshipTabProps) {
   const printAndSave = async () => {
     if (!report || !filtersUsed) return;
     if (savingRun.current) return;
+    // remembered on the run: who was left out for being under the minimum check — the next
+    // report takes these entitlements by itself
+    const heldIds = pool ? pool.entries.filter((e) => !e.payment_id && held.has(e.student_id) && deferred.has(e.student_id)).map((e) => e.id) : [];
+    const filters: ScholarshipRunFilters = { ...filtersUsed, held_entry_ids: heldIds };
     // printing the same report again (even after deferring / deleting) updates the saved
     // run instead of saving another one
     if (savedRun) {
       savingRun.current = true;
-      try { await sch.updateRun(savedRun, title, entryIds); } catch (e: any) { alert('עדכון ההפקה נכשל: ' + e.message); }
+      try { await sch.updateRun(savedRun, title, entryIds, filters); } catch (e: any) { alert('עדכון ההפקה נכשל: ' + e.message); }
       savingRun.current = false;
       setTimeout(() => window.print(), 50);
       return;
     }
     savingRun.current = true;
     try {
-      const run = await sch.createRun(title, filtersUsed, entryIds);
+      const run = await sch.createRun(title, filters, entryIds);
       setSavedRun(run.id);
     } catch (e: any) {
       savingRun.current = false;

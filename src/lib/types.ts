@@ -391,6 +391,9 @@ export interface ScholarshipRunFilters {
   only_unpaid?: boolean;
   shiurim?: string[];
   institutions?: string[];
+  /** entitlements this run left out because the student's sum was below the minimum check —
+   *  "ממתינים לצבירה"; they join the next report by themselves */
+  held_entry_ids?: string[];
 }
 
 export interface ScholarshipRun {

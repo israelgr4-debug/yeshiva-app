@@ -344,8 +344,9 @@ async function getRun(id: string): Promise<ScholarshipRun | null> {
 }
 
 /** Re-save a run's title / entries (the same report printed again after changes). */
-async function updateRun(id: string, title: string, entryIds: string[]) {
-  const { error } = await supabase.from('scholarship_runs').update({ title, entry_ids: entryIds }).eq('id', id);
+async function updateRun(id: string, title: string, entryIds: string[], filters?: ScholarshipRunFilters) {
+  const { error } = await supabase.from('scholarship_runs')
+    .update(filters ? { title, entry_ids: entryIds, filters } : { title, entry_ids: entryIds }).eq('id', id);
   if (error) throw new Error(scholarshipError(error));
 }
 

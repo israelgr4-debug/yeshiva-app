@@ -333,6 +333,15 @@ The Sidebar hides `/settings` from non-admins.
    once the total reaches the minimum. Older open sums at or above the minimum are still only
    reported by the "older" banner, as before. `workflow.ts`: `notInRun` no longer counts the
    accumulating ones (`accumulating`), so the overview does not nag about them.
+   **Held flag (2026-11-17)**: a saved run remembers who it left out for the minimum in
+   `scholarship_runs.filters.held_entry_ids` (JSONB, no migration). `generate` pulls every such
+   entry that is still open and in no run's `entry_ids` into the NEXT report — in every mode
+   (types / batch / dates) and across types — so 20 + 25 held in two runs become one check of 45
+   even with nothing new. Deleting the run drops its flags (the heuristic above still catches
+   single small sums). One-off repair for the first three issues, where everything was marked
+   paid but checks under ₪30 were never written: `supabase/manual/2026-11-17_small_checks_*.sql`
+   (check, then fix: deletes those payments, takes the entries out of the old runs, flags them
+   held on the newest run) — tested on pglite with the real DDL; the manager runs it by hand.
 
 23. **Certificates → Word** (`lib/cert-docx.ts` + `lib/cert-to-word.ts`): native RTL
    .docx built with jszip that reproduces the original Word certificates in
