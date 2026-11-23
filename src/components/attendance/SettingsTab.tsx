@@ -21,6 +21,9 @@ interface Setup {
   extension: string; extensionOk: boolean; rootFolders: string[]; treeError: string | null;
   robotMode: RobotMode; robotText: string; robotTextDefault: string;
   templateId: string; templates: { id: string; description: string; callerId: string; hasMessage: boolean }[]; templatesError: string | null;
+  /** the in-call answer: none = no template · off = not connected · written = ימות accepted the file · verified = read back */
+  webhookState: 'none' | 'off' | 'written' | 'verified';
+  webhookLog: { at: string; phone: string; key: string; result: string; fields: Record<string, string> }[];
 }
 
 export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
@@ -34,6 +37,9 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
   const [testPhone, setTestPhone] = useState('');
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [text, setText] = useState('');
+  const [hookMsg, setHookMsg] = useState<string | null>(null);
+  const [hookManual, setHookManual] = useState<string | null>(null);
+  const [rawOf, setRawOf] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -96,6 +102,19 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
     if (!j.ok) alert(j.error || 'השמירה נכשלה'); else await load();
     setBusy(false);
   };
+
+  // the in-call answer: write our link into the template's ini in ימות
+  const connectHook = async () => {
+    if (!s || !confirm(`לחבר את תבנית ${s.templateId} לקבלת תשובות?\n\nהמערכת תכתוב בקובץ ההגדרות של התבנית בימות (${s.templateId}.ini) שורה ששולחת אלינו את נתוני כל שיחה.`)) return;
+    setBusy(true); setHookMsg(null); setHookManual(null);
+    try {
+      const { j } = await post({ action: 'connect_webhook' });
+      if (!j.ok) { setHookMsg(`⚠️ ${j.error || 'נכשל'}`); if (j.manual) setHookManual(j.manual); }
+      else { setHookMsg(j.verified ? '✓ התבנית חוברה, והקובץ נקרא חזרה מימות.' : '✓ ימות קיבלה את הקובץ. לא הצלחתי לקרוא אותו חזרה כדי לוודא — חיוג ניסיון יראה אם זה עובד.'); await load(); }
+    } catch (e: any) { setHookMsg('⚠️ ' + e.message); }
+    setBusy(false);
+  };
+  const clearHookLog = async () => { setBusy(true); await post({ action: 'clear_webhook_log' }); await load(); setBusy(false); };
 
   // one call to one number — to hear the recording and see that the robot works, before an audit
   const testDial = async () => {
@@ -214,6 +233,64 @@ export function SettingsTab({ canAdmin }: { canAdmin: boolean }) {
                     </select>
                   </label>
                   {s.templateId ? <span className="text-emerald-700">✓ נבחרה תבנית {s.templateId}</span> : <span className="text-amber-800">בלי תבנית הרובוט לא יחייג</span>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {s.robotMode === 'template' && !!s.templateId && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 px-3 py-3 space-y-2">
+              <div className="font-semibold text-slate-800">⌨️ תשובה במקש בתוך השיחה</div>
+              <p className="text-slate-600">
+                מי שעונה לרובוט מקיש <b>1</b> = אני בדרך, <b>2</b> = לא יכול להגיע — והתשובה נרשמת מיד בביקורת, בלי להתקשר חזרה לשלוחה.
+                ימות שולחת אלינו את נתוני כל שיחה בסיומה. צריך לומר את זה בהקלטה, למשל: <b>&quot;יש ביקורת נוכחות, נא להגיע מיד. אם אתה בדרך הקש 1, אם אינך יכול להגיע הקש 2.&quot;</b>
+              </p>
+              <div className={`rounded-lg px-3 py-2 border ${s.webhookState === 'verified' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : s.webhookState === 'written' ? 'bg-sky-50 border-sky-200 text-sky-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+                {s.webhookState === 'verified' ? <>✓ תבנית <b>{s.templateId}</b> מחוברת (נבדק מול ימות).</>
+                  : s.webhookState === 'written' ? <>תבנית <b>{s.templateId}</b> חוברה — ימות קיבלה את הקובץ, אבל אי אפשר היה לקרוא אותו חזרה. חיוג ניסיון יראה אם מגיעות בקשות.</>
+                  : <>תבנית <b>{s.templateId}</b> עוד לא מחוברת — הקשות בשיחה לא יגיעו למערכת.</>}
+              </div>
+              {canAdmin && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" onClick={connectHook} disabled={busy}>{busy ? 'מחבר…' : s.webhookState === 'off' ? '🔗 חבר את התבנית לקבלת תשובות' : '🔗 חבר מחדש'}</Button>
+                  {hookMsg && <span className={hookMsg.startsWith('✓') ? 'text-emerald-700' : 'text-amber-800'}>{hookMsg}</span>}
+                </div>
+              )}
+              {hookManual && (
+                <div className="space-y-1">
+                  <div className="text-slate-700">אפשר גם ביד: באתר ימות, בקובץ ההגדרות של התבנית (<span dir="ltr">{s.templateId}.ini</span>), מוסיפים את השורה:</div>
+                  <pre dir="ltr" className="text-xs bg-white border border-slate-300 rounded-lg p-2 overflow-x-auto select-all">{hookManual}</pre>
+                </div>
+              )}
+              <p className="text-xs text-slate-500">
+                <b>עוד לא נבדק בשיחה אמיתית.</b> לבדיקה: מחברים, ואז &quot;חייג אליי&quot; למטה, עונים ומקישים 1. תוך דקה אמורה להופיע כאן שורה.
+                בחיוג ניסיון המספר שלך לא ברשימת ביקורת, ולכן ייכתב &quot;הטלפון לא נמצא&quot; — זה תקין; מה שחשוב הוא שהבקשה הגיעה ושהמקש נקלט.
+                אם לא הוקש כלום ומגיע &quot;לא הוקש מקש&quot; — ייתכן שבתבנית בימות צריך להפעיל קליטת הקשות.
+              </p>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="font-medium text-slate-700">בקשות אחרונות שהגיעו מימות ({s.webhookLog.length})</div>
+                <div className="flex items-center gap-3">
+                  <button type="button" className="text-xs text-blue-700 hover:underline" onClick={() => load()}>🔄 רענן</button>
+                  {canAdmin && s.webhookLog.length > 0 && <button type="button" className="text-xs text-slate-500 hover:underline" onClick={clearHookLog}>נקה</button>}
+                </div>
+              </div>
+              {s.webhookLog.length === 0 ? <div className="text-xs text-slate-500">עוד לא הגיעה אף בקשה.</div> : (
+                <div className="bg-white border border-slate-200 rounded-lg max-h-72 overflow-y-auto divide-y divide-slate-100">
+                  {s.webhookLog.map((l, i) => (
+                    <div key={l.at + i} className="px-3 py-1.5">
+                      <button type="button" className="w-full flex flex-wrap items-center gap-x-3 gap-y-0.5 text-start" onClick={() => setRawOf(rawOf === i ? null : i)}>
+                        <span className="text-xs text-slate-500 tabular-nums" dir="ltr">{new Date(l.at).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jerusalem' })}</span>
+                        <span className="tabular-nums" dir="ltr">{l.phone || '—'}</span>
+                        <span className="text-xs rounded bg-slate-100 px-1.5 py-0.5">מקש: {l.key || '—'}</span>
+                        <span className="flex-1 min-w-[140px] text-slate-700">{l.result}</span>
+                        <span className="text-[11px] text-blue-700">{rawOf === i ? 'סגור ▲' : 'הנתונים ▼'}</span>
+                      </button>
+                      {rawOf === i && (
+                        <pre dir="ltr" className="mt-1 text-[11px] bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto">{Object.entries(l.fields || {}).map(([k, v]) => `${k} = ${v}`).join('\n') || '(empty)'}</pre>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

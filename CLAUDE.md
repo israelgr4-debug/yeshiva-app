@@ -417,10 +417,40 @@ The Sidebar hides `/settings` from non-admins.
    topic 55) — readable through the "Yemot MCP" connector's `read_doc` / `search_knowledge`
    tools (no login needed; `modules/api-56.md`, `modules/api-55.md`). Check there before
    writing any ימות parameter; do not write them from memory.
-   NOT YET VERIFIED LIVE (needs a practice audit): hearing the dialog / TTS at all, each
-   robot mode (settings tab has a one-number test dial, `robot_test`), and — undocumented —
-   whether a bridged call gives the extension the answering person's number as `ApiPhone`
-   (if not, bridge mode cannot identify the student).
+   LIVE STATE: the same code ran on a real ימות line in mosdot-app (the client's install,
+   2026-11-24, practice audit): the marking extension answers, and the robot in `bridge` mode
+   ("שיחה עם תפריט") recorded "בדרך · בעוד 7 דקות" from a real call — so a bridged call does
+   identify the answering person. On THIS line (the yeshiva's) no practice audit was run yet,
+   and `tts` / `template` modes were not heard anywhere (settings tab has a one-number test
+   dial, `robot_test`).
+   **`YEMOT_API_TOKEN` must be a permanent API KEY** (ימות site → אבטחה → ניהול מפתחות גישה):
+   ימות cancelled the `number:password` kind. Which kind is set in Vercel here is unknown to
+   Claude (never read it) — the manager checks.
+   **The board shows the answers** (2026-11-24, from mosdot-app 97d0c1e; checked there in the
+   browser on a real practice audit, desktop + phone — not opened here): `BigBoard` has five
+   clickable cards (בדרך / לא יכולים / מחוץ לעיר / לא עונים / עוד לא ידוע) that open the list
+   (name, phone, what he answered), "תשובות אחרונות" (last 12 by `call_at`) and a chart by hours
+   (`Timeline`). `AnswerLine` (also in `CallersList`) always writes "נרשם ב־HH:MM · note · צפוי
+   עד HH:MM", red once the hour passed and he was not marked. Only the LAST answer of each
+   person is known (`call_at`), so the chart is by last answer.
+   **Answer by a key INSIDE the campaign call** (2026-11-24, from mosdot-app 5c2d03c) —
+   **UNVERIFIED, never seen on a real call, here or there.** ימות wrote a document for the
+   manager ("קבלת וובהוק מקמפיין", not in the public docs; the Yemot MCP does not know it): a
+   campaign template may have `<templateId>.ini` with `campaign_send_data_to_api=<url>`; after
+   every call ימות POSTs form-data there (Phone — sometimes without the leading 0, DidNumber,
+   CampaignID, CallType, KeystrokesPhones = the key pressed, TimeStartCall; `hangup=yes` is
+   ignored). `lib/attendance-campaign.ts` + `/api/attendance/campaign/<secret>` (secret = HMAC
+   of the token with another label than the extension's): the person is found by phone among
+   the MISSING of the open audit; exactly one match → key 1 = `coming`, 2 = `cant`
+   (`setCallStatus`, via `robot-key`). Always answers 200. Every request is kept (last 40) in
+   setting `attendance_campaign_webhook_log` and shown with its raw fields in הגדרות → רובוט
+   (template mode only) — that is how the manager checks it without Claude. Button "חבר את
+   התבנית לקבלת תשובות" = action `connect_webhook` in `/api/attendance/setup`: UploadFile
+   (multipart, path `<id>.ini`, then `ivr2:/<id>.ini`), other lines of the ini are kept; state
+   `verified` (read back) / `written` (accepted, not readable) / `off`. Unknown: where the ini
+   lives and whether it can be read back, what KeystrokesPhones really looks like, whether an
+   unanswered call sends anything (so "לא ענה" is NOT set automatically), whether the template
+   needs a setting to accept keys. Fix after the first real test call — in BOTH repos.
    **קבוצות ואחראים** (mig 062, tab "קבוצות", `SquadsTab`): the eligible list divided into
    standing groups — `attendance_squads` (name UNIQUE, `leaders` JSONB = up to 2 of
    `{student_id|null, name, phone}`) + `attendance_squad_members` (student_id PK → a student

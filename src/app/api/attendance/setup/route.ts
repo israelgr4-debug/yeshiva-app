@@ -4,6 +4,7 @@ import {
   adminDb, authUser, defaultRobotText, robotConfig, robotDial, robotProblem, runRobot, yemotCallbackSecret,
   ROBOT_MODES, ROBOT_MODE_SETTING, ROBOT_TEMPLATE_SETTING, ROBOT_TEXT_SETTING, YEMOT_API, YEMOT_EXT_SETTING,
 } from '@/lib/attendance-server';
+import { CAMPAIGN_LOG_SETTING, CAMPAIGN_TEMPLATE_SETTING, campaignIniLine, campaignWebhookSecret } from '@/lib/attendance-campaign';
 
 // ביקורת נוכחות ↔ ימות המשיח setup (logged-in users only; the token never reaches the browser).
 // GET  → is the marking extension set up, the system's top-level extensions, campaign templates
@@ -13,6 +14,8 @@ import {
 //        { action: 'robot', auditId }                  dial everyone still missing now
 //        { action: 'set_robot', mode, text? }          how the robot calls: tts / template / bridge (+ the text it reads)
 //        { action: 'robot_test', phone }               dial ONE number the way the robot would (try it before an audit)
+//        { action: 'connect_webhook' }                 write campaign_send_data_to_api into the chosen template's ini
+//        { action: 'clear_webhook_log' }               empty the list of received campaign requests
 
 export const maxDuration = 60;
 
@@ -48,6 +51,34 @@ async function readIni(ext: string, why?: string[]): Promise<string | null> {
   return null;
 }
 
+// ---- the campaign template's ini (`<templateId>.ini`), where campaign_send_data_to_api lives.
+// ימות's document gives the upload path as `<templateId>.ini`; where it is read back from is
+// not documented, so both spellings are tried.
+const templateIniPaths = (id: string) => [`${id}.ini`, `ivr2:/${id}.ini`];
+
+async function readTemplateIni(id: string, why?: string[]): Promise<string | null> {
+  const token = process.env.YEMOT_API_TOKEN!;
+  for (const path of templateIniPaths(id)) {
+    try {
+      const r = await fetch(`${YEMOT_API}DownloadFile?token=${encodeURIComponent(token)}&path=${encodeURIComponent(path)}`, { cache: 'no-store' });
+      const t = Buffer.from(await r.arrayBuffer()).toString('utf8');
+      if (r.ok && t.trim() && !t.trim().startsWith('{"responseStatus"')) return t;
+      why?.push(`DownloadFile ${path}: ${t.trim().slice(0, 100) || 'HTTP ' + r.status}`);
+    } catch (e: any) { why?.push(`DownloadFile ${path}: ${e.message}`); }
+  }
+  return null;
+}
+
+/** UploadFile as ימות's document says: multipart, `path` + `file`, no convertAudio. */
+async function uploadTemplateIni(path: string, contents: string): Promise<any> {
+  const form = new FormData();
+  form.append('token', process.env.YEMOT_API_TOKEN!);
+  form.append('path', path);
+  form.append('file', new Blob([contents], { type: 'text/plain' }), path.split('/').pop() || 'template.ini');
+  const r = await fetch(`${YEMOT_API}UploadFile`, { method: 'POST', body: form, cache: 'no-store' });
+  return r.json().catch(() => ({ responseStatus: 'ERROR', message: `HTTP ${r.status}` }));
+}
+
 async function setting(key: string): Promise<string> {
   const { data } = await adminDb().from('system_settings').select('value').eq('key', key).maybeSingle();
   return data?.value ? String(data.value) : '';
@@ -66,6 +97,17 @@ export async function GET(req: NextRequest) {
       yemot('GetIvrTree', { path: 'ivr2:/' }), yemot('GetTemplates', {}), robotConfig(adminDb()),
     ]);
     const ini = ext ? await readIni(ext) : null;
+    // the in-call answer (webhook): is the chosen template's ini pointing at us?
+    const hookSecret = campaignWebhookSecret()!;
+    const [hookTemplate, hookLog, tplIni] = await Promise.all([
+      setting(CAMPAIGN_TEMPLATE_SETTING),
+      adminDb().from('system_settings').select('value').eq('key', CAMPAIGN_LOG_SETTING).maybeSingle(),
+      robot.mode === 'template' && templateId ? readTemplateIni(templateId) : Promise.resolve(null),
+    ]);
+    const webhookState = !templateId ? 'none'
+      : tplIni && tplIni.includes(hookSecret) ? 'verified'           // read back from ימות
+      : hookTemplate === templateId ? 'written'                       // ימות accepted the upload; could not be read back
+      : 'off';
     return NextResponse.json({
       ok: true,
       extension: ext,
@@ -77,6 +119,8 @@ export async function GET(req: NextRequest) {
       robotMode: robot.mode, robotText: robot.text, robotTextDefault: defaultRobotText(ext),
       templates: (tpl.templates || []).map((t: any) => ({ id: String(t.templateId), description: t.description || '', callerId: t.callerId || '', hasMessage: !!t.messageExists })),
       templatesError: tpl.responseStatus === 'OK' ? null : (tpl.message || tpl.responseStatus),
+      webhookState,
+      webhookLog: Array.isArray(hookLog.data?.value) ? hookLog.data!.value : [],
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 502 });
@@ -122,6 +166,38 @@ export async function POST(req: NextRequest) {
       const r = await robotDial(cfg, [phone]);
       if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: 502 });
       return NextResponse.json({ ok: true, campaignId: r.campaignId || null });
+    }
+
+    if (body.action === 'clear_webhook_log') {
+      await adminDb().from('system_settings').upsert({ key: CAMPAIGN_LOG_SETTING, value: [], updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === 'connect_webhook') {
+      const templateId = await setting(ROBOT_TEMPLATE_SETTING);
+      if (!/^\d+$/.test(templateId)) return NextResponse.json({ ok: false, error: 'קודם בוחרים תבנית קמפיין' }, { status: 400 });
+      const hookSecret = campaignWebhookSecret()!;
+      const line = campaignIniLine(`${req.nextUrl.origin}/api/attendance/campaign/${hookSecret}`);
+      // keep whatever else the template's ini holds; only our line is replaced
+      const before = await readTemplateIni(templateId);
+      const kept = (before || '').split(/\r?\n/).filter((l) => l.trim() && !/^\s*campaign_send_data_to_api\s*=/.test(l));
+      const contents = [...kept, line].join('\n') + '\n';
+      const steps: string[] = [];
+      let accepted = false, verified = false;
+      for (const path of templateIniPaths(templateId)) {
+        const u = await uploadTemplateIni(path, contents);
+        steps.push(`UploadFile ${path}: ${u.responseStatus || ''} ${u.message || ''}`.trim());
+        if (u.responseStatus !== 'OK') continue;
+        accepted = true;
+        const back = await readTemplateIni(templateId, steps);
+        verified = !!back && back.includes(hookSecret);
+        break;
+      }
+      if (!accepted) {
+        return NextResponse.json({ ok: false, manual: line, templateId, error: `ימות לא קיבלה את הקובץ. (${steps.join(' | ').split(hookSecret).join('…')})` }, { status: 502 });
+      }
+      await saveSetting(CAMPAIGN_TEMPLATE_SETTING, templateId);
+      return NextResponse.json({ ok: true, verified, templateId, manual: line });
     }
 
     if (body.action === 'confirm_extension') {

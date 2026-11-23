@@ -113,6 +113,100 @@ export function SquadPicker({ state, value, onChange }: { state: LiveState; valu
   );
 }
 
+// ---------------------------------------------------------------- answers: who said what, and when
+
+type AnswerKind = 'coming' | 'no_answer' | 'out' | 'cant';
+type AnswerOrNone = AnswerKind | 'none';
+const ANSWER_KINDS: AnswerOrNone[] = ['coming', 'cant', 'out', 'no_answer', 'none'];
+const ANSWER_META: Record<AnswerOrNone, { label: string; one: string; icon: string; card: string; chip: string; bar: string }> = {
+  coming: { label: 'בדרך', one: 'בדרך', icon: '🚶', card: 'bg-emerald-50 border-emerald-200 text-emerald-800', chip: 'bg-emerald-100 text-emerald-800', bar: 'bg-emerald-300' },
+  cant: { label: 'לא יכולים', one: 'לא יכול', icon: '✋', card: 'bg-red-50 border-red-200 text-red-800', chip: 'bg-red-100 text-red-800', bar: 'bg-red-400' },
+  out: { label: 'מחוץ לעיר', one: 'מחוץ לעיר', icon: '🧳', card: 'bg-purple-50 border-purple-200 text-purple-800', chip: 'bg-purple-100 text-purple-800', bar: 'bg-purple-400' },
+  no_answer: { label: 'לא עונים', one: 'לא עונה', icon: '📵', card: 'bg-amber-50 border-amber-200 text-amber-800', chip: 'bg-amber-100 text-amber-800', bar: 'bg-amber-400' },
+  none: { label: 'עוד לא ידוע', one: '', icon: '❔', card: 'bg-slate-50 border-slate-200 text-slate-700', chip: 'bg-slate-100 text-slate-700', bar: 'bg-slate-300' },
+};
+const answerKind = (s: TeamStudent): AnswerOrNone =>
+  (s.call_status === 'none' ? 'none' : s.call_status === 'cant' ? (isOutOfTown(s) ? 'out' : 'cant') : s.call_status);
+
+/** When someone who said "בדרך בעוד X דקות" is due (0 = he gave no minutes). */
+function etaOf(s: TeamStudent): number {
+  if (s.call_status !== 'coming' || !s.call_at) return 0;
+  const m = (s.call_note || '').match(/(\d+)\s*דק/);
+  return m ? new Date(s.call_at).getTime() + Number(m[1]) * 60000 : 0;
+}
+const hmMs = (ms: number) => hm(new Date(ms).toISOString());
+
+/** "נרשם ב-14:32 · בעוד 10 דקות · צפוי עד 14:42" — the hour the answer was given, always. */
+export function AnswerLine({ s, now }: { s: TeamStudent; now: number }) {
+  if (s.call_status === 'none' || !s.call_at) return null;
+  const eta = etaOf(s);
+  const late = !!eta && !s.present && now > eta;
+  return (
+    <span>
+      נרשם ב־<b className="tabular-nums">{hm(s.call_at)}</b>
+      {s.call_note ? ` · ${s.call_note}` : ''}
+      {eta ? <span className={late ? 'text-red-600 font-semibold' : ''}> · {late ? '⚠️ היה אמור להגיע עד' : 'צפוי עד'} <b className="tabular-nums">{hmMs(eta)}</b></span> : null}
+    </span>
+  );
+}
+
+/** Answers and arrivals along the audit's hours. */
+function Timeline({ state }: { state: LiveState }) {
+  const data = useMemo(() => {
+    const start = new Date(state.audit.opened_at).getTime();
+    const end = Math.max(new Date(state.now).getTime() || Date.now(), start + 60000);
+    const span = (end - start) / 60000;
+    const step = [5, 10, 15, 30, 60, 120, 240].find((x) => span / x <= 18) || 480;
+    const n = Math.max(1, Math.ceil(span / step));
+    const buckets = Array.from({ length: n }, (_, i) => ({ at: start + i * step * 60000, present: 0, coming: 0, cant: 0, out: 0, no_answer: 0 }));
+    const at = (iso: string) => buckets[Math.min(n - 1, Math.max(0, Math.floor((new Date(iso).getTime() - start) / (step * 60000))))];
+    for (const s of state.students) {
+      if (s.present && s.present_at) at(s.present_at).present++;
+      const k = answerKind(s);
+      if (k !== 'none' && s.call_at) at(s.call_at)[k]++;
+    }
+    const total = (b: typeof buckets[number]) => b.present + b.coming + b.cant + b.out + b.no_answer;
+    return { buckets, step, total, max: Math.max(1, ...buckets.map(total)), any: buckets.some((b) => total(b) > 0) };
+  }, [state.audit.opened_at, state.now, state.students]);
+  const SERIES: { key: 'present' | AnswerKind; label: string; bar: string }[] = [
+    { key: 'present', label: 'הגיעו', bar: 'bg-emerald-600' },
+    ...(['coming', 'cant', 'out', 'no_answer'] as AnswerKind[]).map((k) => ({ key: k, label: ANSWER_META[k].one, bar: ANSWER_META[k].bar })),
+  ];
+  const every = Math.ceil(data.buckets.length / 6);
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/70 p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+        <h3 className="font-bold text-slate-800" style={{ fontFamily: "'Frank Ruhl Libre', serif" }}>לפי שעות</h3>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
+          {SERIES.map((x) => <span key={x.key} className="inline-flex items-center gap-1"><span className={`w-2.5 h-2.5 rounded-sm ${x.bar}`} />{x.label}</span>)}
+        </div>
+      </div>
+      {!data.any ? <div className="text-sm text-slate-400">עדיין אין תשובות או סימונים</div> : (
+        <>
+          <div className="flex items-end gap-1 h-32">
+            {data.buckets.map((b) => {
+              const t = data.total(b);
+              return (
+                <div key={b.at} className="flex-1 min-w-0 h-full flex flex-col justify-end items-center"
+                  title={`${hmMs(b.at)} — ${SERIES.filter((x) => b[x.key]).map((x) => `${x.label} ${b[x.key]}`).join(' · ') || 'אין'}`}>
+                  {t > 0 && <div className="text-[11px] tabular-nums text-slate-600 leading-none mb-0.5">{t}</div>}
+                  <div className="w-full max-w-[36px] rounded-t overflow-hidden flex flex-col-reverse" style={{ height: `${(t / data.max) * 85}%` }}>
+                    {SERIES.map((x) => (b[x.key] ? <div key={x.key} className={x.bar} style={{ flexGrow: b[x.key], flexBasis: 0 }} /> : null))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex gap-1 border-t border-slate-200 pt-1">
+            {data.buckets.map((b, i) => <div key={b.at} className="flex-1 min-w-0 text-center text-[10px] tabular-nums text-slate-500 whitespace-nowrap overflow-visible">{i % every === 0 ? hmMs(b.at) : ''}</div>)}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-1">כל עמודה = {data.step} דקות, לפי השעה שבה נרשמה התשובה האחרונה של כל אחד / שבה סומן נוכח.</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- central board
 
 export function BigBoard({ state, updatedAt }: { state: LiveState; updatedAt: number }) {
@@ -139,13 +233,18 @@ export function BigBoard({ state, updatedAt }: { state: LiveState; updatedAt: nu
   }, [audit.squads, students]);
   const stale = updatedAt && Date.now() - updatedAt > 15000;
   const target = Number(audit.target_pct);
-  const miss = students.filter((s) => !s.present);
-  const known = {
-    coming: miss.filter((s) => s.call_status === 'coming').length,
-    noAnswer: miss.filter((s) => s.call_status === 'no_answer').length,
-    outOfTown: miss.filter(isOutOfTown).length,
-    cant: miss.filter((s) => s.call_status === 'cant' && !isOutOfTown(s)).length,
-  };
+  const now = new Date(state.now).getTime() || Date.now();
+  // the missing, by what is known about each — every number is a card that opens its list
+  const [open, setOpen] = useState<AnswerOrNone | null>(null);
+  const byKind = useMemo(() => {
+    const m: Record<AnswerOrNone, TeamStudent[]> = { coming: [], cant: [], out: [], no_answer: [], none: [] };
+    for (const s of students) if (!s.present) m[answerKind(s)].push(s);
+    for (const k of ANSWER_KINDS) m[k].sort(k === 'none' ? compareAudit : (a, b) => (b.call_at || '').localeCompare(a.call_at || ''));
+    return m;
+  }, [students]);
+  // the latest answers (also of people who arrived since)
+  const answers = useMemo(() => students.filter((s) => s.call_status !== 'none' && s.call_at)
+    .sort((a, b) => (b.call_at || '').localeCompare(a.call_at || '')).slice(0, 12), [students]);
 
   return (
     <div className="space-y-4">
@@ -163,15 +262,67 @@ export function BigBoard({ state, updatedAt }: { state: LiveState; updatedAt: nu
           <div className="absolute inset-y-0 w-0.5 bg-slate-800" style={{ insetInlineStart: `${target}%` }} title={`יעד ${target}%`} />
         </div>
         {st.missing > 0 && (
-          <div className="mt-4 flex flex-wrap justify-center gap-2 text-sm">
-            <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">בדרך <b>{known.coming}</b></span>
-            <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800">לא עונים <b>{known.noAnswer}</b></span>
-            <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-800">מחוץ לעיר <b>{known.outOfTown}</b></span>
-            <span className="px-3 py-1 rounded-full bg-red-100 text-red-800">לא יכולים <b>{known.cant}</b></span>
-            <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700">עוד לא ידוע <b>{st.missing - known.coming - known.noAnswer - known.outOfTown - known.cant}</b></span>
+          <div className="mt-5 grid grid-cols-2 sm:grid-cols-5 gap-2 text-start">
+            {ANSWER_KINDS.map((k) => {
+              const m = ANSWER_META[k];
+              return (
+                <button key={k} type="button" aria-expanded={open === k} onClick={() => setOpen(open === k ? null : k)}
+                  className={`rounded-2xl border px-3 py-2 text-start transition last:col-span-2 sm:last:col-span-1 ${m.card} ${open === k ? 'ring-2 ring-offset-1 ring-slate-500' : 'hover:brightness-95'}`}>
+                  <div className="text-3xl font-bold tabular-nums leading-none">{byKind[k].length}</div>
+                  <div className="text-sm font-semibold mt-1">{m.icon} {m.label}</div>
+                  <div className="text-[11px] opacity-70">{open === k ? 'סגור ▲' : 'לחיצה — הרשימה ▼'}</div>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
+
+      {open && st.missing > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-300 p-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <h3 className="font-bold text-slate-800" style={{ fontFamily: "'Frank Ruhl Libre', serif" }}>{ANSWER_META[open].icon} {ANSWER_META[open].label} ({byKind[open].length})</h3>
+            <button type="button" className="text-sm text-slate-500 hover:text-slate-800" onClick={() => setOpen(null)}>✕ סגור</button>
+          </div>
+          {byKind[open].length === 0 ? <div className="text-sm text-slate-400 py-3">אין אף אחד ברשימה הזו</div> : (
+            <div className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto">
+              {byKind[open].map((s) => (
+                <div key={s.id} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
+                  <span className="font-semibold">{fullName(s)}</span>
+                  <span className="text-xs text-slate-400">{sectionOf(s)}{s.squad ? ` · ${s.squad}` : ''}</span>
+                  {s.phone ? <a href={`tel:${s.phone}`} dir="ltr" className="tabular-nums text-blue-700 hover:underline">{s.phone}</a> : <span className="text-xs text-slate-400">אין נייד</span>}
+                  {open !== 'none' && <span className="basis-full sm:basis-auto sm:ms-auto text-xs text-slate-600"><AnswerLine s={s} now={now} /></span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl border border-slate-200/70 p-4">
+        <h3 className="font-bold text-slate-800 mb-2" style={{ fontFamily: "'Frank Ruhl Libre', serif" }}>תשובות אחרונות — מי ענה ומה אמר</h3>
+        {answers.length === 0 ? <div className="text-sm text-slate-400">עדיין לא התקבלה אף תשובה</div> : (
+          <div className="divide-y divide-slate-100">
+            {answers.map((s) => {
+              const k = answerKind(s);
+              const eta = etaOf(s);
+              const late = !!eta && !s.present && now > eta;
+              return (
+                <div key={s.id} className="py-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+                  <b className="tabular-nums w-12">{hm(s.call_at)}</b>
+                  <span className="font-semibold">{fullName(s)}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ANSWER_META[k].chip}`}>{ANSWER_META[k].one}</span>
+                  {s.call_note && <span className="text-xs text-slate-600">{s.call_note}</span>}
+                  {eta > 0 && !s.present && <span className={`text-xs ${late ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>{late ? '⚠️ היה אמור להגיע עד' : 'צפוי עד'} <b className="tabular-nums">{hmMs(eta)}</b></span>}
+                  {s.present && <span className="text-xs text-emerald-700 font-semibold">✓ הגיע {hm(s.present_at)}</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <Timeline state={state} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/70 p-4">
@@ -315,8 +466,8 @@ export function CallersList({ state, act, canAct, wholeList = false }: { state: 
                     className={`px-2.5 py-1 rounded-lg text-xs font-medium border disabled:opacity-60 ${answerOf(s) === a.id ? a.tone : CALL_TONE.none}`}>{a.label}</button>
                 ))}
               </div>
-              <div className="flex-1 min-w-[80px] text-xs text-slate-500 truncate">
-                {s.call_status !== 'none' && <>{hm(s.call_at)}{s.call_note ? ` · ${s.call_note}` : ''}</>}
+              <div className="flex-1 min-w-[80px] basis-full sm:basis-0 text-xs text-slate-600">
+                <AnswerLine s={s} now={new Date(state.now).getTime() || Date.now()} />
               </div>
               {canAct && <button type="button" className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => act('present', s.id)}>✓ הגיע</button>}
             </div>
