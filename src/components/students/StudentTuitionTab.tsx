@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { supabase } from '@/lib/supabase';
 import { OfficePaymentDialog } from '@/components/finances/OfficePaymentDialog';
+import { ExtraPayersPanel } from '@/components/finances/ExtraPayersPanel';
 
 interface Adjustment {
   id: string;
@@ -408,6 +409,10 @@ export function StudentTuitionTab({ studentId, familyId, studentStatus }: Props)
           </Button>
         </div>
       </div>
+
+      {/* Tuition split: a second parent / an outside payer, on top of the family's part */}
+      <ExtraPayersPanel studentId={studentId}
+        mainLabel={METHOD_LABELS[tuition.payment_method]} mainAmount={Number(tuition.monthly_amount) || 0} />
 
       {/* Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

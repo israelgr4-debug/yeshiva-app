@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { PageGuard } from '@/components/ui/PageGuard';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { loadActiveExtraPayers, setPayerActive } from '@/hooks/useExtraPayers';
+import { ExtraPayer, payerLabel } from '@/lib/tuition-payers';
 
 interface Row {
   tuition_id: string;
@@ -32,6 +34,69 @@ const STATUS_LABELS: Record<string, string> = {
   chizuk: 'בחיזוק',
   graduated: 'סיים',
 };
+
+// Tuition split: an additional payer's CREDIT standing order keeps charging in Nedarim after
+// the student left — nothing stops it by itself. (A bank payer is simply left out of the
+// מס"ב file once the student's main charge is stopped.)
+function LeftStudentsCreditPayers({ canWrite }: { canWrite: boolean }) {
+  const [rows, setRows] = useState<{ payer: ExtraPayer; student: string; status: string }[]>([]);
+  const [busy, setBusy] = useState('');
+
+  const load = async () => {
+    const payers = (await loadActiveExtraPayers()).filter((p) => p.payment_method === 'credit_nedarim');
+    if (payers.length === 0) { setRows([]); return; }
+    const { data } = await supabase.from('students').select('id, first_name, last_name, status')
+      .in('id', [...new Set(payers.map((p) => p.student_id))]).neq('status', 'active');
+    const st = new Map((data || []).map((s: any) => [s.id, s]));
+    setRows(payers.filter((p) => st.has(p.student_id)).map((p) => {
+      const s: any = st.get(p.student_id);
+      return { payer: p, student: `${s.first_name} ${s.last_name}`, status: s.status };
+    }));
+  };
+  useEffect(() => { load(); }, []);
+
+  const stop = async (p: ExtraPayer, student: string) => {
+    if (!confirm(`להפסיק את החיוב של ${payerLabel(p)} עבור ${student}?\n\nההו"ק שלו תושהה בנדרים (אם אינה משמשת תלמיד פעיל אחר).`)) return;
+    setBusy(p.id);
+    try {
+      if (!(await setPayerActive(p.id, false))) throw new Error('השמירה נכשלה');
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/nedarim/suspend-hk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ payer_id: p.id }),
+      });
+      const j = await res.json();
+      if (j.suspended) alert('✓ החיוב הופסק וההו"ק הושהתה בנדרים.');
+      else if (j.shared) alert(`⚠️ החיוב הופסק אצלנו, אך ההו"ק משמשת גם תלמיד פעיל (${(j.names || []).join(', ')}) ולכן לא הושהתה.\nיש לטפל בה ידנית בנדרים.`);
+      else alert('⚠️ החיוב הופסק אצלנו, אך השהיית ההו"ק בנדרים נכשלה:\n' + (j.error || 'שגיאה') + '\nיש להשהות ידנית בנדרים.');
+    } catch (e: any) {
+      alert('שגיאה: ' + (e?.message || e) + '\nבדוק את ההו"ק בנדרים.');
+    } finally { setBusy(''); load(); }
+  };
+
+  if (rows.length === 0) return null;
+  return (
+    <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-4 py-3 space-y-2">
+      <div className="font-bold text-amber-900">👥 משלמים נוספים באשראי של תלמידים שאינם פעילים ({rows.length})</div>
+      <div className="text-xs text-amber-800">ההו״ק של משלם נוסף (סבא, הורה שני) ממשיכה להיגבות בנדרים גם אחרי שהתלמיד עזב — עד שמפסיקים אותה כאן.</div>
+      {rows.map(({ payer, student, status }) => (
+        <div key={payer.id} className="flex items-center gap-3 flex-wrap bg-white rounded-lg border border-amber-200 px-3 py-2 text-sm">
+          <Link href={`/students/${payer.student_id}`} className="text-blue-700 hover:underline font-medium">{student}</Link>
+          <span className="text-xs text-gray-500">{STATUS_LABELS[status] || status}</span>
+          <span>{payerLabel(payer)}</span>
+          <span className="font-bold">₪{payer.monthly_amount.toLocaleString('he-IL')}</span>
+          <span className="flex-1" />
+          {canWrite && (
+            <Button size="sm" variant="danger" disabled={busy === payer.id} onClick={() => stop(payer, student)}>
+              {busy === payer.id ? 'מפסיק…' : '🛑 הפסק חיוב'}
+            </Button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function InactivePayersPage() {
   const { permissions } = useAuth();
@@ -166,6 +231,8 @@ export default function InactivePayersPage() {
             🔄 רענן
           </Button>
         </div>
+
+        <LeftStudentsCreditPayers canWrite={canWrite} />
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {(['all', 'bank_ho', 'credit_nedarim', 'office'] as const).map((k) => {

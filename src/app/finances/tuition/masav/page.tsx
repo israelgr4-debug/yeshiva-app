@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { fetchAll } from '@/lib/supabase-paginate';
 import { buildMasavFile, buildMasavCsv, downloadFile, downloadMasavFile, MasavCharge } from '@/lib/masav';
+import { loadActiveExtraPayers } from '@/hooks/useExtraPayers';
+import { payerLabel, bankPayerCharged } from '@/lib/tuition-payers';
 
 // מס"ב institution identifiers (given by מס"ב for this מוסד).
 const MASAV_MOSAD_NUMBER = '39050646'; // מוסד/נושא — 8 ספרות
@@ -42,8 +44,16 @@ interface Family {
   bank_account: string | null;
 }
 
+// One line of the file: a family's account — or an ADDITIONAL payer's own account (tuition
+// split). For a payer line `family` is built from the payer (his name, ת"ז and account).
 interface FamilyCharge {
   family: Family;
+  /** the additional payer this line charges; undefined = the family */
+  payerId?: string;
+  /** the real family (link target) */
+  familyId: string;
+  /** "סבא · ישראל כהן" — shown on a payer line */
+  payerText?: string;
   students: { id: string; name: string; amount: number; status: string }[];
   totalAmount: number;
   valid: boolean;
@@ -79,23 +89,27 @@ export default function MasavExportPage() {
     (async () => {
       setLoading(true);
       const chargeMonth = chargeDate.slice(0, 7); // 'YYYY-MM' — the collection run this file is for
-      const [tuitions, students, families, adjustments] = await Promise.all([
-        fetchAll<TuitionRow & { tuition_active_until?: string | null }>(
+      const [allTuitions, students, families, adjustments, extraPayers] = await Promise.all([
+        // every ACTIVE setup (not only bank): an additional payer is charged only while the
+        // student's main setup is active — whatever its method
+        fetchAll<TuitionRow & { tuition_active_until?: string | null; payment_method: string }>(
           'student_tuition',
-          'student_id, monthly_amount, bank_day, tuition_active_until',
-          (q) => q.eq('payment_method', 'bank_ho').eq('active', true)
+          'student_id, monthly_amount, bank_day, tuition_active_until, payment_method',
+          (q) => q.eq('active', true)
         ),
         // Inclusion is driven by student_tuition.active (below), NOT by student status —
         // so an inactive student who keeps paying (active bank הו״ק) is charged too.
         // Load all students; the tuition list decides who is actually charged.
         fetchAll<StudentLite>('students', 'id, first_name, last_name, family_id, status'),
         fetchAll<Family>('families', '*'),
-        fetchAll<{ student_id: string; kind: string; amount: number }>(
+        fetchAll<{ student_id: string; kind: string; amount: number; is_freeze?: boolean | null }>(
           'charge_adjustments',
-          'student_id, kind, amount',
+          '*', // not a column list: is_freeze exists only from migration 052
           (q) => q.eq('month', chargeMonth).eq('status', 'active')
         ),
+        loadActiveExtraPayers(),
       ]);
+      const tuitions = allTuitions.filter((t) => t.payment_method === 'bank_ho');
 
       const studentMap: Record<string, StudentLite> = {};
       for (const s of students) studentMap[s.id] = s;
@@ -107,7 +121,9 @@ export default function MasavExportPage() {
       // additions are summed on top. Applied to the charged amount.
       const overrideByStudent: Record<string, number> = {};
       const additionsByStudent: Record<string, number> = {};
+      const frozen = new Set<string>();
       for (const a of adjustments) {
+        if (a.kind === 'override' && a.is_freeze) frozen.add(a.student_id);
         if (a.kind === 'override') overrideByStudent[a.student_id] = Number(a.amount) || 0;
         else additionsByStudent[a.student_id] = (additionsByStudent[a.student_id] || 0) + (Number(a.amount) || 0);
       }
@@ -132,6 +148,7 @@ export default function MasavExportPage() {
         if (!byFamily[fam.id]) {
           byFamily[fam.id] = {
             family: fam,
+            familyId: fam.id,
             students: [],
             totalAmount: 0,
             valid: false,
@@ -147,6 +164,36 @@ export default function MasavExportPage() {
         byFamily[fam.id].totalAmount += amount;
       }
       setAdjustedCount(adjApplied);
+
+      // Additional payers (tuition split): each one is his own line, on his own account and
+      // for his fixed amount. Charged only while the student's main setup is active and not
+      // past its stop date, and not in a frozen month. The month's additions / override
+      // belong to the family's line only.
+      const mainBySid = new Map(allTuitions.map((t) => [t.student_id, t]));
+      for (const p of extraPayers) {
+        if (!bankPayerCharged(p, mainBySid.get(p.student_id), frozen.has(p.student_id), chargeDate)) continue;
+        const student = studentMap[p.student_id];
+        if (!student) continue;
+        const amount = Number(p.monthly_amount) || 0;
+        byFamily[`payer:${p.id}`] = {
+          family: {
+            id: `payer:${p.id}`,
+            family_name: p.payer_name,
+            father_name: null,
+            father_id_number: p.payer_id_number,
+            bank_number: p.bank_number,
+            bank_branch: p.bank_branch,
+            bank_account: p.bank_account,
+          },
+          payerId: p.id,
+          familyId: student.family_id || '',
+          students: [{ id: student.id, name: `${student.first_name} ${student.last_name}`, amount, status: student.status }],
+          totalAmount: amount,
+          valid: false,
+          issues: [],
+          payerText: payerLabel(p),
+        };
+      }
 
       // Validate bank details
       for (const fc of Object.values(byFamily)) {
@@ -175,7 +222,9 @@ export default function MasavExportPage() {
   const validCharges = filtered.filter((c) => c.valid);
   const invalidCharges = filtered.filter((c) => !c.valid);
   const totalAmount = validCharges.reduce((sum, c) => sum + c.totalAmount, 0);
-  const totalStudents = validCharges.reduce((sum, c) => sum + c.students.length, 0);
+  // a student who has both a family line and a payer line is still one student
+  const totalStudents = new Set(validCharges.flatMap((c) => c.students.map((s) => s.id))).size;
+  const payerLines = validCharges.filter((c) => c.payerId).length;
   const inactiveIncluded = validCharges.reduce(
     (sum, c) => sum + c.students.filter((s) => s.status !== 'active').length,
     0
@@ -215,12 +264,13 @@ export default function MasavExportPage() {
     // Remember what this file contained (per student) so it can be marked paid later
     // exactly as produced — not the file itself.
     const res = await recordMasavRun(chargeDate, sendCounter, validCharges.map((c) => ({
-      family_id: c.family.id,
-      family_name: `${c.family.family_name} ${c.family.father_name || ''}`.trim(),
+      family_id: c.familyId,
+      family_name: c.payerId ? `משלם נוסף: ${c.payerText || c.family.family_name}` : `${c.family.family_name} ${c.family.father_name || ''}`.trim(),
       bank: String(c.family.bank_number ?? ''),
       branch: String(c.family.bank_branch ?? ''),
       account: String(c.family.bank_account ?? ''),
       students: c.students.map((s) => ({ id: s.id, name: s.name, amount: s.amount })),
+      payer_id: c.payerId || null,
     })));
     if (!res.ok) alert('⚠️ הקובץ הורד, אך רישום השידור במערכת נכשל: ' + res.error + '\nאפשר לסמן כנפרע בהמשך דרך "סמן קובץ שיוצא בעבר".');
     setRunsKey((k) => k + 1);
@@ -320,7 +370,9 @@ export default function MasavExportPage() {
           <div className="bg-green-50 rounded-lg p-4 text-center">
             <p className="text-xs text-gray-600 mb-1">משפחות לחיוב</p>
             <p className="text-3xl font-bold text-green-700">{validCharges.length}</p>
-            <p className="text-xs text-gray-500">{totalStudents} תלמידים</p>
+            <p className="text-xs text-gray-500">
+              {totalStudents} תלמידים{payerLines > 0 ? ` · מתוכן ${payerLines} משלמים נוספים` : ''}
+            </p>
           </div>
           <div className="bg-blue-50 rounded-lg p-4 text-center">
             <p className="text-xs text-gray-600 mb-1">סכום כולל לחיוב</p>
@@ -329,7 +381,7 @@ export default function MasavExportPage() {
           <div className="bg-amber-50 rounded-lg p-4 text-center">
             <p className="text-xs text-gray-600 mb-1">חסרה ת.ז אב</p>
             <p className="text-3xl font-bold text-amber-700">
-              {validCharges.filter((c) => !c.family.father_id_number).length}
+              {validCharges.filter((c) => !c.payerId && !c.family.father_id_number).length}
             </p>
             <p className="text-xs text-gray-500">ייכללו בקובץ (להשלים)</p>
           </div>
@@ -385,9 +437,15 @@ export default function MasavExportPage() {
                     {invalidCharges.map((c) => (
                       <tr key={c.family.id} className="border-t border-gray-200">
                         <td className="px-3 py-2">
-                          <Link href={`/families/${c.family.id}`} className="text-blue-600 hover:underline">
-                            {c.family.family_name}
-                          </Link>
+                          {c.payerId ? (
+                            <Link href={`/students/${c.students[0]?.id}`} className="text-blue-600 hover:underline">
+                              👥 {c.payerText || c.family.family_name}
+                            </Link>
+                          ) : (
+                            <Link href={`/families/${c.family.id}`} className="text-blue-600 hover:underline">
+                              {c.family.family_name}
+                            </Link>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-xs">
                           {c.students.map((s) => s.name).join(', ')}
@@ -428,12 +486,26 @@ export default function MasavExportPage() {
                     {validCharges.slice(0, 200).map((c) => (
                       <tr key={c.family.id} className="border-t border-gray-200">
                         <td className="px-3 py-2">
-                          <Link href={`/families/${c.family.id}`} className="text-blue-600 hover:underline">
-                            {c.family.family_name}
-                          </Link>
-                          <div className="text-xs text-gray-500">{c.family.father_name}</div>
-                          {!c.family.father_id_number && (
-                            <div className="text-xs text-amber-700 font-medium">⚠ חסרה ת.ז אב</div>
+                          {c.payerId ? (
+                            <>
+                              <Link href={`/students/${c.students[0]?.id}`} className="text-blue-600 hover:underline">
+                                {c.family.family_name}
+                              </Link>
+                              <div className="text-xs text-indigo-700 font-medium">👥 משלם נוסף{c.payerText ? ` · ${c.payerText}` : ''}</div>
+                              {!c.family.father_id_number && (
+                                <div className="text-xs text-amber-700 font-medium">⚠ חסרה ת.ז של המשלם</div>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <Link href={`/families/${c.family.id}`} className="text-blue-600 hover:underline">
+                                {c.family.family_name}
+                              </Link>
+                              <div className="text-xs text-gray-500">{c.family.father_name}</div>
+                              {!c.family.father_id_number && (
+                                <div className="text-xs text-amber-700 font-medium">⚠ חסרה ת.ז אב</div>
+                              )}
+                            </>
                           )}
                         </td>
                         <td className="px-3 py-2 text-xs">

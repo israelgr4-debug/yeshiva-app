@@ -13,7 +13,7 @@ interface Run {
   marked_paid_at: string | null; marked_paid_by: string | null; mark_result: MarkResult | null;
   cancelled_at: string | null; cancelled_by: string | null;
 }
-interface Item { id: string; student_id: string | null; student_name: string | null; family_name: string | null; bank: string | null; branch: string | null; account: string | null; amount: number }
+interface Item { id: string; student_id: string | null; student_name: string | null; family_name: string | null; bank: string | null; branch: string | null; account: string | null; amount: number; payer_id?: string | null }
 
 const ils = (n: number) => '₪' + Number(n).toLocaleString('he-IL', { maximumFractionDigits: 2 });
 const dmy = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/');
@@ -73,7 +73,11 @@ export function MasavRunsList({ mode, refreshKey, onChanged, onOpenChange }: {
     try {
       const its = await loadRunItems(r.id);
       const valid = its.filter((i) => i.student_id);
-      const res = await markItemsPaid(valid.map((i) => ({ student_id: i.student_id!, amount: Number(i.amount), name: i.student_name || i.family_name || '' })), r.charge_date, r.send_counter);
+      const res = await markItemsPaid(valid.map((i) => ({
+        student_id: i.student_id!, amount: Number(i.amount), payer_id: i.payer_id || null,
+        // an additional payer's line is named by the payer too, so a message about it is clear
+        name: i.payer_id ? `${i.student_name || ''} (${i.family_name || 'משלם נוסף'})` : (i.student_name || i.family_name || ''),
+      })), r.charge_date, r.send_counter);
       if (its.length - valid.length) res.errors.unshift(`${its.length - valid.length} שורות ללא תלמיד (נמחק) — לא סומנו`);
       const { data: { user } } = await supabase.auth.getUser();
       await supabase.from('masav_runs').update({ marked_paid_at: new Date().toISOString(), marked_paid_by: user?.email || null, mark_result: res }).eq('id', r.id);

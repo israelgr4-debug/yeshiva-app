@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
+import { lineKey } from '@/lib/tuition-payers';
 
-export interface MarkItem { student_id: string; amount: number; name: string }
+/** payer_id = the student's additional payer this amount was charged to (tuition split); empty = the family. */
+export interface MarkItem { student_id: string; amount: number; name: string; payer_id?: string | null }
 export interface MarkResult { inserted: number; updated: number; skipped: number; errors: string[] }
 
 const ils = (n: number) => '₪' + n.toLocaleString('he-IL', { maximumFractionDigits: 2 });
@@ -9,6 +11,8 @@ export interface RunFamily {
   family_id: string; family_name: string;
   bank: string; branch: string; account: string;
   students: { id: string; name: string; amount: number }[];
+  /** set when this line of the file is an additional payer's own account (family_name = his name) */
+  payer_id?: string | null;
 }
 
 /**
@@ -43,6 +47,7 @@ export async function recordMasavRun(chargeDate: string, sendCounter: number, fa
   const rows = families.flatMap((f) => f.students.map((s) => ({
     run_id: runId, student_id: s.id, family_id: f.family_id, student_name: s.name, family_name: f.family_name,
     bank: f.bank, branch: f.branch, account: f.account, amount: s.amount,
+    ...(f.payer_id ? { payer_id: f.payer_id } : {}),
   })));
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await supabase.from('masav_run_items').insert(rows.slice(i, i + 500));
@@ -53,7 +58,9 @@ export async function recordMasavRun(chargeDate: string, sendCounter: number, fa
 
 /**
  * Mark a מס"ב run as PAID in payment_history, using the given per-student amounts
- * (what was actually in the file). Per student, among its BANK rows in that month:
+ * (what was actually in the file). A student with an additional bank payer (tuition
+ * split) has one line per payer — each is matched only against its own rows (payer_id).
+ * Per line, among its BANK rows in that month:
  *   none           → insert status 2 (נפרע)
  *   one, status 1  → update to status 2 (צפי → נפרע)
  *   one, status 2  → skip (flag if the amount differs)
@@ -68,24 +75,33 @@ export async function markItemsPaid(items: MarkItem[], chargeDate: string, group
   let inserted = 0, updated = 0, skipped = 0;
   const errors: string[] = [];
 
+  // payer_id exists only after migration 064. On a database without the column the query
+  // is repeated without it — marking then works exactly as it did before the tuition split.
+  let cols = 'id, student_id, amount_ils, status_code, payer_id';
   const existing: Record<string, any[]> = {};
   for (let i = 0; i < items.length; i += 100) {
-    const { data, error } = await supabase.from('payment_history')
-      .select('id, student_id, amount_ils, status_code')
-      .in('student_id', items.slice(i, i + 100).map((x) => x.student_id))
+    const ids = [...new Set(items.slice(i, i + 100).map((x) => x.student_id))];
+    const run = (c: string) => supabase.from('payment_history').select(c)
+      .in('student_id', ids)
       .gte('payment_date', `${month}-01`).lt('payment_date', nextStart)
       .is('nedarim_transaction_id', null); // bank rows only (ignore mirrored credit)
+    let { data, error } = await run(cols);
+    if (error && cols.includes('payer_id') && /payer_id/.test(error.message || '')) {
+      cols = 'id, student_id, amount_ils, status_code';
+      ({ data, error } = await run(cols));
+    }
     if (error) throw error;
-    for (const r of data || []) (existing[r.student_id] ||= []).push(r);
+    for (const r of (data || []) as any[]) (existing[lineKey(r.student_id, r.payer_id)] ||= []).push(r);
   }
 
   for (const it of items) {
-    const ex = existing[it.student_id] || [];
+    const ex = existing[lineKey(it.student_id, it.payer_id)] || [];
     try {
       if (ex.length === 0) {
         const { error } = await supabase.from('payment_history').insert({
           student_id: it.student_id, payment_date: chargeDate, amount_ils: it.amount,
           status_code: 2, status_name: 'נפרע', group_number: groupNumber,
+          ...(it.payer_id ? { payer_id: it.payer_id } : {}),
         });
         if (error) throw error;
         inserted++;

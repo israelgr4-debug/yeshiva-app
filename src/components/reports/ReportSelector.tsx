@@ -8,6 +8,8 @@ import { ReportTypeId, ReportType } from '@/lib/certificates';
 import { useCertificateTemplates } from '@/hooks/useCertificateTemplates';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { supabase } from '@/lib/supabase';
+import { listStudentPayers } from '@/hooks/useExtraPayers';
+import { extraTotal } from '@/lib/tuition-payers';
 
 interface ReportSelectorProps {
   students: Student[];
@@ -176,7 +178,9 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
         .eq('student_id', selectedStudent.id)
         .eq('active', true)
         .maybeSingle();
-      const amt = Number(data?.monthly_amount) || 0;
+      // tuition split: the certificate states the whole tuition — family + additional payers
+      const { payers } = await listStudentPayers(selectedStudent.id);
+      const amt = (Number(data?.monthly_amount) || 0) + extraTotal(payers.filter((p) => p.active));
       if (amt > 0) {
         setExtras((prev) => prev.amount ? prev : { ...prev, amount: String(Math.round(amt)) });
       }

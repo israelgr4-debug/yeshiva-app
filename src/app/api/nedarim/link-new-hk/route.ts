@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getCreditKevaDetail } from '@/lib/nedarim-api';
+import { EXTRA_PAYERS_TABLE } from '@/lib/tuition-payers';
 
 export const maxDuration = 30;
 
@@ -8,6 +9,8 @@ export const maxDuration = 30;
 // Called right after a credit HK was created via the embedded iframe. Pulls the new
 // HK's details (GetKevaId), stores it in nedarim_subscriptions, and links the student
 // (student_tuition → credit_nedarim + this subscription). The daily sync reconciles later.
+// With payer_id (tuition split): the HK belongs to an ADDITIONAL payer of the student — it is
+// linked to his line in tuition_extra_payers and the student's own setup is not touched.
 function adminClient() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
@@ -21,14 +24,14 @@ export async function POST(req: NextRequest) {
 
   let body: any = {};
   try { body = await req.json(); } catch {}
-  const { student_id, keva_id, amount, father_id } = body;
+  const { student_id, keva_id, amount, father_id, payer_id } = body;
   if (!student_id || !keva_id) return NextResponse.json({ ok: false, error: 'חסר מזהה תלמיד / הו״ק' }, { status: 400 });
 
   const db = adminClient();
   const { data: st } = await db.from('students').select('family_id').eq('id', student_id).maybeSingle();
 
   // Capture the father's ID onto the family (so we have it for next time / matching).
-  if (father_id && st?.family_id) {
+  if (father_id && st?.family_id && !payer_id) {
     await db.from('families').update({ father_id_number: String(father_id) }).eq('id', st.family_id);
   }
 
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest) {
     kind: 'credit',
     status: 'active',
     amount_per_charge: amt,
-    family_id: st?.family_id || null,
+    family_id: payer_id ? null : (st?.family_id || null),   // an outside payer's HK is not the family's
     client_zeout: d?.KevaZeout || null,
     client_name: d?.KevaName || null,
     client_phone: d?.KevaPhone || null,
@@ -58,6 +61,16 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single();
   if (subErr) return NextResponse.json({ ok: false, error: 'שמירת הו״ק: ' + subErr.message }, { status: 500 });
+
+  if (payer_id) {
+    const { data: upd, error: pErr } = await db.from(EXTRA_PAYERS_TABLE)
+      .update({ payment_method: 'credit_nedarim', nedarim_subscription_id: sub.id, monthly_amount: Number(amount) || amt, active: true })
+      .eq('id', payer_id).eq('student_id', student_id).select('id');
+    if (pErr || !upd || upd.length === 0) {
+      return NextResponse.json({ ok: false, error: 'קישור למשלם: ' + (pErr?.message || 'המשלם לא נמצא') }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, subscription_id: sub.id, payer_id });
+  }
 
   const { error: tuErr } = await db.from('student_tuition').upsert({
     student_id,

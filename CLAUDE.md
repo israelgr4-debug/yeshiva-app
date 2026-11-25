@@ -475,6 +475,37 @@ The Sidebar hides `/settings` from non-admins.
    the choice in sessionStorage), the board has "חסרים לפי קבוצה", sheet kind `squads` = a
    page per group with who is missing now; history has a group filter + column + an Excel
    sheet per group. Eligible people who are not in the system cannot be assigned.
+25. **Tuition split — additional payers** (mig 064, built 2026-11-25; NEVER SEEN IN A BROWSER
+   and never run against real money yet — fix here after the manager's first use).
+   `student_tuition` stays ONE main row per student (the family, the family's account).
+   `tuition_extra_payers` adds payers on top: `payer_kind` parent | external, name / relation /
+   ת"ז / phone, `payment_method` bank_ho | credit_nedarim | office, `monthly_amount`, the payer's
+   OWN bank account or `nedarim_subscription_id`, `active`. Total = main + Σ active payers.
+   Pure rules in `lib/tuition-payers.ts`, data in `hooks/useExtraPayers.ts` (loaders return []
+   when the table is missing, so every screen works before the migration), UI
+   `components/finances/ExtraPayersPanel.tsx` — in the student card tuition tab and behind the
+   👥 button / chips on `/finances/monthly`.
+   - **MASAV** (`/finances/tuition/masav`): each bank payer is his own line (his name, ת"ז,
+     account, fixed amount) — `bankPayerCharged`: only while the student's main row is active,
+     not past `tuition_active_until`, not in a freeze month. Additions / overrides belong to
+     the family's line only. `masav_run_items.payer_id` + `payment_history.payer_id` (NULL =
+     the family): `markItemsPaid` matches each line only against rows of the same payer, so a
+     student can have two bank rows in a month.
+   - **Credit**: the payer's HK is linked by search (any Nedarim HK) or created in
+     `/finances/nedarim/new-hk?student=…&payer=…` (donor card = the payer; `link-new-hk` links
+     the payer line, not the student). `sync-transactions` mirrors its charges into
+     `payment_history` via `splitCreditCharge` (main rows + payer links of one HK).
+     `suspend-hk { payer_id }` suspends a payer's HK; "shared" now also counts payer links.
+   - **Monthly screen**: `MonthlyRow.extraPayers / extraTotal`; status `partial` ("◐ נגבה חלק")
+     for a split student whose bank+credit parts did not all come in (`splitCollectionStatus`).
+   - Dashboards (gauge target, forecast, by-method) and the tuition certificates add the payers.
+   - Leaving: a payer's CREDIT HK is NOT stopped automatically — amber block at the top of
+     `/finances/inactive-payers`. A freeze warns about it.
+   - NOT handled: group override / `apply-hk-override` / `restore-hk-overrides` / freeze-hk /
+     `charge-adjustment` for a payer's HK (main row only); returns-file import and "סמן קובץ
+     ישן" match family accounts only (a payer's bounce is marked by hand in the returns list);
+     `OverdueDebtorsCard` looks at the main row only; the payments list in the student card
+     does not name the payer.
 
 ## Design system rules
 

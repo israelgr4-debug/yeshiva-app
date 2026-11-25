@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { loadDashboardExtraPayers } from '@/hooks/useExtraPayers';
 
 interface MethodStat {
   method: string;
@@ -74,6 +75,11 @@ export function TuitionByMethodCard() {
         if (!grouped[m]) grouped[m] = { method: m, students: 0, monthly: 0 };
         grouped[m].students++;
         grouped[m].monthly += Number(row.monthly_amount) || 0;
+      }
+      // tuition split: an additional payer's amount is counted under HIS method; the
+      // student himself is already counted once, under the family's method
+      for (const p of await loadDashboardExtraPayers()) {
+        if (grouped[p.payment_method]) grouped[p.payment_method].monthly += p.monthly_amount;
       }
 
       const ordered = METHOD_ORDER.map((m) => grouped[m]);

@@ -14,6 +14,8 @@ import { useChargeAdjustments, MonthlyRow, PayMethod } from '@/hooks/useChargeAd
 import { ChargeAdjustment } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 import { checkBankAccount } from '@/lib/israeli-validators';
+import { ExtraPayersPanel } from '@/components/finances/ExtraPayersPanel';
+import { EXTRA_METHOD_LABELS, payerLabel } from '@/lib/tuition-payers';
 
 const METHOD_LABELS: Record<PayMethod, string> = {
   bank_ho: 'הו"ק בנק',
@@ -31,6 +33,7 @@ const METHOD_COLORS: Record<PayMethod, string> = {
 };
 const COLLECTION_META: Record<string, { label: string; cls: string }> = {
   paid: { label: '✅ נגבה', cls: 'bg-emerald-100 text-emerald-800' },
+  partial: { label: '◐ נגבה חלק', cls: 'bg-amber-100 text-amber-800' },
   pending: { label: '⏳ ממתין', cls: 'bg-slate-100 text-slate-600' },
   returned: { label: '↩️ חזר', cls: 'bg-red-100 text-red-800' },
   none: { label: '—', cls: 'text-slate-300' },
@@ -67,6 +70,7 @@ export default function MonthlyCollectionPage() {
 
   const [adjFor, setAdjFor] = useState<MonthlyRow | null>(null);
   const [setupFor, setSetupFor] = useState<MonthlyRow | null>(null);
+  const [payersFor, setPayersFor] = useState<MonthlyRow | null>(null);
   const [groupOpen, setGroupOpen] = useState(false);
 
   const reload = useCallback(async () => {
@@ -105,11 +109,13 @@ export default function MonthlyCollectionPage() {
   }, [rows, methodFilter, shiurFilter, accountFilter, search, sortKey, sortAsc]);
 
   const totals = useMemo(() => {
-    const t = { base: 0, adj: 0, final: 0, changed: 0 };
+    const t = { base: 0, adj: 0, final: 0, changed: 0, extra: 0, split: 0 };
     for (const r of filtered) {
       t.base += r.base;
       t.adj += r.final - r.base;
       t.final += r.final;
+      t.extra += r.extraTotal;
+      if (r.extraPayers.length > 0) t.split += 1;
       if (r.final !== r.base) t.changed += 1;
     }
     return t;
@@ -181,8 +187,14 @@ export default function MonthlyCollectionPage() {
           </button>
           <StatCard label="בסיס" value={ils(totals.base)} />
           <StatCard label="שינויים החודש" value={(totals.adj >= 0 ? '+' : '') + ils(totals.adj)} accent={totals.adj !== 0} />
-          <StatCard label="סה״כ לגבייה" value={ils(totals.final)} strong />
+          <StatCard label="סה״כ לגבייה" value={ils(totals.final + totals.extra)} strong />
         </div>
+        {totals.split > 0 && (
+          <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl px-4 py-2.5 text-sm">
+            👥 <b>{totals.split}</b> תלמידים עם פיצול תשלום: משלמים נוספים מביאים <b>{ils(totals.extra)}</b> מעבר לחלק של המשפחות
+            (כלול ב״סה״כ לגבייה״). שינויים חודשיים והקפאה חלים על החלק של המשפחה.
+          </div>
+        )}
 
         {/* Table */}
         <Card>
@@ -226,6 +238,12 @@ export default function MonthlyCollectionPage() {
                             {METHOD_LABELS[r.method]}
                           </button>
                         )}
+                        {r.extraPayers.map((p) => (
+                          <button key={p.id} onClick={() => setPayersFor(r)} title="משלם נוסף — פיצול תשלום"
+                            className="block mt-1 px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-800 hover:ring-2 hover:ring-indigo-200 text-start">
+                            👥 {payerLabel(p)} · {ils(p.monthly_amount)} {EXTRA_METHOD_LABELS[p.payment_method]}
+                          </button>
+                        ))}
                       </td>
                       <td className="px-3 py-2 text-slate-700">{ils(r.base)}</td>
                       <td className="px-3 py-2">
@@ -262,11 +280,15 @@ export default function MonthlyCollectionPage() {
                           {r.adjustments.filter((a) => a.status === 'active').length === 0 && <span className="text-slate-300">—</span>}
                         </div>
                       </td>
-                      <td className={`px-3 py-2 font-semibold ${r.final !== r.base ? 'text-emerald-700' : 'text-slate-800'}`}>{ils(r.final)}</td>
+                      <td className={`px-3 py-2 font-semibold ${r.final !== r.base ? 'text-emerald-700' : 'text-slate-800'}`}>
+                        {ils(r.final + r.extraTotal)}
+                        {r.extraTotal > 0 && <div className="text-[11px] font-normal text-slate-500">משפחה {ils(r.final)} + נוספים {ils(r.extraTotal)}</div>}
+                      </td>
                       <td className="px-3 py-2">
                         <span className={`px-2 py-0.5 rounded-full text-xs ${COLLECTION_META[r.collection].cls}`}>{COLLECTION_META[r.collection].label}</span>
                       </td>
                       <td className="px-3 py-2 text-end">
+                        <button onClick={() => setPayersFor(r)} className="text-indigo-600 hover:bg-indigo-50 rounded-lg w-7 h-7" title="פיצול תשלום — משלמים נוספים">👥</button>
                         <button onClick={() => setAdjFor(r)} className="text-blue-600 hover:bg-blue-50 rounded-lg w-7 h-7" title="הוסף שינוי">＋</button>
                       </td>
                     </tr>
@@ -290,6 +312,11 @@ export default function MonthlyCollectionPage() {
           onFreeze={async (months, reason) => {
             const res = await createFreeze({ student_id: adjFor.student_id, start_month: month, months, reason, dispatch_method: adjFor.method });
             if (!res.ok) { alert(res.error || 'שגיאה בהקפאה'); return; }
+            const creditPayers = adjFor.extraPayers.filter((p) => p.payment_method === 'credit_nedarim');
+            if (creditPayers.length > 0) {
+              alert('שים לב: לתלמיד יש משלם נוסף באשראי (' + creditPayers.map((p) => payerLabel(p)).join(', ') + ').\n' +
+                'ההו״ק שלו בנדרים לא מושהית בהקפאה — אם צריך, יש להשהות אותה בנדרים ידנית.\n(משלם נוסף בהו״ק בנק לא ייכלל במס״ב בחודשי ההקפאה.)');
+            }
             if (res.credit) {
               const c = res.credit;
               if (c.suspended) {
@@ -307,6 +334,12 @@ export default function MonthlyCollectionPage() {
       )}
       {setupFor && (
         <SetupDialog row={setupFor} onClose={() => setSetupFor(null)} onSaved={() => { setSetupFor(null); reload(); }} />
+      )}
+      {payersFor && (
+        <Modal isOpen onClose={() => { setPayersFor(null); reload(); }} title={`פיצול תשלום · ${payersFor.last_name} ${payersFor.first_name}`} className="max-w-xl">
+          <ExtraPayersPanel studentId={payersFor.student_id}
+            mainLabel={METHOD_LABELS[payersFor.method]} mainAmount={payersFor.base} />
+        </Modal>
       )}
       {groupOpen && (
         <GroupActionDialog month={month} shiurOptions={SHIUR_ORDER} onClose={() => setGroupOpen(false)}

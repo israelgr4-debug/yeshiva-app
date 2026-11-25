@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { loadDashboardExtraPayers } from '@/hooks/useExtraPayers';
+import { extraTotal } from '@/lib/tuition-payers';
 
 interface Stats {
   target: number;            // bank target = pending+paid+returned, OR for current/future = roster-based
@@ -104,6 +106,8 @@ export function MonthlyCollectionGauge() {
           const ov = overrideBySid.get(sid);
           rosterTarget += (ov != null ? ov : base) + (addBySid.get(sid) || 0);
         }
+        // tuition split: additional payers bring their own fixed amount on top
+        rosterTarget += extraTotal(await loadDashboardExtraPayers());
       }
 
       let creditCollected = 0;

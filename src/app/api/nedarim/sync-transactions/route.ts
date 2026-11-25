@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getCreditTransactionsHistory, normalizeDate, normalizeDateTime } from '@/lib/nedarim-api';
+import { EXTRA_PAYERS_TABLE, CreditLink, splitCreditCharge } from '@/lib/tuition-payers';
 
 export const maxDuration = 300;
 
@@ -100,9 +101,9 @@ export async function POST(req: NextRequest) {
 
       // --- Mirror successful credit charges into payment_history (unified ledger) ---
       // So credit collection counts as "נגבה" everywhere (monthly run, gauge, history,
-      // student card). Attributed to students via student_tuition.nedarim_subscription_id;
-      // a shared HK is split by each student's monthly_amount. Idempotent on
-      // (nedarim_transaction_id, student_id).
+      // student card). Attributed to students via student_tuition.nedarim_subscription_id
+      // AND via an additional payer's standing order (tuition split, mig 064); a shared HK
+      // is split by each link's monthly amount. Idempotent on (nedarim_transaction_id, student_id).
       try {
         const subIds = [...new Set(rows.map((r) => r.subscription_id).filter(Boolean))] as string[];
         if (subIds.length > 0) {
@@ -111,28 +112,46 @@ export async function POST(req: NextRequest) {
             .select('student_id, monthly_amount, nedarim_subscription_id')
             .in('nedarim_subscription_id', subIds)
             .eq('active', true);
-          const bySub = new Map<string, { student_id: string; amount: number }[]>();
+          const bySub = new Map<string, CreditLink[]>();
           for (const t of tuitions || []) {
             const arr = bySub.get(t.nedarim_subscription_id) || [];
-            arr.push({ student_id: t.student_id, amount: Number(t.monthly_amount) || 0 });
+            arr.push({ student_id: t.student_id, amount: Number(t.monthly_amount) || 0, payer_id: null });
             bySub.set(t.nedarim_subscription_id, arr);
           }
+          // additional payers' standing orders (no such table before mig 064 → skipped)
+          const { data: payers, error: payersErr } = await db
+            .from(EXTRA_PAYERS_TABLE)
+            .select('id, student_id, monthly_amount, nedarim_subscription_id')
+            .in('nedarim_subscription_id', subIds)
+            .eq('payment_method', 'credit_nedarim')
+            .eq('active', true);
+          for (const p of (payersErr ? [] : payers || [])) {
+            const arr = bySub.get(p.nedarim_subscription_id) || [];
+            arr.push({ student_id: p.student_id, amount: Number(p.monthly_amount) || 0, payer_id: p.id });
+            bySub.set(p.nedarim_subscription_id, arr);
+          }
           const phRows: any[] = [];
+          const payerRows: any[] = [];   // rows that carry payer_id — upserted apart (column from mig 064)
           for (const r of rows) {
             if (!r.subscription_id || !r.transaction_date) continue;
-            const studs = bySub.get(r.subscription_id);
-            if (!studs || studs.length === 0) continue;
-            const single = studs.length === 1;
-            for (const s of studs) {
-              phRows.push({
+            for (const s of splitCreditCharge(r.amount, bySub.get(r.subscription_id) || [])) {
+              const row = {
                 student_id: s.student_id,
                 payment_date: r.transaction_date,
-                amount_ils: single ? r.amount : s.amount,
+                amount_ils: s.amount,
                 status_code: 2,
                 status_name: 'נפרע (אשראי)',
                 nedarim_transaction_id: r.nedarim_transaction_id,
-              });
+              };
+              if (s.payer_id) payerRows.push({ ...row, payer_id: s.payer_id });
+              else phRows.push(row);
             }
+          }
+          for (let i = 0; i < payerRows.length; i += 500) {
+            const { error } = await db
+              .from('payment_history')
+              .upsert(payerRows.slice(i, i + 500), { onConflict: 'nedarim_transaction_id,student_id', ignoreDuplicates: true });
+            if (error) summary.errors.push(`ph mirror (payers): ${error.message}`);
           }
           for (let i = 0; i < phRows.length; i += 500) {
             const { error } = await db

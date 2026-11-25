@@ -5,10 +5,25 @@ import { supabase } from '@/lib/supabase';
 import { fetchAll } from '@/lib/supabase-paginate';
 import { ChargeAdjustment } from '@/lib/types';
 import { validateBankAccountFull } from '@/lib/israeli-validators';
+import { ExtraPayer, extraTotal, groupPayersByStudent } from '@/lib/tuition-payers';
+import { loadActiveExtraPayers } from '@/hooks/useExtraPayers';
 
 export type PayMethod = 'bank_ho' | 'credit_nedarim' | 'office' | 'exempt' | 'none';
 
-export type CollectionStatus = 'paid' | 'pending' | 'returned' | 'none';
+// 'partial' — only for a student with additional payers: part of the month's total came in
+export type CollectionStatus = 'paid' | 'partial' | 'pending' | 'returned' | 'none';
+
+/**
+ * A split student's status for the month. `paidSum` = what was collected (status 2 rows),
+ * `expected` = what bank + credit should bring (the family's final amount when its method
+ * is bank/credit, plus the bank/credit payers). Office payments are not in payment_history,
+ * so an office part is never waited for here.
+ */
+export function splitCollectionStatus(byRank: CollectionStatus, paidSum: number, expected: number): CollectionStatus {
+  if (byRank === 'returned') return 'returned';
+  if (paidSum <= 0) return byRank;
+  return paidSum >= expected - 0.5 ? 'paid' : 'partial';
+}
 
 export interface MonthlyRow {
   student_id: string;
@@ -26,6 +41,9 @@ export interface MonthlyRow {
   final: number;                   // (override ?? base) + additionsTotal
   collection: CollectionStatus;    // this month's collection status (from payment_history)
   account: 'valid' | 'bad-check' | 'invalid' | 'na'; // bank account validity (bank_ho only)
+  /** additional payers (tuition split) — active ones only; charged on top of `final` */
+  extraPayers: ExtraPayer[];
+  extraTotal: number;
 }
 
 interface StudentLite {
@@ -114,14 +132,18 @@ export function useChargeAdjustments() {
     const [my, mm] = month.split('-').map(Number);
     const nd = new Date(my, mm, 1);
     const nextMonthStart = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}-01`;
-    const ph = await fetchAll<{ student_id: string; status_code: number }>(
-      'payment_history', 'student_id, status_code',
+    const ph = await fetchAll<{ student_id: string; status_code: number; amount_ils: number }>(
+      'payment_history', 'student_id, status_code, amount_ils',
       (q) => q.gte('payment_date', `${month}-01`).lt('payment_date', nextMonthStart)
     );
+    // Additional payers (tuition split). [] when migration 064 was not run.
+    const payersBySid = groupPayersByStudent(await loadActiveExtraPayers());
     const rank: Record<number, number> = { 3: 3, 2: 2, 1: 1 };
     const statusBySid = new Map<string, CollectionStatus>();
     const bestRank = new Map<string, number>();
+    const paidBySid = new Map<string, number>();
     for (const r of ph) {
+      if (r.status_code === 2) paidBySid.set(r.student_id, (paidBySid.get(r.student_id) || 0) + (Number(r.amount_ils) || 0));
       const rk = rank[r.status_code] || 0;
       if (rk === 0) continue;
       if (rk > (bestRank.get(r.student_id) || 0)) {
@@ -133,7 +155,8 @@ export function useChargeAdjustments() {
     const rows: MonthlyRow[] = [];
     for (const s of students) {
       const t = tuitionBySid.get(s.id);
-      rows.push(
+      const payers = payersBySid.get(s.id) || [];
+      const row =
         computeRow({
           student_id: s.id,
           first_name: s.first_name,
@@ -150,8 +173,16 @@ export function useChargeAdjustments() {
           final: 0,
           collection: statusBySid.get(s.id) || 'none',
           account: acctStatus((t?.payment_method as PayMethod) || 'none', s.family_id),
-        })
-      );
+          extraPayers: payers,
+          extraTotal: extraTotal(payers),
+        });
+      if (payers.length > 0) {
+        const auto = (m: string) => m === 'bank_ho' || m === 'credit_nedarim';
+        const expected = (auto(row.method) ? row.final : 0)
+          + extraTotal(payers.filter((p) => auto(p.payment_method)));
+        row.collection = splitCollectionStatus(row.collection, paidBySid.get(s.id) || 0, expected);
+      }
+      rows.push(row);
     }
     return rows;
   };

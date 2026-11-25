@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { loadDashboardExtraPayers } from '@/hooks/useExtraPayers';
+import { extraTotal } from '@/lib/tuition-payers';
 
 interface MonthData {
   year: number;
@@ -32,6 +34,9 @@ export function Forecast12MonthsCard() {
         monthly += data.reduce((sum, r) => sum + (Number(r.monthly_amount) || 0), 0);
         if (data.length < 1000) break;
       }
+
+      // tuition split: additional payers (second parent / outside payer)
+      monthly += extraTotal(await loadDashboardExtraPayers());
 
       // Build next 12 months
       const now = new Date();
