@@ -133,9 +133,10 @@ export const REPORT_TYPES: ReportType[] = [
     id: 'bituach_leumi',
     name: 'אישור ביטוח לאומי',
     recipient: 'לכבוד המוסד לביטוח לאומי',
-    extraFields: [],
-    buildBody: (student, year) =>
-      `הננו לאשר בזאת כי ה"ה  ${studentLineWithId(student)}\nהינו תלמיד בישיבתנו בשנת הלימודים ${year} בהיקף של 45 שעות שבועיות\n בתנאי פנימייה ואינו מקבל מלגה.\nהנ"ל החל את לימודיו בישיבה בתאריך ${student.admission_date || '___'}.`,
+    // pre-filled from the student's card (ReportSelector); what is typed here is what prints
+    extraFields: [{ key: 'admission_date', label: 'תאריך כניסה לישיבה', type: 'date' }],
+    buildBody: (student, year, extras) =>
+      `הננו לאשר בזאת כי ה"ה  ${studentLineWithId(student)}\nהינו תלמיד בישיבתנו בשנת הלימודים ${year} בהיקף של 45 שעות שבועיות\n בתנאי פנימייה ואינו מקבל מלגה.\nהנ"ל החל את לימודיו בישיבה בתאריך ${('admission_date' in extras ? extras.admission_date : student.admission_date) || '___'}.`,
   },
   {
     id: 'bituach_leumi_yb',

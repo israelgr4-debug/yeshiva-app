@@ -71,6 +71,9 @@ export function renderTemplateBody(
     signer_id_number: sg.idNumber || '',
     ...extras,
   };
+  // a template may carry admission_date as an editable field (key 'admission_date'): the field
+  // then wins over the student's card, and an emptied field prints a blank line to fill by hand
+  if (!replacements.admission_date) replacements.admission_date = '___';
   return body.replace(/\{\{\s*([a-zA-Z_]\w*)\s*\}\}/g, (_m, key) => {
     const v = replacements[key];
     if (v === undefined || v === '') return '';

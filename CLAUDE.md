@@ -166,6 +166,13 @@ public/                         # logo.png + manifest.json (PWA)
   existing family by father ID **ignoring leading zeros** (`idMatchVariants`).
 - **Certificate templates** (`certificate_templates`): editable HTML with
   `{{placeholder}}` syntax. Admin-only at /settings/certificates.
+  The certificates screen (`ReportSelector`): the school year opens with setting
+  `cert_default_year` (button "קבע כברירת מחדל" under the year field — NOT
+  `current_school_year`, which belongs to the machzor tab). An extra field whose key is
+  `admission_date` (mig 063: on ביטוח לאומי, "תאריך כניסה לישיבה") is pre-filled from the
+  student's card and overrides the `{{admission_date}}` placeholder; emptied → `___`.
+  Fields filled from a student's card (admission / exit date, tuition amount) are cleared
+  when another student is chosen.
 - **student_tuition**: per-student payment setup. `tuition_active_until` =
   optional date for scheduled stop (e.g. leave mid-month with one final
   charge). MASAV export respects this.

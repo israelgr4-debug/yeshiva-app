@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Student } from '@/lib/types';
 import { ReportTypeId, ReportType } from '@/lib/certificates';
 import { useCertificateTemplates } from '@/hooks/useCertificateTemplates';
+import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { supabase } from '@/lib/supabase';
 
 interface ReportSelectorProps {
@@ -13,6 +14,17 @@ interface ReportSelectorProps {
   loading: boolean;
   onGenerate: (student: Student, reportType: ReportType, year: string, extras: Record<string, string>) => void;
 }
+
+/** system_settings key: the school year the certificates screen opens with ("קבע כברירת מחדל"). */
+const CERT_DEFAULT_YEAR_SETTING = 'cert_default_year';
+const FALLBACK_YEAR = 'תשפ"ז';
+
+/** Extra-field key that is pre-filled from the student's card (date of entering the yeshiva). */
+const ADMISSION_FIELD = 'admission_date';
+const isoDay = (v: unknown) => {
+  const m = String(v || '').match(/^\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : '';
+};
 
 // Report IDs where we default to showing INACTIVE students (תלמידים שעזבו)
 const LEFT_STUDENT_REPORT_IDS: ReportTypeId[] = ['left', 'left_with_masachtot'];
@@ -23,10 +35,34 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<ReportTypeId | ''>('');
-  const [year, setYear] = useState('תשפ"ו');
+  const { getSetting, setSetting } = useSystemSettings();
+  const [year, setYear] = useState(FALLBACK_YEAR);
+  const [defaultYear, setDefaultYear] = useState('');   // the saved default ('' = none saved yet)
+  const [savingYear, setSavingYear] = useState(false);
+  const yearTouched = useRef(false);
   const [extras, setExtras] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // the saved default year — unless the user already typed one
+  useEffect(() => {
+    getSetting<string>(CERT_DEFAULT_YEAR_SETTING, '').then((v) => {
+      const saved = typeof v === 'string' ? v.trim() : '';
+      if (!saved) return;
+      setDefaultYear(saved);
+      if (!yearTouched.current) setYear(saved);
+    });
+  }, [getSetting]);
+
+  const saveDefaultYear = async () => {
+    const v = year.trim();
+    if (!v) return;
+    setSavingYear(true);
+    const ok = await setSetting(CERT_DEFAULT_YEAR_SETTING, v);
+    setSavingYear(false);
+    if (ok) setDefaultYear(v);
+    else alert('ברירת המחדל לא נשמרה. נסה שוב.');
+  };
 
   // Auto-switch default status filter based on selected report type
   useEffect(() => {
@@ -88,6 +124,28 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
       setExtras({});
     }
   }, [selectedReportId]);
+
+  // Another student was chosen: what was filled from the PREVIOUS student's card must not stay
+  // (the effects below fill the fields again from the new student).
+  useEffect(() => {
+    setExtras((prev) => {
+      const next = { ...prev };
+      delete next[ADMISSION_FIELD];
+      delete next.endDate;
+      if (selectedReportId === 'with_tuition' || selectedReportId === 'tuition_with_history') delete next.amount;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStudentId]);
+
+  // Date of entering the yeshiva, for a certificate that has the field (ביטוח לאומי): taken
+  // from the student's card, editable. A card with no date leaves the field empty.
+  useEffect(() => {
+    if (!selectedStudent || !selectedReport) return;
+    if (!selectedReport.extraFields.some((f) => f.key === ADMISSION_FIELD)) return;
+    const day = isoDay(selectedStudent.admission_date);
+    setExtras((prev) => prev[ADMISSION_FIELD] ? prev : { ...prev, [ADMISSION_FIELD]: day });
+  }, [selectedStudent, selectedReport]);
 
   // Auto-fill exit_date for 'left' certificate when both student + report are set
   useEffect(() => {
@@ -281,12 +339,31 @@ export function ReportSelector({ students, loading, onGenerate }: ReportSelector
       </div>
 
       {/* Year input */}
-      <Input
-        label="שנת לימודים"
-        value={year}
-        onChange={(e) => setYear(e.target.value)}
-        placeholder='תשפ"ו'
-      />
+      <div>
+        <Input
+          label="שנת לימודים"
+          value={year}
+          onChange={(e) => { yearTouched.current = true; setYear(e.target.value); }}
+          placeholder={FALLBACK_YEAR}
+        />
+        <div className="flex items-center justify-between gap-2 mt-1.5 text-xs">
+          <span className="text-gray-500">
+            {defaultYear ? `ברירת המחדל: ${defaultYear}` : 'עדיין לא נקבעה ברירת מחדל'}
+          </span>
+          {year.trim() && year.trim() === defaultYear ? (
+            <span className="text-green-700 font-medium">✓ זו ברירת המחדל</span>
+          ) : (
+            <button
+              type="button"
+              onClick={saveDefaultYear}
+              disabled={!year.trim() || savingYear}
+              className="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 font-medium hover:bg-blue-100 disabled:opacity-50"
+            >
+              {savingYear ? 'שומר...' : '📌 קבע כברירת מחדל'}
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Extra fields based on report type */}
       {selectedReport?.extraFields.map((field) => (
